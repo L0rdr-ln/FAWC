@@ -1504,3 +1504,34 @@ fn a_program_can_lock_the_pointer_and_read_relative_motion() {
     hn.state.pointer_moved((inside.0, inside.1).into(), 4);
     drop(th);
 }
+
+#[test]
+fn xdg_activation_brings_a_window_to_the_front_and_restores_a_minimized_one() {
+    use smithay::wayland::xdg_activation::{XdgActivationHandler, XdgActivationToken, XdgActivationTokenData};
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-act").unwrap();
+    let mut hn = Harness { display, state, socket };
+    open_window(&mut hn, dir.path(), "fde-e2e-act", 200, 100);
+    open_window(&mut hn, dir.path(), "fde-e2e-act", 200, 100);
+    let wins: Vec<_> = hn.state.space.elements().cloned().collect();
+    assert_eq!(wins.len(), 2);
+    let (back, front) = (wins[0].clone(), wins[1].clone());
+    let surface = back.toplevel().unwrap().wl_surface().clone();
+    let data = XdgActivationTokenData { client_id: None, serial: None, app_id: None, surface: None, timestamp: Instant::now(), user_data: Default::default() };
+    hn.state.request_activation(XdgActivationToken::from("t".to_string()), data.clone(), surface.clone());
+    assert_eq!(hn.state.space.elements().last(), Some(&back), "the activated window is in front");
+
+    // a minimized window comes back too
+    hn.state.minimize_window(&back);
+    hn.pump_for(400);
+    hn.state.tick_animations();
+    hn.state.request_activation(XdgActivationToken::from("t".to_string()), data, surface);
+    hn.pump_for(100);
+    assert!(!hn.state.minimized.contains(&back), "activation restores a minimized window");
+    let _ = front;
+}

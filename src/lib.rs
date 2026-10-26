@@ -20,6 +20,7 @@ pub mod outputs;
 pub mod layout;
 pub mod panel;
 pub mod pointer_constraints;
+pub mod protocols;
 pub mod render;
 pub mod shell;
 pub mod state;

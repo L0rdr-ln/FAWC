@@ -84,6 +84,8 @@ pub struct Fde {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Fde>,
     pub data_device_state: DataDeviceState,
+    pub xdg_activation_state: smithay::wayland::xdg_activation::XdgActivationState,
+    pub cursor_shape_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
     pub pointer_constraints_state: smithay::wayland::pointer_constraints::PointerConstraintsState,
     pub relative_pointer_state: smithay::wayland::relative_pointer::RelativePointerManagerState,
     /// where the surface that has the pointer starts (for pointer constraint regions)
@@ -170,6 +172,8 @@ impl Fde {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Fde>(dh);
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Fde>(dh);
+        let xdg_activation_state = smithay::wayland::xdg_activation::XdgActivationState::new::<Fde>(dh);
+        let cursor_shape_state = smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Fde>(dh);
         let pointer_constraints_state = smithay::wayland::pointer_constraints::PointerConstraintsState::new::<Fde>(dh);
         let relative_pointer_state = smithay::wayland::relative_pointer::RelativePointerManagerState::new::<Fde>(dh);
         let mut seat = seat_state.new_wl_seat(dh, "seat0");
@@ -234,6 +238,8 @@ impl Fde {
             output_manager_state,
             seat_state,
             data_device_state,
+            xdg_activation_state,
+            cursor_shape_state,
             pointer_constraints_state,
             relative_pointer_state,
             pointer_focus_origin: (0.0, 0.0).into(),
