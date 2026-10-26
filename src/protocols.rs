@@ -138,3 +138,11 @@ impl Fde {
         }
     }
 }
+
+// primary selection: select text in one program, middle-click to paste in another.
+impl smithay::wayland::selection::primary_selection::PrimarySelectionHandler for Fde {
+    fn primary_selection_state(&self) -> &smithay::wayland::selection::primary_selection::PrimarySelectionState {
+        &self.primary_selection_state
+    }
+}
+smithay::delegate_primary_selection!(Fde);

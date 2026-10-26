@@ -84,6 +84,7 @@ pub struct Fde {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Fde>,
     pub data_device_state: DataDeviceState,
+    pub primary_selection_state: smithay::wayland::selection::primary_selection::PrimarySelectionState,
     /// windows that are bending on their springs
     /// the X11 window manager, once XWayland is up
     pub xwm: Option<smithay::xwayland::X11Wm>,
@@ -191,6 +192,7 @@ impl Fde {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Fde>(dh);
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Fde>(dh);
+        let primary_selection_state = smithay::wayland::selection::primary_selection::PrimarySelectionState::new::<Fde>(dh);
         crate::screencopy::create_global(dh);
         let xwayland_shell_state = smithay::wayland::xwayland_shell::XWaylandShellState::new::<Fde>(dh);
         let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Fde>(dh);
@@ -263,6 +265,7 @@ impl Fde {
             output_manager_state,
             seat_state,
             data_device_state,
+            primary_selection_state,
             xwm: None,
             x11_display: None,
             xwayland_shell_state,

@@ -1981,3 +1981,120 @@ fn every_theme_changes_how_a_window_is_drawn() {
     let green = &bars[2];
     assert!(green[1] > green[0] && green[1] > green[2], "eco's title bar is green: {green:?}");
 }
+
+// ------------------------------------------------------------------ primary selection
+
+use wayland_client::protocol::wl_seat as seat_proto;
+use wayland_protocols::wp::primary_selection::zv1::client::{
+    zwp_primary_selection_device_manager_v1, zwp_primary_selection_device_v1, zwp_primary_selection_offer_v1, zwp_primary_selection_source_v1,
+};
+
+#[derive(Default)]
+struct PrimApp {
+    configured: bool,
+    got_selection: bool,
+    mimes: Vec<String>,
+}
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for PrimApp {
+    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+}
+delegate_noop!(PrimApp: ignore wl_compositor::WlCompositor);
+delegate_noop!(PrimApp: ignore wl_surface::WlSurface);
+delegate_noop!(PrimApp: ignore wl_shm::WlShm);
+delegate_noop!(PrimApp: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(PrimApp: ignore wl_buffer::WlBuffer);
+delegate_noop!(PrimApp: ignore seat_proto::WlSeat);
+delegate_noop!(PrimApp: ignore xdg_toplevel::XdgToplevel);
+delegate_noop!(PrimApp: ignore zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1);
+impl Dispatch<xdg_wm_base::XdgWmBase, ()> for PrimApp {
+    fn event(_: &mut Self, _: &xdg_wm_base::XdgWmBase, _: xdg_wm_base::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+impl Dispatch<xdg_surface::XdgSurface, ()> for PrimApp {
+    fn event(app: &mut Self, s: &xdg_surface::XdgSurface, event: xdg_surface::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let xdg_surface::Event::Configure { serial } = event {
+            s.ack_configure(serial);
+            app.configured = true;
+        }
+    }
+}
+impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()> for PrimApp {
+    fn event(_: &mut Self, _: &zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, _: zwp_primary_selection_source_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+impl Dispatch<zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, ()> for PrimApp {
+    fn event(app: &mut Self, _: &zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, event: zwp_primary_selection_device_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let zwp_primary_selection_device_v1::Event::Selection { id } = event {
+            app.got_selection = id.is_some();
+        }
+    }
+    wayland_client::event_created_child!(PrimApp, zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, [
+        zwp_primary_selection_device_v1::EVT_DATA_OFFER_OPCODE => (zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, ()),
+    ]);
+}
+impl Dispatch<zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, ()> for PrimApp {
+    fn event(app: &mut Self, _: &zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, event: zwp_primary_selection_offer_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let zwp_primary_selection_offer_v1::Event::Offer { mime_type } = event {
+            app.mimes.push(mime_type);
+        }
+    }
+}
+
+#[test]
+fn selected_text_is_offered_for_middle_click_paste() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-prim").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let path = dir.path().join("fde-e2e-prim");
+    let th = std::thread::spawn(move || {
+        let conn = Connection::from_socket(UnixStream::connect(path).unwrap()).unwrap();
+        let (globals, mut queue) = registry_queue_init::<PrimApp>(&conn).unwrap();
+        let qh = queue.handle();
+        let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 4..=4, ()).unwrap();
+        let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).unwrap();
+        let wm: xdg_wm_base::XdgWmBase = globals.bind(&qh, 1..=1, ()).unwrap();
+        let seat: seat_proto::WlSeat = globals.bind(&qh, 1..=1, ()).unwrap();
+        let mgr: zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1 = globals.bind(&qh, 1..=1, ()).unwrap();
+        let mut app = PrimApp::default();
+        let surface = compositor.create_surface(&qh, ());
+        let xs = wm.get_xdg_surface(&surface, &qh, ());
+        let _top = xs.get_toplevel(&qh, ());
+        surface.commit();
+        while !app.configured {
+            queue.blocking_dispatch(&mut app).unwrap();
+        }
+        let mut file = tempfile::tempfile_in(std::env::var("XDG_RUNTIME_DIR").unwrap()).unwrap();
+        file.write_all(&vec![0x80u8; 100 * 60 * 4]).unwrap();
+        use std::os::fd::AsFd;
+        let pool = shm.create_pool(file.as_fd(), 100 * 60 * 4, &qh, ());
+        let buf = pool.create_buffer(0, 100, 60, 400, wl_shm::Format::Argb8888, &qh, ());
+        surface.attach(Some(&buf), 0, 0);
+        surface.commit();
+        let _device = mgr.get_device(&seat, &qh, ());
+        queue.roundtrip(&mut app).unwrap();
+        // wait for the keyboard focus, then select something
+        std::thread::sleep(Duration::from_millis(300));
+        queue.roundtrip(&mut app).unwrap();
+        let source = mgr.create_source(&qh, ());
+        source.offer("text/plain".into());
+        _device.set_selection(Some(&source), 1);
+        let t0 = Instant::now();
+        while !app.got_selection && t0.elapsed() < Duration::from_secs(5) {
+            queue.roundtrip(&mut app).unwrap();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        (app.got_selection, app.mimes)
+    });
+    let t0 = Instant::now();
+    while !th.is_finished() {
+        hn.pump();
+        assert!(t0.elapsed() < Duration::from_secs(15), "the client never finished");
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    let (got, mimes) = th.join().unwrap();
+    assert!(got, "the selection reaches the program that has the keyboard focus");
+    assert_eq!(mimes, vec!["text/plain".to_string()]);
+}
