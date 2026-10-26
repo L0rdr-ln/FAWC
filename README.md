@@ -1,6 +1,7 @@
 # FAWC
 
-A Wayland compositor with **real glass**: the blur behind a window, the gloss on its title bar
+A complete desktop in the Frutiger Aero style (compositor, shell, settings, theme), starting with
+a Wayland compositor with **real glass**: the blur behind a window, the gloss on its title bar
 and the translucency of its frame are drawn on the GPU by the compositor itself, in the spirit of
 Frutiger Aero (Windows Vista/7 Aero, skeuomorphic glass, sky and water).
 
@@ -23,8 +24,9 @@ Early. What exists:
 - an offscreen demo (`fawc glass-demo out.png`) and pixel tests that run on a software GL
   (llvmpipe), so the look is developed and checked without a display.
 
-Planned: the compositor around it (xdg-shell windows, input, winit and DRM backends, panel,
-wallpaper, themes, window animations). See [docs/ROADMAP.md](docs/ROADMAP.md).
+The goal is a full desktop suite, the way GNOME or KDE are: see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for what is written here and what is reused, and
+[docs/ROADMAP.md](docs/ROADMAP.md) for the stages.
 
 ## Build
 
