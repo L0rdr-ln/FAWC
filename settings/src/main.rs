@@ -204,6 +204,53 @@ fn wallpaper_page(cfg: &Config, status: &Status) -> GBox {
     outer
 }
 
+fn music_page(cfg: &Config, status: &Status) -> GBox {
+    let (outer, body) = page("Music", "Background music for the session: your own files, played in a loop by fawc-music. Takes effect at once if it is running, else at the next session.");
+    let enabled = gtk4::Switch::new();
+    enabled.set_active(cfg.music.enabled);
+    enabled.set_halign(Align::Start);
+    let path = gtk4::Entry::new();
+    path.set_text(&cfg.music.path);
+    path.set_placeholder_text(Some("a music file or a folder, e.g. ~/Music"));
+    let choose = gtk4::Button::with_label("Choose a folder…");
+    let volume = scale(0.0, 1.0, 0.01, cfg.music.volume as f64);
+    let shuffle = gtk4::Switch::new();
+    shuffle.set_active(cfg.music.shuffle);
+    shuffle.set_halign(Align::Start);
+    let (e2, p2, v2, sh2, s2) = (enabled.clone(), path.clone(), volume.clone(), shuffle.clone(), status.clone());
+    let save = debounced(move || {
+        s2.report(config::set(&path_of_config(), &model::music(e2.is_active(), &p2.text(), v2.value(), sh2.is_active())));
+    });
+    let s = save.clone();
+    enabled.connect_active_notify(move |_| s());
+    let s = save.clone();
+    path.connect_changed(move |_| s());
+    let s = save.clone();
+    volume.connect_value_changed(move |_| s());
+    let s = save.clone();
+    shuffle.connect_active_notify(move |_| s());
+    let p3 = path.clone();
+    choose.connect_clicked(move |b| {
+        let dialog = gtk4::FileDialog::new();
+        dialog.set_title("Choose the music folder");
+        let p4 = p3.clone();
+        let parent = b.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
+        dialog.select_folder(parent.as_ref(), gtk4::gio::Cancellable::NONE, move |res| {
+            if let Ok(file) = res {
+                if let Some(p) = file.path() {
+                    p4.set_text(&p.to_string_lossy());
+                }
+            }
+        });
+    });
+    body.append(&row("Play music", &enabled));
+    body.append(&row("Music", &path));
+    body.append(&choose);
+    body.append(&row("Volume", &volume));
+    body.append(&row("Shuffle", &shuffle));
+    outer
+}
+
 fn keyboard_page(cfg: &Config, status: &Status) -> GBox {
     let (outer, body) = page("Keyboard", "Layout is an xkb name such as us, de, fr or us(intl). Leave empty for the system default.");
     let layout = gtk4::Entry::new();
@@ -303,6 +350,7 @@ fn build(app: &gtk4::Application, quit_after: Option<u64>) {
     stack.set_transition_type(gtk4::StackTransitionType::Crossfade);
     stack.add_titled(&appearance_page(&cfg, &status), Some("appearance"), "Appearance");
     stack.add_titled(&wallpaper_page(&cfg, &status), Some("wallpaper"), "Wallpaper");
+    stack.add_titled(&music_page(&cfg, &status), Some("music"), "Music");
     stack.add_titled(&keyboard_page(&cfg, &status), Some("keyboard"), "Keyboard");
     stack.add_titled(&shell_page(&cfg, &status), Some("shell"), "Desktop");
     stack.add_titled(&session_page(&cfg, &status), Some("session"), "Session");
@@ -314,7 +362,7 @@ fn build(app: &gtk4::Application, quit_after: Option<u64>) {
     let sidebar = gtk4::ListBox::new();
     sidebar.set_size_request(190, -1);
     sidebar.set_selection_mode(gtk4::SelectionMode::Single);
-    let pages = [("appearance", "Appearance"), ("wallpaper", "Wallpaper"), ("keyboard", "Keyboard"), ("shell", "Desktop"), ("session", "Session"), ("about", "About")];
+    let pages = [("appearance", "Appearance"), ("wallpaper", "Wallpaper"), ("music", "Music"), ("keyboard", "Keyboard"), ("shell", "Desktop"), ("session", "Session"), ("about", "About")];
     for (_, title) in pages {
         let l = Label::new(Some(title));
         l.set_halign(Align::Start);

@@ -44,6 +44,15 @@ pub fn wallpaper(path: &str, mode: &str) -> Vec<(&'static str, Setting)> {
     vec![("wallpaper.path", Setting::Str(path.trim().to_string())), ("wallpaper.mode", Setting::Str(mode.to_string()))]
 }
 
+pub fn music(enabled: bool, path: &str, volume: f64, shuffle: bool) -> Vec<(&'static str, Setting)> {
+    vec![
+        ("music.enabled", Setting::Bool(enabled)),
+        ("music.path", Setting::Str(path.trim().to_string())),
+        ("music.volume", Setting::Float(round2(volume))),
+        ("music.shuffle", Setting::Bool(shuffle)),
+    ]
+}
+
 pub fn session(idle_lock_minutes: u32) -> Vec<(&'static str, Setting)> {
     vec![("session.idle_lock_seconds", Setting::Int(idle_lock_minutes as i64 * 60))]
 }
@@ -61,6 +70,7 @@ mod tests {
         set(&f, &keyboard(" de ", 30, 400)).unwrap();
         set(&f, &shell("alacritty", "", false)).unwrap();
         set(&f, &session(10)).unwrap();
+        set(&f, &music(true, " /home/me/Music ", 0.456, true)).unwrap();
         set(&f, &wallpaper(" /tmp/a.png ", "tile")).unwrap();
         let c = Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(c.appearance.accent, "#ff8000");
@@ -68,6 +78,8 @@ mod tests {
         assert_eq!((c.input.keyboard_layout.as_str(), c.input.repeat_rate, c.input.repeat_delay), ("de", 30, 400));
         assert_eq!((c.shell.terminal.as_str(), c.shell.panel), ("alacritty", false));
         assert_eq!(c.session.idle_lock_seconds, 600);
+        assert_eq!((c.music.enabled, c.music.path.as_str(), c.music.volume, c.music.shuffle), (true, "/home/me/Music", 0.46, true));
+        assert!(set(&f, &music(true, "", 1.5, false)).is_err(), "a volume above 1 is refused");
         assert_eq!((c.wallpaper.path.as_str(), c.wallpaper.mode.as_str()), ("/tmp/a.png", "tile"));
         // a mode the compositor does not know is refused
         assert!(set(&f, &wallpaper("", "wobble")).is_err());

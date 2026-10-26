@@ -53,6 +53,25 @@ pub const WALLPAPER_MODES: [&str; 5] = ["fill", "fit", "stretch", "center", "til
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
+pub struct Music {
+    /// play background music with `fawc-music`
+    pub enabled: bool,
+    /// a music file, or a folder of them
+    pub path: String,
+    /// 0 (silent) .. 1 (full)
+    pub volume: f32,
+    /// play the files in random order instead of by name
+    pub shuffle: bool,
+}
+
+impl Default for Music {
+    fn default() -> Self {
+        Music { enabled: false, path: String::new(), volume: 0.5, shuffle: false }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
 pub struct Input {
     pub repeat_rate: i32,
     pub repeat_delay: i32,
@@ -129,6 +148,7 @@ pub struct Config {
     pub outputs: std::collections::BTreeMap<String, OutputConfig>,
     pub appearance: Appearance,
     pub wallpaper: Wallpaper,
+    pub music: Music,
     pub input: Input,
     pub shell: Shell,
     pub session: Session,
@@ -200,6 +220,9 @@ impl Config {
         }
         if !WALLPAPER_MODES.contains(&self.wallpaper.mode.as_str()) {
             return Err(format!("wallpaper.mode must be one of {}", WALLPAPER_MODES.join(", ")));
+        }
+        if !(0.0..=1.0).contains(&self.music.volume) {
+            return Err("music.volume must be between 0 and 1".into());
         }
         if self.appearance.cursor_size > 256 {
             return Err("appearance.cursor_size must be at most 256".into());

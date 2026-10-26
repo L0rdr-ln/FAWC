@@ -29,6 +29,10 @@ pub fn start_other_clients(config: &crate::config::Config) {
     if std::env::var_os("FAWC_NO_NOTIFY").is_none() && std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some() {
         start_sibling("fawc-notify");
     }
+    // background music, if switched on
+    if config.music.enabled && std::env::var_os("FAWC_NO_MUSIC").is_none() {
+        start_sibling("fawc-music");
+    }
     let extra = std::env::var("FAWC_AUTOSTART").ok();
     for cmd in config.shell.autostart.iter().chain(extra.iter()) {
         if let Err(e) = Command::new("sh").arg("-c").arg(cmd).spawn() {

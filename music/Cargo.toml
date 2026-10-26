@@ -1,0 +1,13 @@
+[package]
+name = "fawc-music"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Background music for the FAWC desktop: plays your own music files in a loop"
+
+[dependencies]
+fawc = { path = ".." }
+rodio = "0.21"
+
+[dev-dependencies]
+tempfile = "3"

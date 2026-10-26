@@ -11,7 +11,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libudev-dev libseat-dev libinput-dev libgbm-dev \
             libegl-dev libgles-dev libxkbcommon-dev libdrm-dev libwayland-dev \
-            libegl1-mesa-dev libgl1-mesa-dri mesa-utils dbus libglib2.0-bin libgtk-4-dev xvfb
+            libegl1-mesa-dev libgl1-mesa-dri mesa-utils dbus libglib2.0-bin libgtk-4-dev xvfb libasound2-dev
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked
@@ -26,6 +26,10 @@ jobs:
           # it opens, draws and closes by itself on a virtual display
           xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo FAWC_CONFIG=$RUNNER_TEMP/fawc.toml \
             ./target/debug/fawc-settings --quit-after 1500
+      - name: Music player
+        run: |
+          cargo build --locked -p fawc-music
+          cargo test --locked -p fawc-music
       - name: Render the demo scene
         run: |
           cargo run --locked -- glass-demo glass-demo.png

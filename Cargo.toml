@@ -1,5 +1,5 @@
 [workspace]
-members = ["settings"]
+members = ["settings", "music"]
 
 [package]
 name = "fawc"

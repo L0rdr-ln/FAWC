@@ -36,6 +36,6 @@ against the compositor inside the test process.
 
 ## Layout
 
-`settings/` the GTK4 control panel (separate crate, needs `libgtk-4-dev`; `cargo test --workspace` builds it), `src/glass` the renderer, `src/*.rs` the compositor, `src/bin/` the shell programs
+`music/` the background music player (needs `libasound2-dev`), `settings/` the GTK4 control panel (separate crate, needs `libgtk-4-dev`; `cargo test --workspace` builds it), `src/glass` the renderer, `src/*.rs` the compositor, `src/bin/` the shell programs
 (`fawc-panel`, `fawc-lock`), `tests/e2e.rs` end-to-end tests, `docs/` architecture, roadmap and
 plans.
