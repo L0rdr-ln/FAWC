@@ -293,6 +293,24 @@ impl Fawc {
             let focus = self.seat.get_keyboard().and_then(|k| k.current_focus());
             for window in &windows {
                 let Some(client) = self.space.element_geometry(window) else { continue };
+                if self.is_fullscreen(window) && self.minimize_progress(window).is_none() {
+                    if !self.fullscreen_on(output) || client.loc != out_rect.loc {
+                        continue; // on another monitor (or minimized)
+                    }
+                    let k = view.scale;
+                    let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
+                    elements.extend(window.render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                        renderer,
+                        (0, 0).into(),
+                        smithay::utils::Scale::from(k),
+                        1.0,
+                    ));
+                    let mut target = renderer.bind(scene)?;
+                    let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                    draw_render_elements(&mut frame, k, &elements, &[full])?;
+                    let _ = frame.finish()?;
+                    continue;
+                }
                 // opening: fade in and grow from 92 % around the middle
                 let progress = self.open_progress(window);
                 let e = crate::windows::ease_out(progress);
@@ -403,7 +421,11 @@ impl Fawc {
             let _ = WindowSurfaceType::ALL;
 
             // panels, launchers, notifications above the windows
-            self.draw_layers(renderer, glass, scene, size, output, view, &[Layer::Top, Layer::Overlay])?;
+            if self.fullscreen_on(output) {
+                self.draw_layers(renderer, glass, scene, size, output, view, &[Layer::Overlay])?;
+            } else {
+                self.draw_layers(renderer, glass, scene, size, output, view, &[Layer::Top, Layer::Overlay])?;
+            }
         }
 
         // our own mouse cursor, on the monitor the pointer is on

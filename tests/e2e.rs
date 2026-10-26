@@ -1321,3 +1321,53 @@ fn a_wallpaper_picture_from_the_configuration_is_what_the_monitor_shows() {
         assert!((p[0] - 10).abs() < 4 && (p[1] - 120).abs() < 4 && (p[2] - 20).abs() < 4, "dark green at ({x},{y}), not the sky: {p:?}");
     }
 }
+
+#[test]
+fn a_fullscreen_window_fills_the_monitor_without_a_frame_and_hides_the_panels() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): fullscreen test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fawc-e2e-full").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    open_window(&mut hn, dir.path(), "fawc-e2e-full", 200, 100);
+
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    let before = hn.state.space.element_geometry(&win).unwrap();
+    hn.state.set_fullscreen(&win, true, None);
+    hn.pump_for(100);
+    assert!(hn.state.is_fullscreen(&win));
+    let top = win.toplevel().unwrap();
+    let (states, size) = top.with_pending_state(|s| (s.states.contains(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen), s.size));
+    assert!(states, "the client is told it is fullscreen");
+    assert_eq!(size.map(|s| (s.w, s.h)), Some((800, 600)));
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    assert_eq!((g.loc.x, g.loc.y), (0, 0));
+    assert!(hn.state.fullscreen_on(&hn.state.output.clone()));
+
+    // no glass frame: the very corner is the client's blue
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let bytes = grab_scene(&mut renderer, &mut scene);
+    let p = pixel(&bytes, w, 2, 2);
+    assert!(p[2] > 150 && p[0] < 100, "the client reaches the corner: {p:?}");
+
+    // back to where it was
+    hn.state.set_fullscreen(&win, false, None);
+    hn.pump_for(50);
+    assert!(!hn.state.is_fullscreen(&win));
+    assert_eq!(hn.state.space.element_geometry(&win).unwrap().loc, before.loc);
+    assert!(!hn.state.fullscreen_on(&hn.state.output.clone()));
+}

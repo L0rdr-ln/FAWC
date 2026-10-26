@@ -42,9 +42,13 @@ impl Fawc {
     ) -> Option<(LayerSurface, WlSurface, Point<i32, Logical>)> {
         let output = self.output_at(p)?;
         let origin = self.output_rect(&output).loc;
+        let covered = self.fullscreen_on(&output);
         let map = layer_map_for_output(&output);
         let p = p - origin.to_f64();
         for l in layers {
+            if covered && *l == Layer::Top {
+                continue; // a fullscreen window hides the panels
+            }
             if let Some(ls) = map.layer_under(*l, p) {
                 let geo = map.layer_geometry(ls)?;
                 let local = p - geo.loc.to_f64();

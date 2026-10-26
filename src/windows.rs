@@ -109,11 +109,64 @@ impl Fawc {
                 continue; // on its way into the task bar
             }
             let Some(g) = self.space.element_geometry(w) else { continue };
+            if self.is_fullscreen(w) {
+                if g.to_f64().contains(p) {
+                    return Some((w.clone(), g, Hit::Client));
+                }
+                continue;
+            }
             if let Some(h) = hit(g, &self.style, p) {
                 return Some((w.clone(), g, h));
             }
         }
         None
+    }
+
+    pub fn is_fullscreen(&self, window: &Window) -> bool {
+        info(window).lock().unwrap().fullscreen.is_some()
+    }
+
+    /// Is a window fullscreen (and showing) on this monitor? Then it covers the panels.
+    pub fn fullscreen_on(&self, output: &smithay::output::Output) -> bool {
+        let rect = self.output_rect(output);
+        self.space.elements().any(|w| {
+            self.is_fullscreen(w)
+                && !info(w).lock().unwrap().minimized
+                && self.space.element_geometry(w).map(|g| g.loc == rect.loc).unwrap_or(false)
+        })
+    }
+
+    /// Fill `output` (or the monitor the window is on) with the window, no frame, over the
+    /// panels; or put it back where it was.
+    pub fn set_fullscreen(&mut self, window: &Window, on: bool, output: Option<smithay::output::Output>) {
+        let Some(top) = window.toplevel().cloned() else { return };
+        let Some(geo) = self.space.element_geometry(window) else { return };
+        if on == self.is_fullscreen(window) {
+            if on {
+                top.send_configure();
+            }
+            return;
+        }
+        if on {
+            let out = output.unwrap_or_else(|| self.output_for_window(window));
+            let rect = self.output_rect(&out);
+            info(window).lock().unwrap().fullscreen = Some(geo);
+            top.with_pending_state(|s| {
+                s.states.set(xdg_toplevel::State::Fullscreen);
+                s.size = Some(rect.size);
+            });
+            self.space.map_element(window.clone(), rect.loc, false);
+        } else {
+            let prev = info(window).lock().unwrap().fullscreen.take();
+            top.with_pending_state(|s| {
+                s.states.unset(xdg_toplevel::State::Fullscreen);
+                s.size = prev.map(|r| r.size);
+            });
+            if let Some(r) = prev {
+                self.space.map_element(window.clone(), r.loc, false);
+            }
+        }
+        top.send_configure();
     }
 
     pub fn is_maximized(&self, window: &Window) -> bool {
@@ -123,7 +176,7 @@ impl Fawc {
     pub fn set_maximized(&mut self, window: &Window, on: bool) {
         let Some(top) = window.toplevel().cloned() else { return };
         let Some(geo) = self.space.element_geometry(window) else { return };
-        if on == self.is_maximized(window) {
+        if on == self.is_maximized(window) || self.is_fullscreen(window) {
             return;
         }
         if on {

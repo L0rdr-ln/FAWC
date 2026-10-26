@@ -164,6 +164,22 @@ impl XdgShellHandler for Fawc {
         }
     }
 
+    fn fullscreen_request(&mut self, surface: ToplevelSurface, wl_output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>) {
+        if let Some(w) = self.window_for_surface(surface.wl_surface()) {
+            let out = wl_output.as_ref().map(|o| self.output_for_resource(Some(o)));
+            self.set_fullscreen(&w, true, out);
+            self.focus_window(&w);
+        } else {
+            surface.send_configure();
+        }
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        if let Some(w) = self.window_for_surface(surface.wl_surface()) {
+            self.set_fullscreen(&w, false, None);
+        }
+    }
+
     fn minimize_request(&mut self, surface: ToplevelSurface) {
         if let Some(w) = self.window_for_surface(surface.wl_surface()) {
             self.minimize_window(&w);
