@@ -8,6 +8,4 @@
 
 Everything else in the project's artwork is generated in code.
 
-## Mascot
-
-`mascot.svg` is "Aero-chan", the OS-tan: a manga-style character (sky-blue hair, glass sailor collar, glossy orb clips, a sprout), drawn by hand for this project and MIT like the rest. `docs/social-preview.png` is the 1280x640 picture for the GitHub repository card (upload it under Settings > Social preview).
+There is no mascot yet. `docs/MASCOT.md` has the design brief and a picture prompt.

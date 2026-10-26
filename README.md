@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/mascot.svg" alt="Aero-chan, the FDE mascot" height="320">
-</p>
-
 # FDE: Frutiger Desktop Environment
 
 [![build](https://github.com/L0rdr-ln/FDE/actions/workflows/build.yml/badge.svg)](https://github.com/L0rdr-ln/FDE/actions/workflows/build.yml)
