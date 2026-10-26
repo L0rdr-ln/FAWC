@@ -697,3 +697,77 @@ fn a_notification_sent_over_dbus_appears_as_a_bubble_and_goes_away() {
 }
 
 const PATH_N: &str = "/org/freedesktop/Notifications";
+
+#[test]
+fn typing_in_the_start_menu_filters_and_enter_starts_the_program() {
+    use smithay::backend::input::KeyState;
+    use smithay::input::keyboard::{FilterResult, Keycode};
+    use smithay::utils::SERIAL_COUNTER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): start menu test skipped");
+            return;
+        }
+    };
+    // two programs of a made-up home: starting one leaves a marker file
+    let home = dir.path().join("home");
+    let apps = home.join(".local/share/applications");
+    std::fs::create_dir_all(&apps).unwrap();
+    let marker_a = dir.path().join("started-alpha");
+    let marker_z = dir.path().join("started-zzterm");
+    std::fs::write(apps.join("a.desktop"), format!("[Desktop Entry]\nType=Application\nName=Alpha Test\nExec=touch {}\n", marker_a.display())).unwrap();
+    std::fs::write(apps.join("z.desktop"), format!("[Desktop Entry]\nType=Application\nName=Zzterm Test\nExec=touch {}\n", marker_z.display())).unwrap();
+
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let state = Fawc::new(&display.handle(), (w, h).into());
+    let socket = ListeningSocket::bind("fawc-e2e-menu").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+
+    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
+        .env("WAYLAND_DISPLAY", "fawc-e2e-menu")
+        .env("HOME", &home)
+        .env("FAWC_PANEL_OPEN_MENU", "1")
+        .env_remove("DISPLAY")
+        .spawn()
+        .unwrap();
+
+    // wait for the menu to be up and to hold the keyboard
+    let t0 = Instant::now();
+    loop {
+        hn.pump();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        let focused = hn.state.seat.get_keyboard().and_then(|k| k.current_focus()).is_some();
+        if focused {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "the start menu never took the keyboard");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    hn.pump_for(300); // the keymap reaches the panel
+
+    // z z t Enter  (evdev: z = 44, t = 20, Enter = 28)
+    for c in [44u32, 44, 20, 28] {
+        let kb = hn.state.seat.get_keyboard().unwrap();
+        for st in [KeyState::Pressed, KeyState::Released] {
+            kb.input::<(), _>(&mut hn.state, Keycode::new(c + 8), st, SERIAL_COUNTER.next_serial(), 0, |_, _, _| FilterResult::Forward);
+        }
+        hn.pump_for(80);
+    }
+    let t0 = Instant::now();
+    while !marker_z.exists() && t0.elapsed() < Duration::from_secs(10) {
+        hn.pump();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = panel.kill();
+    let _ = panel.wait();
+    assert!(marker_z.exists(), "Enter after typing \"zzt\" starts the matching program");
+    assert!(!marker_a.exists(), "and not the other one");
+}

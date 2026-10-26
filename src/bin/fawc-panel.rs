@@ -13,6 +13,7 @@ use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{delegate_noop, Connection, Dispatch, QueueHandle, WEnum};
 use wayland_protocols::ext::background_effect::v1::client::{ext_background_effect_manager_v1, ext_background_effect_surface_v1};
+use xkbcommon::xkb;
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{zwlr_foreign_toplevel_handle_v1 as handle_mod, zwlr_foreign_toplevel_manager_v1 as manager_mod};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
@@ -42,6 +43,12 @@ struct App {
     toggle_menu: bool,
     close_menu: bool,
     menu_entries: usize,
+    // typing in the start menu
+    query: String,
+    query_changed: bool,
+    menu_move: i32,
+    menu_enter: bool,
+    xkb_state: Option<xkb::State>,
 }
 
 struct Toplevel {
@@ -126,9 +133,60 @@ impl Dispatch<wl_seat::WlSeat, ()> for App {
 
 impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
     fn event(app: &mut Self, _: &wl_keyboard::WlKeyboard, event: wl_keyboard::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
-        // key 1 is Escape in evdev numbering: no keymap needed for that
-        if let wl_keyboard::Event::Key { key: 1, state: WEnum::Value(wl_keyboard::KeyState::Pressed), .. } = event {
-            app.close_menu = true;
+        use std::io::Read;
+        match event {
+            wl_keyboard::Event::Keymap { format: WEnum::Value(wl_keyboard::KeymapFormat::XkbV1), fd, size } => {
+                let mut file = std::fs::File::from(fd);
+                let _ = std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(0));
+                let mut bytes = vec![0u8; size as usize];
+                if file.read_exact(&mut bytes).is_ok() {
+                    let text = String::from_utf8_lossy(&bytes).trim_end_matches('\0').to_string();
+                    let ctx = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+                    if let Some(keymap) = xkb::Keymap::new_from_string(&ctx, text, xkb::KEYMAP_FORMAT_TEXT_V1, xkb::KEYMAP_COMPILE_NO_FLAGS) {
+                        app.xkb_state = Some(xkb::State::new(&keymap));
+                    }
+                }
+            }
+            wl_keyboard::Event::Modifiers { mods_depressed, mods_latched, mods_locked, group, .. } => {
+                if let Some(st) = &mut app.xkb_state {
+                    st.update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group);
+                }
+            }
+            wl_keyboard::Event::Key { key, state: WEnum::Value(wl_keyboard::KeyState::Pressed), .. } => {
+                // only the start menu takes the keyboard
+                let Some(st) = &app.xkb_state else {
+                    if key == 1 {
+                        app.close_menu = true;
+                    }
+                    return;
+                };
+                let code = xkb::Keycode::new(key + 8);
+                let sym = st.key_get_one_sym(code);
+                if sym == xkb::Keysym::Escape {
+                    if app.query.is_empty() {
+                        app.close_menu = true;
+                    } else {
+                        app.query.clear();
+                        app.query_changed = true;
+                    }
+                } else if sym == xkb::Keysym::Return || sym == xkb::Keysym::KP_Enter {
+                    app.menu_enter = true;
+                } else if sym == xkb::Keysym::Down {
+                    app.menu_move = 1;
+                } else if sym == xkb::Keysym::Up {
+                    app.menu_move = -1;
+                } else if sym == xkb::Keysym::BackSpace {
+                    app.query.pop();
+                    app.query_changed = true;
+                } else {
+                    let s = st.key_get_utf8(code);
+                    if !s.is_empty() && !s.chars().any(|c| c.is_control()) {
+                        app.query.push_str(&s);
+                        app.query_changed = true;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -280,16 +338,16 @@ fn open_menu(
     shell: &zwlr_layer_shell_v1::ZwlrLayerShellV1,
     qh: &QueueHandle<App>,
     blur: &Option<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1>,
-    n: usize,
+    _n: usize,
 ) -> Menu {
-    let (w, h) = panel::menu_size(n);
+    let (w, h) = panel::menu_size();
     let surface = compositor.create_surface(qh, ());
     let layer = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Overlay, "start-menu".into(), qh, 1u8);
     layer.set_size(w as u32, h as u32);
     layer.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom | zwlr_layer_surface_v1::Anchor::Left);
     layer.set_margin(0, 0, panel::HEIGHT + 4, 6);
     layer.set_exclusive_zone(0);
-    layer.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand);
+    layer.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
     if let Some(b) = blur {
         let effect = b.get_background_effect(&surface, qh, ());
         let region = compositor.create_region(qh, ());
@@ -343,11 +401,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut menu: Option<Menu> = None;
     // for screenshots and tests: open the start menu at once
     app.toggle_menu = std::env::var_os("FAWC_PANEL_OPEN_MENU").is_some();
-    let entries = {
-        let mut e = fawc::apps::installed();
-        e.truncate(panel::MENU_MAX_ROWS);
-        e
-    };
+    let entries = fawc::apps::installed();
+    let mut filtered: Vec<usize> = Vec::new();
 
     while !app.closed {
         if last_clock.elapsed() >= Duration::from_secs(10) {
@@ -391,15 +446,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else if !entries.is_empty() {
                 let m = open_menu(&compositor, &shell, &qh, &blur_manager, entries.len());
                 app.menu_surface = Some(m.surface.clone());
-                app.menu_entries = entries.len();
+                app.query.clear();
+                filtered = fawc::apps::filter(&entries, "");
+                app.menu_entries = filtered.len().min(panel::MENU_MAX_ROWS);
                 app.menu_configured = false;
                 menu = Some(m);
             } else {
                 launch();
             }
         }
+        if menu.is_some() {
+            if app.query_changed {
+                app.query_changed = false;
+                filtered = fawc::apps::filter(&entries, &app.query);
+                app.menu_entries = filtered.len().min(panel::MENU_MAX_ROWS);
+                // the best match is selected, so Enter starts it
+                app.menu_hover = if filtered.is_empty() { None } else { Some(0) };
+                app.menu_dirty = true;
+            }
+            if app.menu_move != 0 {
+                let n = app.menu_entries as i32;
+                if n > 0 {
+                    let cur = app.menu_hover.map(|h| h as i32).unwrap_or(if app.menu_move > 0 { -1 } else { n });
+                    app.menu_hover = Some((cur + app.menu_move).clamp(0, n - 1) as usize);
+                    app.menu_dirty = true;
+                }
+                app.menu_move = 0;
+            }
+            if app.menu_enter {
+                app.menu_enter = false;
+                if let Some(e) = filtered.get(app.menu_hover.unwrap_or(0)).and_then(|&i| entries.get(i)) {
+                    launch_exec(&e.exec);
+                    app.close_menu = true;
+                }
+            }
+        }
         if let Some(row) = app.menu_click.take() {
-            if let Some(e) = entries.get(row) {
+            if let Some(e) = filtered.get(row).and_then(|&i| entries.get(i)) {
                 launch_exec(&e.exec);
             }
             app.close_menu = true;
@@ -417,9 +500,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(m) = &mut menu {
             if app.menu_configured && app.menu_dirty {
                 app.menu_dirty = false;
-                let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
-                let px = panel::draw_menu(&mut text, &names, app.menu_hover);
-                attach(&shm, &qh, &m.surface, &mut m.file, px, panel::menu_size(names.len()))?;
+                let names: Vec<String> = filtered.iter().take(panel::MENU_MAX_ROWS).filter_map(|&i| entries.get(i)).map(|e| e.name.clone()).collect();
+                let px = panel::draw_menu(&mut text, &app.query, &names, app.menu_hover);
+                attach(&shm, &qh, &m.surface, &mut m.file, px, panel::menu_size())?;
             }
         }
         // wait for events, but wake up for the clock

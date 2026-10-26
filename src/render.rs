@@ -90,6 +90,7 @@ impl Fawc {
         let size = scene.size();
         let full = Rectangle::<i32, Physical>::from_size((size.w, size.h).into());
         let Some(rect) = rect.intersection(full) else { return Ok(()) };
+        tracing::debug!("blur behind {rect:?}");
         let margin = 24;
         let region = Rectangle::<i32, Physical>::new(
             (rect.loc.x - margin, rect.loc.y - margin).into(),

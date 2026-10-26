@@ -63,6 +63,7 @@ impl CompositorHandler for Fawc {
             .cloned();
         if let Some(layer) = layer {
             layer_map_for_output(&self.output).arrange();
+            self.focus_layer_if_exclusive(&layer);
             // the first configure answers the first commit; arrange never sends it
             let sent = with_states(surface, |states| {
                 states

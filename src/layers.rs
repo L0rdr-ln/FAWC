@@ -9,11 +9,19 @@ use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
 use crate::state::Fawc;
 
 impl Fawc {
-    /// A layer surface that wants the keyboard exclusively takes it when it appears.
+    /// A layer surface that wants the keyboard exclusively takes it. Called on every commit: the
+    /// client sets its interactivity after creating the surface, so it is known only from the
+    /// first commit on.
     pub fn focus_layer_if_exclusive(&mut self, layer: &LayerSurface) {
         let wants = layer.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive
             && matches!(layer.layer(), Layer::Top | Layer::Overlay);
-        if wants {
+        let has_it = self
+            .seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus())
+            .map(|f| &f == layer.wl_surface())
+            .unwrap_or(false);
+        if wants && !has_it && !self.locked {
             self.focus_layer(layer);
         }
     }

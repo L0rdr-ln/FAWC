@@ -203,21 +203,22 @@ pub const MENU_W: i32 = 280;
 pub const MENU_ROW: i32 = 28;
 const MENU_PAD: i32 = 8;
 pub const MENU_MAX_ROWS: usize = 16;
+const SEARCH_H: i32 = 38;
 
-/// Size of the start menu with `n` entries.
-pub fn menu_size(n: usize) -> (i32, i32) {
-    (MENU_W, n.min(MENU_MAX_ROWS) as i32 * MENU_ROW + 2 * MENU_PAD)
+/// Size of the start menu: a search field and room for `MENU_MAX_ROWS` entries, always.
+pub fn menu_size() -> (i32, i32) {
+    (MENU_W, SEARCH_H + MENU_MAX_ROWS as i32 * MENU_ROW + 2 * MENU_PAD)
 }
 
-/// Which menu row is at height `y`?
+/// Which menu row (of `n` shown) is at height `y`?
 pub fn menu_row_at(y: f64, n: usize) -> Option<usize> {
-    let row = ((y - MENU_PAD as f64) / MENU_ROW as f64).floor();
+    let row = ((y - (MENU_PAD + SEARCH_H) as f64) / MENU_ROW as f64).floor();
     (row >= 0.0 && (row as usize) < n.min(MENU_MAX_ROWS)).then_some(row as usize)
 }
 
 /// The start menu: a glass sheet with rounded corners and one row per entry.
-pub fn draw_menu(text: &mut TextRenderer, names: &[String], hover: Option<usize>) -> Vec<u8> {
-    let (w, h) = menu_size(names.len());
+pub fn draw_menu(text: &mut TextRenderer, query: &str, names: &[String], hover: Option<usize>) -> Vec<u8> {
+    let (w, h) = menu_size();
     let mut buf = vec![0u8; (w * h * 4) as usize];
     let rad = 12.0f32;
     for y in 0..h {
@@ -241,8 +242,29 @@ pub fn draw_menu(text: &mut TextRenderer, names: &[String], hover: Option<usize>
             }
         }
     }
+    // the search field: a pale pill with what has been typed (or a hint)
+    let (sx0, sy0, sw, sh) = (MENU_PAD, MENU_PAD, w - 2 * MENU_PAD, SEARCH_H - 6);
+    for y in 0..sh {
+        for x in 0..sw {
+            let dx = (x as f32 + 0.5 - sw as f32 / 2.0).abs() - (sw as f32 / 2.0 - sh as f32 / 2.0);
+            let dy = (y as f32 + 0.5 - sh as f32 / 2.0).abs();
+            let d = dx.max(0.0).hypot(dy) - sh as f32 / 2.0;
+            let cover = (0.5 - d).clamp(0.0, 1.0);
+            if cover > 0.0 {
+                let i = (((sy0 + y) * w + sx0 + x) * 4) as usize;
+                blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.78 * cover);
+                if d > -1.2 {
+                    blend(&mut buf[i..i + 4], [0.1, 0.3, 0.6], 0.45 * cover);
+                }
+            }
+        }
+    }
+    let (shown_text, color) = if query.is_empty() { ("Search programs", [90, 120, 160]) } else { (query, [10, 40, 90]) };
+    if let Some(img) = text.line(shown_text, sw - 28, 14.0, color, None, 0) {
+        blit(&mut buf, w, h, &img, sx0 + 14, sy0 + (sh - img.height) / 2);
+    }
     for (i, name) in names.iter().take(MENU_MAX_ROWS).enumerate() {
-        let y0 = MENU_PAD + i as i32 * MENU_ROW;
+        let y0 = MENU_PAD + SEARCH_H + i as i32 * MENU_ROW;
         if hover == Some(i) {
             for y in y0..y0 + MENU_ROW {
                 for x in MENU_PAD..w - MENU_PAD {
@@ -315,17 +337,18 @@ mod tests {
     fn the_menu_has_rows_a_highlight_and_rounded_corners() {
         let mut text = TextRenderer::default();
         let names: Vec<String> = ["Files", "Terminal", "Settings"].iter().map(|s| s.to_string()).collect();
-        let (w, h) = menu_size(names.len());
-        let buf = draw_menu(&mut text, &names, Some(1));
+        let (w, h) = menu_size();
+        let buf = draw_menu(&mut text, "", &names, Some(1));
         let at = |x: i32, y: i32| {
             let i = ((y * w + x) * 4) as usize;
             [buf[i] as i32, buf[i + 1] as i32, buf[i + 2] as i32, buf[i + 3] as i32]
         };
         assert_eq!(at(0, 0)[3], 0, "the corner is transparent");
         assert!(at(w / 2, h / 2)[3] > 100, "the sheet is translucent, not empty");
-        let (hi, plain) = (at(w - 20, MENU_PAD + MENU_ROW + 14), at(w - 20, MENU_PAD + 14));
+        let (hi, plain) = (at(w - 20, MENU_PAD + SEARCH_H + MENU_ROW + 14), at(w - 20, MENU_PAD + SEARCH_H + 14));
         assert!(hi[0] > plain[0] + 40, "the hovered row is lighter: {hi:?} {plain:?}");
-        assert_eq!(menu_row_at((MENU_PAD + MENU_ROW + 3) as f64, 3), Some(1));
-        assert_eq!(menu_row_at(2.0, 3), None);
+        assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + MENU_ROW + 3) as f64, 3), Some(1));
+        assert_eq!(menu_row_at(2.0, 3), None, "the search field is not a row");
+        assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + 3 * MENU_ROW + 3) as f64, 3), None, "below the last row");
     }
 }
