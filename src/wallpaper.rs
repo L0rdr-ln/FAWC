@@ -2,38 +2,118 @@
 
 #![allow(non_snake_case)]
 
-/// A sky with sun and hills (and optionally hard stripes, so that blur is easy to see). RGBA8, top row first.
+fn hash(x: i32, y: i32, seed: i32) -> f32 {
+    let mut h = (x as u32).wrapping_mul(374761393) ^ (y as u32).wrapping_mul(668265263) ^ (seed as u32).wrapping_mul(2147483647);
+    h = (h ^ (h >> 13)).wrapping_mul(1274126177);
+    ((h ^ (h >> 16)) & 0xffff) as f32 / 65535.0
+}
+
+/// Smooth value noise, 0..1.
+fn noise(x: f32, y: f32, seed: i32) -> f32 {
+    let (xi, yi) = (x.floor(), y.floor());
+    let (fx, fy) = (x - xi, y - yi);
+    let (sx, sy) = (fx * fx * (3.0 - 2.0 * fx), fy * fy * (3.0 - 2.0 * fy));
+    let (xi, yi) = (xi as i32, yi as i32);
+    let a = hash(xi, yi, seed);
+    let b = hash(xi + 1, yi, seed);
+    let c = hash(xi, yi + 1, seed);
+    let d = hash(xi + 1, yi + 1, seed);
+    (a + (b - a) * sx) + ((c + (d - c) * sx) - (a + (b - a) * sx)) * sy
+}
+
+fn fbm(x: f32, y: f32, seed: i32) -> f32 {
+    let (mut sum, mut amp, mut f) = (0.0, 0.5, 1.0);
+    for k in 0..4 {
+        sum += amp * noise(x * f, y * f, seed + k);
+        amp *= 0.5;
+        f *= 2.0;
+    }
+    sum
+}
+
+fn over(c: &mut [f32; 3], color: [f32; 3], a: f32) {
+    let a = a.clamp(0.0, 1.0);
+    for k in 0..3 {
+        c[k] += (color[k] - c[k]) * a;
+    }
+}
+
+/// The built-in wallpaper: a bright Frutiger Aero day: gradient sky with soft clouds and a sun
+/// with rays, hazy and green hills, a glowing swoosh of light across them and a few soap
+/// bubbles. (With `stripes`, hard white blocks that make the blur easy to see.) RGBA8, top row
+/// first.
 pub fn procedural(w: i32, h: i32, stripes: bool) -> Vec<u8> {
-    let (W, H) = (w, h);
-    let mut px = vec![0u8; (W * H * 4) as usize];
-    for y in 0..H {
-        for x in 0..W {
-            let fx = x as f32 / W as f32;
-            let fy = y as f32 / H as f32;
+    let (wf, hf) = (w as f32, h as f32);
+    let aspect = wf / hf;
+    // soap bubbles: position (0..1), radius (in heights)
+    let bubbles: Vec<(f32, f32, f32)> = (0..14)
+        .map(|i| (0.05 + 0.9 * hash(i, 1, 7), 0.10 + 0.62 * hash(i, 2, 7), 0.012 + 0.05 * hash(i, 3, 7).powi(2)))
+        .collect();
+    let mut px = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let fx = x as f32 / wf;
+            let fy = y as f32 / hf;
             // sky: deep blue at the top to pale aqua at the horizon
             let mut c = [0.10 + 0.50 * fy, 0.45 + 0.35 * fy, 0.85 + 0.10 * fy];
-            // sun with glow
-            let aspect = W as f32 / H as f32;
-            let (dx, dy) = ((fx - 0.78) * aspect, fy - 0.22); // round in pixels, sized by the height
+            // sun with glow and rays
+            let (dx, dy) = ((fx - 0.78) * aspect, fy - 0.22);
             let d = (dx * dx + dy * dy).sqrt();
             let glow = (1.0 - d * 2.6).clamp(0.0, 1.0);
             for k in 0..3 {
-                c[k] = c[k] + (1.0 - c[k]) * glow * glow;
+                c[k] += (1.0 - c[k]) * glow * glow;
             }
+            let angle = dy.atan2(dx);
+            let rays = (0.5 + 0.5 * (angle * 9.0 + 1.3).sin()) * (0.6 + 0.4 * (angle * 23.0).sin().abs());
+            over(&mut c, [1.0, 1.0, 0.92], rays * (1.0 - (d * 1.6).clamp(0.0, 1.0)).powi(2) * 0.22);
+            // clouds: soft, drifting, brighter towards the sun
+            let cloud = ((fbm(fx * 3.2 * aspect, fy * 5.0, 3) - 0.50) * 4.2).clamp(0.0, 1.0) * (1.0 - fy * 1.1).clamp(0.0, 1.0);
+            over(&mut c, [0.97, 0.99, 1.0], cloud * 0.55);
             if d < 0.075 {
                 c = [1.0, 0.98, 0.85];
             }
-            // grass hills
+            // hazy far hills, then the near grass hills
+            let far = 0.60 + 0.04 * (fx * 4.0 + 1.0).sin() + 0.02 * (fx * 11.0).cos();
+            if fy > far {
+                let t = ((fy - far) / (1.0 - far)).clamp(0.0, 1.0);
+                over(&mut c, [0.45, 0.72, 0.62], 0.85 - 0.3 * t);
+            }
             let hill = 0.68 + 0.05 * (fx * 6.0).sin() + 0.03 * (fx * 15.0).cos();
             if fy > hill {
                 let t = (fy - hill) / (1.0 - hill);
                 c = [0.20 - 0.1 * t, 0.62 - 0.25 * t, 0.18 - 0.08 * t];
+                // a lit rim along the top of the hill and some grass texture
+                let rim = (1.0 - ((fy - hill) * hf / 5.0).clamp(0.0, 1.0)).powi(2);
+                over(&mut c, [0.75, 0.95, 0.55], rim * 0.35);
+                let grass = noise(fx * 220.0, fy * 60.0, 11) - 0.5;
+                for v in &mut c {
+                    *v += grass * 0.06;
+                }
+            }
+            // the swoosh: a glowing ribbon of light curving across the lower part
+            let ribbon_y = 0.80 - 0.16 * (fx * 3.1 + 0.6).sin() * (1.0 - 0.5 * fx) - 0.10 * fx;
+            let across = (fy - ribbon_y) * hf;
+            let core = (-(across / (hf * 0.012)).powi(2)).exp();
+            let halo = (-(across / (hf * 0.05)).powi(2)).exp();
+            over(&mut c, [0.80, 1.0, 1.0], core * 0.55 + halo * 0.16);
+            // bubbles
+            for &(bx, by, br) in &bubbles {
+                let (ddx, ddy) = ((fx - bx) * aspect, fy - by);
+                let dist = (ddx * ddx + ddy * ddy).sqrt();
+                if dist < br * 1.15 {
+                    let r = dist / br; // 0 centre .. 1 edge
+                    let rim = (-((r - 0.96) / 0.06).powi(2)).exp();
+                    let body = 0.10 * r * r;
+                    let (hx, hy) = (ddx / br + 0.38, ddy / br + 0.40);
+                    let spot = (-(hx * hx + hy * hy) / 0.025).exp();
+                    over(&mut c, [1.0, 1.0, 1.0], if r <= 1.0 { body + rim * 0.55 + spot * 0.8 } else { rim * 0.4 });
+                }
             }
             // hard white stripes and dots (to show the blur)
             if stripes && (x / 24 + y / 24) % 2 == 0 && fy > 0.30 && fy < 0.62 && fx < 0.55 {
                 c = [1.0, 1.0, 1.0];
             }
-            let i = ((y * W + x) * 4) as usize;
+            let i = ((y * w + x) * 4) as usize;
             px[i] = (c[0].clamp(0.0, 1.0) * 255.0) as u8;
             px[i + 1] = (c[1].clamp(0.0, 1.0) * 255.0) as u8;
             px[i + 2] = (c[2].clamp(0.0, 1.0) * 255.0) as u8;
@@ -42,7 +122,6 @@ pub fn procedural(w: i32, h: i32, stripes: bool) -> Vec<u8> {
     }
     px
 }
-
 
 /// A picture loaded from a file: RGBA8, top row first.
 #[derive(Clone, Debug, PartialEq)]

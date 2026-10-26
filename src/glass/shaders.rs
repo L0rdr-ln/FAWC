@@ -88,7 +88,7 @@ void main() {
     vec3 base = texture2D(tex, v_coords).rgb;
     // lift saturation a little, like a sheet of tinted glass
     float l = dot(base, vec3(0.299, 0.587, 0.114));
-    base = mix(vec3(l), base, 1.25);
+    base = mix(vec3(l), base, 1.35) + vec3(0.03);
 
     bool in_client = px.x > border && px.x < size.x - border && px.y > border + titlebar && px.y < size.y - border;
     vec4 tint = in_client ? tint_client : tint_frame;
@@ -124,6 +124,20 @@ void main() {
                 rgb = mix(rgb, body, orb_cover);
             }
         }
+    }
+    // diagonal reflections across the whole pane: two soft streaks, lit from the upper left
+    {
+        float u = (px.x + px.y * 0.55) / (size.x + size.y * 0.55);
+        float streak = smoothstep(0.10, 0.27, u) * (1.0 - smoothstep(0.27, 0.40, u))      // broad
+                     + 0.55 * smoothstep(0.47, 0.52, u) * (1.0 - smoothstep(0.52, 0.60, u)); // narrow
+        float fade = 1.0 - smoothstep(0.0, 1.0, px.y / size.y) * 0.55;                     // weaker towards the bottom
+        rgb = mix(rgb, vec3(1.0), clamp(streak * fade, 0.0, 1.0) * gloss * (in_client ? 0.10 : 0.16) * (0.5 + 0.5 * focus));
+    }
+    // a soft inner glow along the edge, as if the glass were lit from within
+    {
+        float inside = -d;                                                                  // px from the edge
+        float glow = (1.0 - smoothstep(0.0, border * 2.2 + 3.0, inside)) * smoothstep(0.0, 2.0, inside);
+        rgb = mix(rgb, vec3(0.85, 0.95, 1.0), glow * 0.34 * (0.45 + 0.55 * focus));
     }
     // light line just inside the border and a dark hairline at the very edge
     float inner = smoothstep(1.2, 0.0, abs(d + border - 0.5));
@@ -163,5 +177,37 @@ void main() {
 #endif
     float d = rounded_box(v_coords * size - size * 0.5, size * 0.5, radius);
     gl_FragColor = color * clamp(0.5 - d, 0.0, 1.0) * alpha;
+}
+"#;
+
+/// A soft drop shadow around a rounded window, drawn under the glass. Nothing inside the
+/// window itself (the glass is see-through, a shadow there would show).
+pub const SHADOW: &str = r#"
+#version 100
+//_DEFINES_
+precision highp float;
+uniform sampler2D tex;
+uniform float alpha;
+varying vec2 v_coords;
+uniform vec2 size;      // the area drawn: the window plus `spread` all round
+uniform float spread;   // px between the window and the edge of the area
+uniform float radius;   // the window's corner radius
+uniform float shift_y;  // how far the shadow falls below the window
+uniform float soft;     // how far the shadow fades out
+uniform float strength; // 0..1
+float rounded_box(vec2 p, vec2 half_size, float r) {
+    vec2 q = abs(p) - half_size + vec2(r);
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+void main() {
+    vec2 px = v_coords * size - size * 0.5;
+    vec2 win_half = size * 0.5 - vec2(spread);
+    float d_window = rounded_box(px, win_half, radius);
+    float d_shadow = rounded_box(px - vec2(0.0, shift_y), win_half, radius);
+    float s = (1.0 - smoothstep(-soft * 0.35, soft, d_shadow));
+    s = s * s;                                              // a longer, softer tail
+    float outside = smoothstep(-0.5, 0.5, d_window);        // 0 inside the window
+    float a = s * outside * strength;
+    gl_FragColor = vec4(vec3(0.02, 0.06, 0.14) * a, a) * alpha;
 }
 "#;

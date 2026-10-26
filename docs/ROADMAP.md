@@ -10,6 +10,7 @@ possible; hardware and VM runs are noted as such.
       glass renderer, keyboard and pointer, move/resize, close/maximize/minimize, focus
 - [x] M2a title text with glow and orb buttons drawn by the compositor
 - [x] M2b one config file, applied live (accent, transparency, blur, gloss, terminal, keyboard, autostart)
+- [x] look: window drop shadows, diagonal glass reflections and an inner edge glow, a richer built-in wallpaper (sun rays, clouds, hazy hills, a swoosh of light, soap bubbles)
 - [x] wallpaper from a PNG file (`[wallpaper]` in the file, a Wallpaper page in settings)
 - [ ] M2c theme files (orb colours, fonts, shapes), output settings page
 - [x] cursor themes (XCursor, named and client-drawn cursors, resize arrows)

@@ -74,6 +74,7 @@ impl Default for GlassStyle {
 }
 
 pub struct Glass {
+    shadow: GlesTexProgram,
     down: GlesTexProgram,
     up: GlesTexProgram,
     panel: GlesTexProgram,
@@ -115,7 +116,56 @@ impl Glass {
             up: renderer.compile_custom_texture_shader(shaders::BLUR_UP, &hp)?,
             panel: renderer.compile_custom_texture_shader(shaders::GLASS, &panel_uniforms)?,
             clip: renderer.compile_custom_texture_shader(shaders::ROUND_CLIP, &clip_uniforms)?,
+            shadow: renderer.compile_custom_texture_shader(
+                shaders::SHADOW,
+                &[
+                    UniformName::new("size", UniformType::_2f),
+                    UniformName::new("spread", UniformType::_1f),
+                    UniformName::new("radius", UniformType::_1f),
+                    UniformName::new("shift_y", UniformType::_1f),
+                    UniformName::new("soft", UniformType::_1f),
+                    UniformName::new("strength", UniformType::_1f),
+                ],
+            )?,
         })
+    }
+
+    /// The drop shadow of a window whose outer rectangle is `window` (scene pixels). `blurred` is
+    /// any texture (the shader only needs something to draw on); `scale` is pixels per logical
+    /// pixel and `focus` makes the shadow of the active window deeper.
+    pub fn draw_shadow(
+        &self,
+        frame: &mut GlesFrame<'_, '_>,
+        dummy: &GlesTexture,
+        window: Rectangle<i32, Physical>,
+        style: &GlassStyle,
+        scale: f32,
+        alpha: f32,
+    ) -> Result<(), GlesError> {
+        let spread = (26.0 * scale).round() as i32;
+        let area = Rectangle::<i32, Physical>::new(
+            (window.loc.x - spread, window.loc.y - spread).into(),
+            (window.size.w + 2 * spread, window.size.h + 2 * spread).into(),
+        );
+        let full = Rectangle::<f64, BufferCoord>::from_size((dummy.size().w as f64, dummy.size().h as f64).into());
+        frame.render_texture_from_to(
+            dummy,
+            full,
+            area,
+            &[Rectangle::from_size(area.size)],
+            &[],
+            Transform::Normal,
+            alpha,
+            Some(&self.shadow),
+            &[
+                Uniform::new("size", (area.size.w as f32, area.size.h as f32)),
+                Uniform::new("spread", spread as f32),
+                Uniform::new("radius", style.radius),
+                Uniform::new("shift_y", 7.0 * scale),
+                Uniform::new("soft", 20.0 * scale),
+                Uniform::new("strength", 0.22 + 0.22 * style.focus),
+            ],
+        )
     }
 
     /// One pass of the blur: `src` (the part `src_rect`, in its pixels) into a new texture of

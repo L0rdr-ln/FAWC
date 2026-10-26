@@ -223,7 +223,13 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     assert!(top[2] > top[0] + 20, "the title bar is blue glass: {top:?}");
     let outer = fawc::layout::outer_rect(g, &hn.state.style);
     let corner = pixel(&bytes, w, outer.loc.x, outer.loc.y);
-    assert!((corner[0] - outside[0]).abs() < 6, "the rounded corner leaves the wallpaper alone: {corner:?}");
+    // the rounded corner shows the wallpaper behind, a little darkened by the drop shadow, but
+    // none of the glass (which would be lighter and bluer)
+    let wc = ((outer.loc.y * w + outer.loc.x) * 4) as usize;
+    for k in 0..3 {
+        let (cv, wv) = (corner[k], wp[wc + k] as i32);
+        assert!(cv <= wv + 6 && cv >= wv * 55 / 100, "the rounded corner leaves the wallpaper (and its shadow): {corner:?} vs {:?}", &wp[wc..wc + 3]);
+    }
     let orb = button_center(outer, &hn.state.style, Button::Close);
     let o = pixel(&bytes, w, orb.x as i32, orb.y as i32 + 3);
     assert!(o[0] > o[2] + 30, "the close orb is red: {o:?}");

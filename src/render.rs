@@ -391,6 +391,7 @@ impl Fawc {
 
                 let mut target = renderer.bind(scene)?;
                 let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                glass.draw_shadow(&mut frame, &blurred, outer_p, &style, view.scale as f32, alpha)?;
                 glass.draw_panel_part(&mut frame, &blurred, src, outer_p, &style, alpha)?;
                 if let Some((tex, dest)) = &title_draw {
                     let src_full = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());
