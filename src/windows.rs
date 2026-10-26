@@ -34,6 +34,13 @@ fn info(window: &Window) -> &Mutex<WinInfo> {
     window.user_data().get_or_insert_threadsafe(|| Mutex::new(WinInfo::default()))
 }
 
+/// Half of the screen a window can be snapped to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Snap {
+    Left,
+    Right,
+}
+
 impl Fde {
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<Window> {
         self.space
@@ -207,6 +214,69 @@ impl Fde {
         }
         if let Some(top) = &top {
             top.send_configure();
+        }
+    }
+
+    pub fn is_snapped(&self, window: &Window) -> bool {
+        info(window).lock().unwrap().snapped.is_some()
+    }
+
+    /// Give the window this client rectangle (its size is asked of the program, its place is ours).
+    fn set_client_rect(&mut self, window: &Window, rect: Rectangle<i32, Logical>) {
+        if let Some(top) = window.toplevel() {
+            top.with_pending_state(|s| s.size = Some(rect.size));
+            top.send_pending_configure();
+        }
+        if let Some(x) = window.x11_surface() {
+            let _ = x.configure(Some(rect));
+        }
+        self.space.map_element(window.clone(), rect.loc, false);
+    }
+
+    /// Fill the left or right half of the monitor the window is on.
+    pub fn snap_window(&mut self, window: &Window, side: Snap) {
+        if self.is_fullscreen(window) || self.minimize_progress(window).is_some() {
+            return;
+        }
+        if self.is_maximized(window) {
+            self.set_maximized(window, false);
+        }
+        let Some(geo) = self.space.element_geometry(window) else { return };
+        let area = self.usable_area(&self.output_for_window(window));
+        let half = area.size.w / 2;
+        let outer = Rectangle::new(
+            ((if side == Snap::Left { area.loc.x } else { area.loc.x + area.size.w - half }), area.loc.y).into(),
+            (half, area.size.h).into(),
+        );
+        {
+            let mut i = info(window).lock().unwrap();
+            if i.snapped.is_none() {
+                i.snapped = Some(geo);
+            }
+        }
+        let rect = client_rect(outer, &self.style);
+        self.set_client_rect(window, rect);
+    }
+
+    /// Put a snapped window back where it was.
+    pub fn unsnap_window(&mut self, window: &Window) {
+        let prev = info(window).lock().unwrap().snapped.take();
+        if let Some(r) = prev {
+            self.set_client_rect(window, r);
+        }
+    }
+
+    /// A window let go at the edge of the screen: left and right snap to a half, the top maximizes.
+    pub fn snap_if_at_edge(&mut self, window: &Window) {
+        let p = self.pointer_location;
+        let Some(out) = self.output_at(p) else { return };
+        let r = self.output_rect(&out);
+        if p.y <= r.loc.y as f64 + 1.0 {
+            self.set_maximized(window, true);
+        } else if p.x <= r.loc.x as f64 + 1.0 {
+            self.snap_window(window, Snap::Left);
+        } else if p.x >= (r.loc.x + r.size.w) as f64 - 2.0 {
+            self.snap_window(window, Snap::Right);
         }
     }
 

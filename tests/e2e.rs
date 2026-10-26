@@ -2539,3 +2539,66 @@ fn fde_shot_saves_a_png_of_the_monitor() {
         }
     }
 }
+
+#[test]
+fn windows_snap_to_half_the_screen_by_keys_and_by_dragging_to_the_edge() {
+    use fde::windows::Snap;
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let (w, h) = (1000, 600);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    state.config.appearance.wobbly_windows = false;
+    let socket = ListeningSocket::bind("fde-e2e-snap").unwrap();
+    let mut hn = Harness { display, state, socket };
+    open_window(&mut hn, dir.path(), "fde-e2e-snap", 200, 100);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    let before = hn.state.space.element_geometry(&win).unwrap().loc;
+    let style = hn.state.style;
+    let (b, t) = (style.border as i32, style.titlebar as i32);
+    let asked = |hn: &Harness| win.toplevel().unwrap().with_pending_state(|s| s.size).map(|s| (s.w, s.h));
+
+    hn.state.snap_window(&win, Snap::Left);
+    hn.pump_for(50);
+    assert_eq!(asked(&hn), Some((w / 2 - 2 * b, h - 2 * b - t)), "the left half, minus the frame");
+    assert_eq!(hn.state.space.element_geometry(&win).unwrap().loc, (b, b + t).into());
+    assert!(hn.state.is_snapped(&win) && !hn.state.is_maximized(&win));
+
+    hn.state.snap_window(&win, Snap::Right);
+    assert_eq!(hn.state.space.element_geometry(&win).unwrap().loc, (w - w / 2 + b, b + t).into(), "the right half");
+
+    hn.state.unsnap_window(&win);
+    assert_eq!(hn.state.space.element_geometry(&win).unwrap().loc, before, "back where it was");
+    assert_eq!(asked(&hn), Some((200, 100)), "and at its old size");
+    assert!(!hn.state.is_snapped(&win));
+
+    // dragging the title bar to the left edge snaps; to the top edge maximizes
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    let grab: smithay::utils::Point<f64, smithay::utils::Logical> = (g.loc.x as f64 + 50.0, g.loc.y as f64 - 16.0).into();
+    hn.state.pointer_moved(grab, 1);
+    hn.state.pointer_button(0x110, true, 2);
+    hn.state.pointer_moved((0.0, 300.0).into(), 3);
+    hn.state.pointer_button(0x110, false, 4);
+    assert!(hn.state.is_snapped(&win), "let go at the left edge: snapped");
+    assert_eq!(hn.state.space.element_geometry(&win).unwrap().loc.x, b);
+
+    // pulling it out of the half gives the old size back under the pointer
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    let grab: smithay::utils::Point<f64, smithay::utils::Logical> = (g.loc.x as f64 + 50.0, g.loc.y as f64 - 16.0).into();
+    hn.state.pointer_moved(grab, 5);
+    hn.state.pointer_button(0x110, true, 6);
+    assert!(!hn.state.is_snapped(&win));
+    hn.state.pointer_moved((400.0, 200.0).into(), 7);
+    hn.state.pointer_button(0x110, false, 8);
+    assert!(!hn.state.is_snapped(&win) && !hn.state.is_maximized(&win));
+
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    let grab: smithay::utils::Point<f64, smithay::utils::Logical> = (g.loc.x as f64 + 50.0, g.loc.y as f64 - 16.0).into();
+    hn.state.pointer_moved(grab, 9);
+    hn.state.pointer_button(0x110, true, 10);
+    hn.state.pointer_moved((500.0, 0.0).into(), 11);
+    hn.state.pointer_button(0x110, false, 12);
+    assert!(hn.state.is_maximized(&win), "let go at the top edge: maximized");
+}

@@ -24,6 +24,8 @@ use crate::glass::GlassStyle;
 pub struct WinInfo {
     /// where the window was before it was maximized
     pub restore: Option<Rectangle<i32, Logical>>,
+    /// where the window was before it was snapped to half the screen
+    pub snapped: Option<Rectangle<i32, Logical>>,
     /// where the window was before it went fullscreen (set while it is fullscreen)
     pub fullscreen: Option<Rectangle<i32, Logical>>,
     pub minimized: bool,

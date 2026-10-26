@@ -84,6 +84,8 @@ On a console FDE uses the GPU directly (DRM/KMS, libseat, libinput). Please atta
 | **Alt+Tab** | cycle windows (**Alt+m** restore a minimized one) |
 | **Alt+f**, **Alt+q** | maximize, close |
 | **Alt+L** | lock the session |
+| **Alt+Left / Alt+Right** | snap the window to the left or right half of the monitor (dragging a window to the left or right edge does the same, dragging it to the top edge maximizes it) |
+| **Alt+Up / Alt+Down** | maximize; un-maximize, un-snap or minimize |
 | **Alt+Esc** | quit FDE |
 | **Print** | screenshot of the monitor the pointer is on, saved to `~/Pictures/Screenshot_DATE.png` (`fde-shot`) |
 | **Ctrl+Alt+F1..F12** | switch console (DRM backend) |

@@ -25,6 +25,9 @@ enum Action {
     Cycle,
     Restore,
     Lock,
+    Snap(crate::windows::Snap),
+    Up,
+    Down,
     Screenshot,
     SwitchVt(i32),
 }
@@ -76,6 +79,10 @@ impl Fde {
                                 keysyms::KEY_Tab | keysyms::KEY_ISO_Left_Tab => Some(Action::Cycle),
                                 keysyms::KEY_m | keysyms::KEY_M => Some(Action::Restore),
                                 keysyms::KEY_l | keysyms::KEY_L => Some(Action::Lock),
+                                keysyms::KEY_Left => Some(Action::Snap(crate::windows::Snap::Left)),
+                                keysyms::KEY_Right => Some(Action::Snap(crate::windows::Snap::Right)),
+                                keysyms::KEY_Up => Some(Action::Up),
+                                keysyms::KEY_Down => Some(Action::Down),
                                 _ => None,
                             };
                             if let Some(a) = action {
@@ -151,6 +158,28 @@ impl Fde {
             Action::Cycle => self.cycle_windows(),
             Action::Restore => self.restore_window(),
             Action::Lock => crate::shell::start_sibling("fde-lock"),
+            Action::Snap(side) => {
+                if let Some(w) = self.space.elements().last().cloned() {
+                    self.snap_window(&w, side);
+                }
+            }
+            Action::Up => {
+                if let Some(w) = self.space.elements().last().cloned() {
+                    self.unsnap_window(&w);
+                    self.set_maximized(&w, true);
+                }
+            }
+            Action::Down => {
+                if let Some(w) = self.space.elements().last().cloned() {
+                    if self.is_maximized(&w) {
+                        self.set_maximized(&w, false);
+                    } else if self.is_snapped(&w) {
+                        self.unsnap_window(&w);
+                    } else {
+                        self.minimize_window(&w);
+                    }
+                }
+            }
             Action::Screenshot => {
                 // the monitor the pointer is on
                 let output = self.output_at(self.pointer_location).unwrap_or_else(|| self.output.clone());
@@ -257,8 +286,11 @@ impl Fde {
         if self.locked {
             // straight to the lock screen
         } else if !pressed {
-            if self.drag.take().is_some() {
+            if let Some(drag) = self.drag.take() {
                 self.release_wobbles();
+                if let Drag::Move { window, .. } = drag {
+                    self.snap_if_at_edge(&window);
+                }
                 return;
             }
         } else if let Some((layer, _, _)) = self.layer_surface_under(pos, &[Layer::Overlay, Layer::Top]) {
@@ -317,6 +349,16 @@ impl Fde {
         if self.is_maximized(window) {
             self.set_maximized(window, false);
             return;
+        }
+        let mut client = client;
+        if self.is_snapped(window) {
+            // pulled out of its half: the window gets its old size back, under the pointer
+            self.unsnap_window(window);
+            if let Some(g) = self.space.element_geometry(window) {
+                let x = (self.pointer_location.x - g.size.w as f64 / 2.0).round() as i32;
+                self.space.map_element(window.clone(), (x, client.loc.y), false);
+                client = Rectangle::new((x, client.loc.y).into(), g.size);
+            }
         }
         let grab_offset = self.pointer_location - client.loc.to_f64();
         self.hover_cursor = "grabbing";
