@@ -51,7 +51,10 @@ pub struct Fawc {
 
     pub space: Space<Window>,
     pub popups: PopupManager,
+    /// the first monitor (the nested window has only this one); panels and notifications go here
     pub output: Output,
+    /// every other monitor, in the order they appeared
+    pub extra_outputs: Vec<Output>,
     pub style: GlassStyle,
 
     pub compositor_state: CompositorState,
@@ -61,7 +64,7 @@ pub struct Fawc {
     pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
     /// the session is locked: only `lock_surface` is shown and gets input
     pub locked: bool,
-    pub lock_surface: Option<smithay::wayland::session_lock::LockSurface>,
+    pub lock_surfaces: Vec<(Output, smithay::wayland::session_lock::LockSurface)>,
     pub lock_confirmation: Option<smithay::wayland::session_lock::SessionLocker>,
     pub foreign_toplevels: crate::foreign_toplevel::ForeignToplevelState,
     pub background_effect_state: crate::background_effect::BackgroundEffectState,
@@ -84,8 +87,8 @@ pub struct Fawc {
     pub config: crate::config::Config,
     config_watcher: crate::config::Watcher,
     config_checked: std::time::Instant,
-    /// the wallpaper as a texture of the output size, made when needed
-    pub wallpaper: Option<smithay::backend::renderer::gles::GlesTexture>,
+    /// the wallpaper as a texture, per size in physical pixels, made when needed
+    pub wallpapers: std::collections::HashMap<(i32, i32), smithay::backend::renderer::gles::GlesTexture>,
     pub text: crate::text::TextRenderer,
     /// draw our own mouse cursor (backends without a host cursor)
     pub draw_cursor: bool,
@@ -93,7 +96,7 @@ pub struct Fawc {
     /// the login session, on the DRM backend (virtual terminal switching)
     pub session: Option<smithay::backend::session::libseat::LibSeatSession>,
     /// rendered window titles, by surface
-    pub titles: std::collections::HashMap<smithay::reexports::wayland_server::backend::ObjectId, TitleTex>,
+    pub titles: std::collections::HashMap<(smithay::reexports::wayland_server::backend::ObjectId, i32), TitleTex>,
 }
 
 /// A window title as a texture, and what it was made from.
@@ -123,6 +126,11 @@ pub fn client_state(client: &Client) -> &CompositorClientState {
 
 impl Fawc {
     pub fn new(dh: &DisplayHandle, size: Size<i32, Logical>) -> Fawc {
+        Fawc::new_named(dh, "fawc-0", size)
+    }
+
+    /// `size` is the monitor's mode in physical pixels; `name` is its connector name.
+    pub fn new_named(dh: &DisplayHandle, name: &str, size: Size<i32, Logical>) -> Fawc {
         let compositor_state = CompositorState::new::<Fawc>(dh);
         let xdg_shell_state = XdgShellState::new::<Fawc>(dh);
         let xdg_decoration_state = XdgDecorationState::new::<Fawc>(dh);
@@ -149,7 +157,7 @@ impl Fawc {
         seat.add_pointer();
 
         let output = Output::new(
-            "fawc-0".to_string(),
+            name.to_string(),
             PhysicalProperties {
                 size: (0, 0).into(),
                 subpixel: Subpixel::Unknown,
@@ -163,6 +171,11 @@ impl Fawc {
         let _global = output.create_global::<Fawc>(dh);
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
+        // scale and position from the configuration
+        if let Some(oc) = config.outputs.get(name) {
+            output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(oc.scale)), Some((oc.x.unwrap_or(0), oc.y.unwrap_or(0)).into()));
+            space.map_output(&output, (oc.x.unwrap_or(0), oc.y.unwrap_or(0)));
+        }
 
         Fawc {
             start_time: Instant::now(),
@@ -171,6 +184,7 @@ impl Fawc {
             space,
             popups: PopupManager::default(),
             output,
+            extra_outputs: Vec::new(),
             style,
             compositor_state,
             xdg_shell_state,
@@ -178,7 +192,7 @@ impl Fawc {
             layer_shell_state,
             session_lock_state,
             locked: false,
-            lock_surface: None,
+            lock_surfaces: Vec::new(),
             lock_confirmation: None,
             foreign_toplevels,
             background_effect_state,
@@ -198,7 +212,7 @@ impl Fawc {
             config,
             config_watcher: crate::config::Watcher::new(),
             config_checked: std::time::Instant::now(),
-            wallpaper: None,
+            wallpapers: std::collections::HashMap::new(),
             text: crate::text::TextRenderer::default(),
             draw_cursor: false,
             cursor_texture: None,
@@ -266,13 +280,12 @@ impl Fawc {
         true
     }
 
+    /// The size of the first monitor in logical pixels.
     pub fn output_size(&self) -> Size<i32, Logical> {
-        self.output
-            .current_mode()
-            .map(|m| (m.size.w, m.size.h).into())
-            .unwrap_or((1280, 720).into())
+        self.output_logical_size(&self.output)
     }
 
+    /// Set the first monitor's mode (physical pixels), e.g. after the nested window was resized.
     pub fn resize_output(&mut self, size: Size<i32, Logical>) {
         let mode = OutputMode { size: (size.w, size.h).into(), refresh: 60_000 };
         self.output.change_current_state(Some(mode), None, None, None);

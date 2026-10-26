@@ -23,19 +23,40 @@ pub fn create_scene(renderer: &mut GlesRenderer, size: Size<i32, Physical>) -> R
     renderer.create_buffer(Fourcc::Abgr8888, Size::<i32, BufferCoord>::from((size.w, size.h)))
 }
 
-fn phys(r: Rectangle<i32, Logical>) -> Rectangle<i32, Physical> {
-    Rectangle::new((r.loc.x, r.loc.y).into(), (r.size.w, r.size.h).into())
+/// One monitor as the renderer sees it: where it is in the shared logical space and how many
+/// physical pixels one logical pixel is.
+#[derive(Clone, Copy)]
+struct View {
+    origin: smithay::utils::Point<i32, Logical>,
+    scale: f64,
+}
+
+fn sc(v: i32, s: f64) -> i32 {
+    (v as f64 * s).round() as i32
+}
+
+impl View {
+    /// A rectangle of the shared space as pixels of this monitor's scene.
+    fn rect(&self, r: Rectangle<i32, Logical>) -> Rectangle<i32, Physical> {
+        let x0 = sc(r.loc.x - self.origin.x, self.scale);
+        let y0 = sc(r.loc.y - self.origin.y, self.scale);
+        let x1 = sc(r.loc.x - self.origin.x + r.size.w, self.scale);
+        let y1 = sc(r.loc.y - self.origin.y + r.size.h, self.scale);
+        Rectangle::new((x0, y0).into(), ((x1 - x0).max(0), (y1 - y0).max(0)).into())
+    }
 }
 
 impl Fawc {
-    /// The window's title as a texture and where to draw it, or None if there is no title.
+    /// The window's title as a texture and where to draw it (in scene pixels; `style` and `outer`
+    /// are already in those pixels, `scale` is the monitor's), or None if there is no title.
     fn title_texture(
         &mut self,
         renderer: &mut GlesRenderer,
         window: &Window,
         style: &GlassStyle,
-        outer: Rectangle<i32, Logical>,
+        outer: Rectangle<i32, Physical>,
         focused: bool,
+        scale: f64,
     ) -> Result<Option<(GlesTexture, Rectangle<i32, Physical>)>, GlesError> {
         let Some(top) = window.toplevel() else { return Ok(None) };
         let surface = top.wl_surface();
@@ -46,18 +67,18 @@ impl Fawc {
                 .and_then(|d| d.lock().ok().and_then(|d| d.title.clone()))
         })
         .unwrap_or_default();
-        let pad = 4;
+        let pad = sc(4, scale).max(1);
         let buttons = 3.0 * (style.orb_size + style.orb_gap) + style.orb_margin;
-        let max_width = outer.size.w - 2 * style.border as i32 - 12 - buttons as i32;
-        let id = surface.id();
-        let stale = match self.titles.get(&id) {
+        let max_width = outer.size.w - 2 * style.border as i32 - sc(12, scale) - buttons as i32;
+        let key = (surface.id(), (scale * 1000.0) as i32);
+        let stale = match self.titles.get(&key) {
             Some(t) => t.title != title || t.max_width != max_width || t.focused != focused,
             None => true,
         };
         if stale {
-            self.titles.remove(&id);
+            self.titles.remove(&key);
             let (color, glow) = if focused { ([6, 35, 61], 0.95) } else { ([70, 88, 104], 0.7) };
-            if let Some(img) = self.text.line(&title, max_width + 2 * pad, 13.0, color, Some(([255, 255, 255], glow)), pad) {
+            if let Some(img) = self.text.line(&title, max_width + 2 * pad, 13.0 * scale as f32, color, Some(([255, 255, 255], glow)), pad) {
                 let tex = renderer.import_memory(
                     &img.rgba,
                     Fourcc::Abgr8888,
@@ -65,13 +86,13 @@ impl Fawc {
                     false,
                 )?;
                 self.titles.insert(
-                    id.clone(),
+                    key.clone(),
                     TitleTex { title: title.clone(), max_width, focused, texture: tex, size: (img.width, img.height), pad },
                 );
             }
         }
-        Ok(self.titles.get(&id).map(|t| {
-            let x = outer.loc.x + style.border as i32 + 10 - t.pad;
+        Ok(self.titles.get(&key).map(|t| {
+            let x = outer.loc.x + style.border as i32 + sc(10, scale) - t.pad;
             let y = outer.loc.y + style.border as i32 + (style.titlebar as i32 - t.size.1) / 2;
             (t.texture.clone(), Rectangle::new((x, y).into(), (t.size.0, t.size.1).into()))
         }))
@@ -86,12 +107,12 @@ impl Fawc {
         glass: &Glass,
         scene: &mut GlesTexture,
         rect: Rectangle<i32, Physical>,
+        margin: i32,
     ) -> Result<(), GlesError> {
         let size = scene.size();
         let full = Rectangle::<i32, Physical>::from_size((size.w, size.h).into());
         let Some(rect) = rect.intersection(full) else { return Ok(()) };
         tracing::debug!("blur behind {rect:?}");
-        let margin = 24;
         let region = Rectangle::<i32, Physical>::new(
             (rect.loc.x - margin, rect.loc.y - margin).into(),
             (rect.size.w + 2 * margin, rect.size.h + 2 * margin).into(),
@@ -125,17 +146,19 @@ impl Fawc {
         glass: &Glass,
         scene: &mut GlesTexture,
         size: Size<i32, Physical>,
+        output: &smithay::output::Output,
+        view: View,
         layers: &[Layer],
     ) -> Result<(), GlesError> {
         let full = Rectangle::<i32, Physical>::from_size(size);
         for l in layers {
             let surfaces: Vec<_> = {
-                let map = layer_map_for_output(&self.output);
+                let map = layer_map_for_output(output);
                 map.layers_on(*l).cloned().collect()
             };
             for ls in surfaces {
                 let geo = {
-                    let map = layer_map_for_output(&self.output);
+                    let map = layer_map_for_output(output);
                     match map.layer_geometry(&ls) {
                         Some(g) => g,
                         None => continue,
@@ -144,16 +167,16 @@ impl Fawc {
                 // blur behind the part the client asked for
                 if let Some(b) = crate::background_effect::blur_bounds(ls.wl_surface()) {
                     let r = Rectangle::<i32, Physical>::new(
-                        ((geo.loc.x + b.loc.x), (geo.loc.y + b.loc.y)).into(),
-                        (b.size.w, b.size.h).into(),
+                        (sc(geo.loc.x + b.loc.x, view.scale), sc(geo.loc.y + b.loc.y, view.scale)).into(),
+                        (sc(b.size.w, view.scale), sc(b.size.h, view.scale)).into(),
                     );
-                    self.blur_behind(renderer, glass, scene, r)?;
+                    self.blur_behind(renderer, glass, scene, r, sc(24, view.scale))?;
                 }
                 // AsRenderElements gives front-to-back; drawing wants back to front, below
                 let mut e = ls.render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
                     renderer,
-                    geo.loc.to_physical(1),
-                    1.0.into(),
+                    (sc(geo.loc.x, view.scale), sc(geo.loc.y, view.scale)).into(),
+                    view.scale.into(),
                     1.0,
                 );
                 e.reverse();
@@ -162,7 +185,7 @@ impl Fawc {
                 }
                 let mut target = renderer.bind(scene)?;
                 let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
-                draw_render_elements(&mut frame, 1.0, &e, &[full])?;
+                draw_render_elements(&mut frame, view.scale, &e, &[full])?;
                 let _ = frame.finish()?;
             }
         }
@@ -176,59 +199,70 @@ impl Fawc {
         renderer: &mut GlesRenderer,
         scene: &mut GlesTexture,
         size: Size<i32, Physical>,
+        output: &smithay::output::Output,
+        view: View,
     ) -> Result<(), GlesError> {
-        use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
-        use smithay::backend::renderer::element::Kind;
         let full = Rectangle::<i32, Physical>::from_size(size);
-        if let Some(ls) = &self.lock_surface {
+        if let Some((_, ls)) = self.lock_surfaces.iter().find(|(o, _)| o == output) {
             let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                render_elements_from_surface_tree(renderer, ls.wl_surface(), (0, 0), 1.0, 1.0, Kind::Unspecified);
+                render_elements_from_surface_tree(renderer, ls.wl_surface(), (0, 0), view.scale, 1.0, Kind::Unspecified);
             let mut target = renderer.bind(scene)?;
             let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
-            draw_render_elements(&mut frame, 1.0, &elements, &[full])?;
+            draw_render_elements(&mut frame, view.scale, &elements, &[full])?;
             let _ = frame.finish()?;
         }
-        if let Some(confirmation) = self.lock_confirmation.take() {
-            confirmation.lock();
+        // confirmed when every monitor has a lock surface (or none was ever going to come)
+        if self.lock_confirmation.is_some() && self.all_outputs().iter().all(|o| self.lock_surfaces.iter().any(|(lo, _)| lo == o)) {
+            if let Some(confirmation) = self.lock_confirmation.take() {
+                confirmation.lock();
+            }
         }
         Ok(())
     }
 
-    /// Draw everything into `scene` (the output's size). `glass` is the shader set.
+    /// Draw the first monitor's picture into `scene` (its size in physical pixels).
     pub fn render_scene(
         &mut self,
         renderer: &mut GlesRenderer,
         glass: &Glass,
         scene: &mut GlesTexture,
     ) -> Result<(), GlesError> {
+        let output = self.output.clone();
+        self.render_output(renderer, glass, scene, &output)
+    }
+
+    /// Draw what `output` shows into `scene` (the output's mode in physical pixels).
+    pub fn render_output(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        glass: &Glass,
+        scene: &mut GlesTexture,
+        output: &smithay::output::Output,
+    ) -> Result<(), GlesError> {
         let size: Size<i32, Physical> = {
             let s = scene.size();
             (s.w, s.h).into()
         };
         let full = Rectangle::<i32, Physical>::from_size(size);
+        let out_rect = self.output_rect(output);
+        let view = View { origin: out_rect.loc, scale: self.output_scale(output) };
         self.sync_foreign_toplevels();
         self.check_config(false);
         self.check_idle();
+        self.space.refresh();
 
-        // wallpaper
-        let stale = match &self.wallpaper {
-            Some(t) => t.size().w != size.w || t.size().h != size.h,
-            None => true,
-        };
-        if stale {
+        // wallpaper (one texture per size of monitor)
+        let key = (size.w, size.h);
+        if !self.wallpapers.contains_key(&key) {
             let px = crate::wallpaper::procedural(size.w, size.h, false);
-            self.wallpaper = Some(renderer.import_memory(
-                &px,
-                Fourcc::Abgr8888,
-                Size::<i32, BufferCoord>::from((size.w, size.h)),
-                false,
-            )?);
+            let tex = renderer.import_memory(&px, Fourcc::Abgr8888, Size::<i32, BufferCoord>::from((size.w, size.h)), false)?;
+            self.wallpapers.insert(key, tex);
         }
         {
             let mut target = renderer.bind(scene)?;
             let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
             frame.clear(Color32F::new(0.0, 0.0, 0.0, 1.0), &[full])?;
-            if let Some(wp) = &self.wallpaper {
+            if let Some(wp) = self.wallpapers.get(&key) {
                 frame.render_texture_from_to(
                     wp,
                     Rectangle::from_size((size.w as f64, size.h as f64).into()),
@@ -245,109 +279,120 @@ impl Fawc {
         }
 
         if self.locked {
-            self.draw_lock(renderer, scene, size)?;
+            self.draw_lock(renderer, scene, size, output, view)?;
         } else {
-        // wallpaper and bottom layers
-        self.draw_layers(renderer, glass, scene, size, &[Layer::Background, Layer::Bottom])?;
+            // wallpaper and bottom layers
+            self.draw_layers(renderer, glass, scene, size, output, view, &[Layer::Background, Layer::Bottom])?;
 
-        // windows, back to front
-        let windows: Vec<Window> = self.space.elements().cloned().collect();
-        for window in &windows {
-            let Some(client) = self.space.element_geometry(window) else { continue };
-            // opening: fade in and grow from 92 % around the middle
-            let progress = self.open_progress(window);
-            let e = crate::windows::ease_out(progress);
-            let (alpha, zoom): (f32, f64) = (e, 0.92 + 0.08 * e as f64);
-            let outer_full = outer_rect(client, &self.style);
-            let center = (
-                outer_full.loc.x as f64 + outer_full.size.w as f64 / 2.0,
-                outer_full.loc.y as f64 + outer_full.size.h as f64 / 2.0,
-            );
-            let scaled = |r: Rectangle<i32, Logical>| -> Rectangle<i32, Logical> {
-                let (w, h) = ((r.size.w as f64 * zoom).round() as i32, (r.size.h as f64 * zoom).round() as i32);
-                let x = (center.0 + (r.loc.x as f64 - center.0) * zoom).round() as i32;
-                let y = (center.1 + (r.loc.y as f64 - center.1) * zoom).round() as i32;
-                Rectangle::new((x, y).into(), (w, h).into())
-            };
-            let client = scaled(client);
-            let outer = scaled(outer_full);
-            let outer_p = phys(outer);
-            let Some(visible) = outer_p.intersection(full) else { continue };
-            let focused = self
-                .seat
-                .get_keyboard()
-                .and_then(|k| k.current_focus())
-                .and_then(|f| window.toplevel().map(|t| t.wl_surface() == &f))
-                .unwrap_or(false);
-            let style = GlassStyle { focus: if focused { 1.0 } else { 0.0 }, ..self.style };
-
-            // what is behind the window, blurred
-            let margin = 24;
-            let region = Rectangle::<i32, Physical>::new(
-                (visible.loc.x - margin, visible.loc.y - margin).into(),
-                (visible.size.w + 2 * margin, visible.size.h + 2 * margin).into(),
-            )
-            .intersection(full)
-            .unwrap_or(visible);
-            let blurred = glass.blur(renderer, scene, region, style.blur_levels)?;
-            let bs = blurred.size();
-            let src = Rectangle::<f64, BufferCoord>::new(
-                (
-                    (outer_p.loc.x - region.loc.x) as f64 / region.size.w as f64 * bs.w as f64,
-                    (outer_p.loc.y - region.loc.y) as f64 / region.size.h as f64 * bs.h as f64,
-                )
-                    .into(),
-                (
-                    outer_p.size.w as f64 / region.size.w as f64 * bs.w as f64,
-                    outer_p.size.h as f64 / region.size.h as f64 * bs.h as f64,
-                )
-                    .into(),
-            );
-
-            // the client's surfaces (and its popups) as render elements
-            let loc = client.loc.to_physical(1);
-            let zoom_scale = smithay::utils::Scale::from(zoom);
-            let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
-            if let Some(top) = window.toplevel() {
-                for (popup, offset) in PopupManager::popups_for_surface(top.wl_surface()) {
-                    let popup_loc = loc + (offset - popup.geometry().loc).to_physical(1);
-                    elements.extend(render_elements_from_surface_tree(
-                        renderer,
-                        popup.wl_surface(),
-                        popup_loc,
-                        zoom,
-                        alpha,
-                        Kind::Unspecified,
-                    ));
+            // windows, back to front
+            let windows: Vec<Window> = self.space.elements().cloned().collect();
+            let focus = self.seat.get_keyboard().and_then(|k| k.current_focus());
+            for window in &windows {
+                let Some(client) = self.space.element_geometry(window) else { continue };
+                // opening: fade in and grow from 92 % around the middle
+                let progress = self.open_progress(window);
+                let e = crate::windows::ease_out(progress);
+                let (alpha, zoom): (f32, f64) = (e, 0.92 + 0.08 * e as f64);
+                let outer_full = outer_rect(client, &self.style);
+                if outer_full.intersection(out_rect).is_none() {
+                    continue; // on another monitor
                 }
+                let center = (
+                    outer_full.loc.x as f64 + outer_full.size.w as f64 / 2.0,
+                    outer_full.loc.y as f64 + outer_full.size.h as f64 / 2.0,
+                );
+                let zoomed = |r: Rectangle<i32, Logical>| -> Rectangle<i32, Logical> {
+                    let (w, h) = ((r.size.w as f64 * zoom).round() as i32, (r.size.h as f64 * zoom).round() as i32);
+                    let x = (center.0 + (r.loc.x as f64 - center.0) * zoom).round() as i32;
+                    let y = (center.1 + (r.loc.y as f64 - center.1) * zoom).round() as i32;
+                    Rectangle::new((x, y).into(), (w, h).into())
+                };
+                let client = zoomed(client);
+                let outer = zoomed(outer_full);
+                let outer_p = view.rect(outer);
+                let Some(visible) = outer_p.intersection(full) else { continue };
+                let focused = focus
+                    .as_ref()
+                    .and_then(|f| window.toplevel().map(|t| t.wl_surface() == f))
+                    .unwrap_or(false);
+                let style = GlassStyle { focus: if focused { 1.0 } else { 0.0 }, ..self.style }.scaled(view.scale as f32);
+
+                // what is behind the window, blurred
+                let margin = sc(24, view.scale);
+                let region = Rectangle::<i32, Physical>::new(
+                    (visible.loc.x - margin, visible.loc.y - margin).into(),
+                    (visible.size.w + 2 * margin, visible.size.h + 2 * margin).into(),
+                )
+                .intersection(full)
+                .unwrap_or(visible);
+                let blurred = glass.blur(renderer, scene, region, style.blur_levels)?;
+                let bs = blurred.size();
+                let src = Rectangle::<f64, BufferCoord>::new(
+                    (
+                        (outer_p.loc.x - region.loc.x) as f64 / region.size.w as f64 * bs.w as f64,
+                        (outer_p.loc.y - region.loc.y) as f64 / region.size.h as f64 * bs.h as f64,
+                    )
+                        .into(),
+                    (
+                        outer_p.size.w as f64 / region.size.w as f64 * bs.w as f64,
+                        outer_p.size.h as f64 / region.size.h as f64 * bs.h as f64,
+                    )
+                        .into(),
+                );
+
+                // the client's surfaces (and its popups) as render elements; a surface of
+                // logical size L is L * scale * zoom pixels
+                let k = view.scale * zoom;
+                let loc = view.rect(client).loc;
+                let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
+                if let Some(top) = window.toplevel() {
+                    for (popup, offset) in PopupManager::popups_for_surface(top.wl_surface()) {
+                        let d = offset - popup.geometry().loc;
+                        let popup_loc = loc + smithay::utils::Point::<i32, Physical>::from((sc(d.x, k), sc(d.y, k)));
+                        elements.extend(render_elements_from_surface_tree(
+                            renderer,
+                            popup.wl_surface(),
+                            popup_loc,
+                            k,
+                            alpha,
+                            Kind::Unspecified,
+                        ));
+                    }
+                }
+                let g = window.geometry().loc;
+                elements.extend(window.render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                    renderer,
+                    loc - smithay::utils::Point::<i32, Physical>::from((sc(g.x, k), sc(g.y, k))),
+                    smithay::utils::Scale::from(k),
+                    alpha,
+                ));
+
+                // the title (re-rendered only when it, its room or the focus change)
+                let title_draw = self.title_texture(renderer, window, &style, outer_p, focused, view.scale)?;
+
+                let mut target = renderer.bind(scene)?;
+                let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                glass.draw_panel_part(&mut frame, &blurred, src, outer_p, &style, alpha)?;
+                if let Some((tex, dest)) = &title_draw {
+                    let src_full = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());
+                    frame.render_texture_from_to(tex, src_full, *dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, alpha, None, &[])?;
+                }
+                draw_render_elements(&mut frame, k, &elements, &[full])?;
+                let _ = frame.finish()?;
             }
-            elements.extend(window.render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
-                renderer,
-                loc - window.geometry().loc.to_physical(1).to_f64().upscale(zoom).to_i32_round(),
-                zoom_scale,
-                alpha,
-            ));
+            let _ = WindowSurfaceType::ALL;
 
-            // the title (re-rendered only when it, its room or the focus change)
-            let title_draw = self.title_texture(renderer, window, &style, outer, focused)?;
-
-            let mut target = renderer.bind(scene)?;
-            let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
-            glass.draw_panel_part(&mut frame, &blurred, src, outer_p, &style, alpha)?;
-            if let Some((tex, dest)) = &title_draw {
-                let src_full = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());
-                frame.render_texture_from_to(tex, src_full, *dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, alpha, None, &[])?;
-            }
-            draw_render_elements(&mut frame, 1.0, &elements, &[full])?;
-            let _ = frame.finish()?;
-        }
-        let _ = WindowSurfaceType::ALL;
-
-        // panels, launchers, notifications above the windows
-        self.draw_layers(renderer, glass, scene, size, &[Layer::Top, Layer::Overlay])?;
+            // panels, launchers, notifications above the windows
+            self.draw_layers(renderer, glass, scene, size, output, view, &[Layer::Top, Layer::Overlay])?;
         }
 
-        if self.draw_cursor {
+        // our own mouse cursor, on the monitor the pointer is on
+        let p = self.pointer_location;
+        let on_this = p.x >= out_rect.loc.x as f64
+            && p.y >= out_rect.loc.y as f64
+            && p.x < (out_rect.loc.x + out_rect.size.w) as f64
+            && p.y < (out_rect.loc.y + out_rect.size.h) as f64;
+        if self.draw_cursor && on_this {
             if self.cursor_texture.is_none() {
                 self.cursor_texture = Some(renderer.import_memory(
                     &crate::cursor::arrow(),
@@ -357,8 +402,9 @@ impl Fawc {
                 )?);
             }
             let tex = self.cursor_texture.as_ref().expect("cursor texture");
-            let loc = (self.pointer_location.x as i32 - 1, self.pointer_location.y as i32 - 1);
-            let dest = Rectangle::<i32, Physical>::new(loc.into(), (crate::cursor::SIZE, crate::cursor::SIZE).into());
+            let loc = (sc((p.x - view.origin.x as f64) as i32, view.scale) - 1, sc((p.y - view.origin.y as f64) as i32, view.scale) - 1);
+            let cursor_px = sc(crate::cursor::SIZE, view.scale.max(1.0));
+            let dest = Rectangle::<i32, Physical>::new(loc.into(), (cursor_px, cursor_px).into());
             let mut target = renderer.bind(scene)?;
             let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
             frame.render_texture_from_to(

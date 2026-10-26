@@ -1,6 +1,7 @@
 //! Running on the hardware: the login session (libseat), the GPU (DRM/KMS through GBM and EGL),
-//! the monitors and the input devices (libinput). One GPU, all connected monitors showing the
-//! same picture side by side is not done yet: for now the first connected monitor is used.
+//! the monitors and the input devices (libinput). One GPU, every connected monitor is an output
+//! of its own, placed side by side (`[outputs.NAME]` in the configuration sets scale, mode and
+//! position). Monitors plugged in while running are not noticed yet: restart FAWC.
 
 use std::cell::RefCell;
 use std::os::fd::AsFd;
@@ -23,7 +24,8 @@ use smithay::backend::session::{Event as SessionEvent, Session};
 use smithay::backend::udev::primary_gpu;
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction};
-use smithay::reexports::drm::control::{connector, crtc, Device as ControlDevice, ModeTypeFlags};
+use smithay::output::Output;
+use smithay::reexports::drm::control::{self as drm_mode, connector, crtc, Device as ControlDevice, ModeTypeFlags};
 use smithay::reexports::input::Libinput;
 use smithay::reexports::rustix::fs::OFlags;
 use smithay::reexports::wayland_server::{Display, ListeningSocket};
@@ -40,43 +42,62 @@ type Compositor = DrmCompositor<
     DrmDeviceFd,
 >;
 
-/// Everything the render callback needs besides the compositor state.
-struct Gpu {
-    renderer: GlesRenderer,
-    glass: Glass,
+/// One monitor on the GPU.
+struct OutputGpu {
+    output: Output,
     scene: GlesTexture,
     compositor: Compositor,
     crtc: crtc::Handle,
     queued: bool,
 }
 
-fn render_and_queue(state: &mut Fawc, gpu: &mut Gpu) {
-    if gpu.queued {
+/// Everything the render callback needs besides the compositor state.
+struct Gpu {
+    renderer: GlesRenderer,
+    glass: Glass,
+    outputs: Vec<OutputGpu>,
+}
+
+/// Draw monitor `idx` and hand the frame to the display (unless one is already on its way).
+fn render_and_queue(state: &mut Fawc, gpu: &mut Gpu, idx: usize) {
+    let Gpu { renderer, glass, outputs } = gpu;
+    let Some(og) = outputs.get_mut(idx) else { return };
+    if og.queued {
         return;
     }
-    if let Err(e) = state.render_scene(&mut gpu.renderer, &gpu.glass, &mut gpu.scene) {
+    if let Err(e) = state.render_output(renderer, glass, &mut og.scene, &og.output) {
         tracing::error!("render failed: {e}");
         return;
     }
     // the scene texture is the only element on screen; a new buffer every frame = full damage
-    let buffer = TextureBuffer::from_texture(&gpu.renderer, gpu.scene.clone(), 1, Transform::Normal, None);
+    let buffer = TextureBuffer::from_texture(&*renderer, og.scene.clone(), 1, Transform::Normal, None);
     let element = TextureRenderElement::from_texture_buffer((0.0, 0.0), &buffer, Some(1.0), None, None, Kind::Unspecified);
-    match gpu.compositor.render_frame::<_, _>(&mut gpu.renderer, &[element], [0.0, 0.0, 0.0, 1.0], FrameFlags::DEFAULT) {
+    match og.compositor.render_frame::<_, _>(renderer, &[element], [0.0, 0.0, 0.0, 1.0], FrameFlags::DEFAULT) {
         Ok(res) => {
             if !res.is_empty {
-                match gpu.compositor.queue_frame(()) {
-                    Ok(()) => gpu.queued = true,
+                match og.compositor.queue_frame(()) {
+                    Ok(()) => og.queued = true,
                     Err(e) => tracing::error!("queue_frame: {e}"),
                 }
             }
         }
         Err(e) => tracing::error!("render_frame: {e}"),
     }
-    // frame callbacks for the clients
+    // frame callbacks for the clients that are (partly) on this monitor
     let elapsed = state.start_time.elapsed();
     for window in state.space.elements() {
-        window.send_frame(&state.output, elapsed, Some(Duration::ZERO), |_, _| Some(state.output.clone()));
+        if state.space.outputs_for_element(window).contains(&og.output) {
+            window.send_frame(&og.output, elapsed, Some(Duration::ZERO), |_, _| Some(og.output.clone()));
+        }
     }
+}
+
+/// A connected monitor and what to show on it.
+struct Monitor {
+    connector: connector::Handle,
+    crtc: crtc::Handle,
+    mode: drm_mode::Mode,
+    name: String,
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -100,58 +121,90 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let context = EGLContext::new(&egl)?;
     let mut renderer = unsafe { GlesRenderer::new(context)? };
 
-    // --- the first connected monitor
+    // --- every connected monitor, each on a CRTC of its own
+    let config = crate::config::Config::load().unwrap_or_default();
     let res = drm.resource_handles()?;
-    let mut chosen = None;
+    let mut monitors: Vec<Monitor> = Vec::new();
     for &handle in res.connectors() {
         let info = drm.get_connector(handle, true)?;
         if info.state() != connector::State::Connected || info.modes().is_empty() {
             continue;
         }
-        let mode = info
-            .modes()
-            .iter()
-            .find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED))
-            .copied()
-            .unwrap_or(info.modes()[0]);
-        // a CRTC this connector can use
+        let name = format!("{}-{}", info.interface().as_str(), info.interface_id());
+        let oc = config.outputs.get(&name).cloned().unwrap_or_default();
+        if !oc.enabled {
+            tracing::info!("monitor {name} is switched off in the configuration");
+            continue;
+        }
+        let modes = info.modes();
+        let preferred = modes.iter().find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED)).copied().unwrap_or(modes[0]);
+        // the configured mode if the monitor has it, else its preferred one
+        let mode = match crate::config::parse_mode(&oc.mode) {
+            Some((w, h, hz)) => modes
+                .iter()
+                .filter(|m| m.size() == (w as u16, h as u16))
+                .min_by(|a, b| {
+                    let want = hz.unwrap_or(f64::MAX);
+                    let da = (a.vrefresh() as f64 - want).abs();
+                    let db = (b.vrefresh() as f64 - want).abs();
+                    da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .copied()
+                .unwrap_or_else(|| {
+                    tracing::warn!("monitor {name} has no {w}x{h} mode: using its preferred one");
+                    preferred
+                }),
+            None => preferred,
+        };
+        // a CRTC this connector can use that no other monitor has taken
+        let taken: Vec<crtc::Handle> = monitors.iter().map(|m| m.crtc).collect();
         let crtc = info
             .encoders()
             .iter()
             .filter_map(|&e| drm.get_encoder(e).ok())
             .flat_map(|enc| res.filter_crtcs(enc.possible_crtcs()))
-            .next();
-        if let Some(crtc) = crtc {
-            tracing::info!("monitor {} ({}x{}@{})", info, mode.size().0, mode.size().1, mode.vrefresh());
-            chosen = Some((handle, crtc, mode));
-            break;
+            .find(|c| !taken.contains(c));
+        match crtc {
+            Some(crtc) => {
+                tracing::info!("monitor {name} ({}x{}@{})", mode.size().0, mode.size().1, mode.vrefresh());
+                monitors.push(Monitor { connector: handle, crtc, mode, name });
+            }
+            None => tracing::warn!("monitor {name}: no free CRTC for it"),
         }
     }
-    let (conn, crtc, mode) = chosen.ok_or("no monitor is connected")?;
-    let surface = drm.create_surface(crtc, mode, &[conn])?;
-    let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT);
-    let exporter = GbmFramebufferExporter::new(gbm.clone(), DrmNode::from_file(drm_fd.as_fd()).ok());
-    let (w, h) = (mode.size().0 as i32, mode.size().1 as i32);
+    let first = monitors.first().ok_or("no monitor is connected")?;
+    let (w, h) = (first.mode.size().0 as i32, first.mode.size().1 as i32);
+    let allocator_for = |gbm: &GbmDevice<DrmDeviceFd>| GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT);
+    let exporter_for = |gbm: &GbmDevice<DrmDeviceFd>| GbmFramebufferExporter::new(gbm.clone(), DrmNode::from_file(drm_fd.as_fd()).ok());
 
-    let mut state = Fawc::new(&dh, (w, h).into());
+    let mut state = Fawc::new_named(&dh, &first.name, (w, h).into());
     state.draw_cursor = true;
     state.session = Some(session.clone());
+    let outputs: Vec<Output> = std::iter::once(state.output.clone())
+        .chain(monitors.iter().skip(1).map(|m| state.add_output(&m.name, (m.mode.size().0 as i32, m.mode.size().1 as i32), m.mode.vrefresh() as i32 * 1000)))
+        .collect();
 
     let renderer_formats = renderer.egl_context().dmabuf_render_formats().iter().copied().collect::<Vec<_>>();
-    let compositor: Compositor = DrmCompositor::new(
-        &state.output,
-        surface,
-        None,
-        allocator,
-        exporter,
-        [Fourcc::Argb8888, Fourcc::Xrgb8888],
-        renderer_formats,
-        drm.cursor_size(),
-        Some(gbm.clone()),
-    )?;
     let glass = Glass::new(&mut renderer)?;
-    let scene = create_scene(&mut renderer, (w, h).into())?;
-    let gpu = Rc::new(RefCell::new(Gpu { renderer, glass, scene, compositor, crtc, queued: false }));
+    let mut gpu_outputs = Vec::new();
+    for (monitor, output) in monitors.iter().zip(outputs.iter()) {
+        let surface = drm.create_surface(monitor.crtc, monitor.mode, &[monitor.connector])?;
+        let compositor: Compositor = DrmCompositor::new(
+            output,
+            surface,
+            None,
+            allocator_for(&gbm),
+            exporter_for(&gbm),
+            [Fourcc::Argb8888, Fourcc::Xrgb8888],
+            renderer_formats.clone(),
+            drm.cursor_size(),
+            Some(gbm.clone()),
+        )?;
+        let (mw, mh) = (monitor.mode.size().0 as i32, monitor.mode.size().1 as i32);
+        let scene = create_scene(&mut renderer, (mw, mh).into())?;
+        gpu_outputs.push(OutputGpu { output: output.clone(), scene, compositor, crtc: monitor.crtc, queued: false });
+    }
+    let gpu = Rc::new(RefCell::new(Gpu { renderer, glass, outputs: gpu_outputs }));
 
     // --- the Wayland socket and the clients
     let socket = ListeningSocket::bind_auto("wayland", 1..33)?;
@@ -198,27 +251,32 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     event_loop.handle().insert_source(drm_notifier, move |event, _, state| match event {
         DrmEvent::VBlank(c) => {
             let mut gpu = gpu_vblank.borrow_mut();
-            if c == gpu.crtc {
-                if let Err(e) = gpu.compositor.frame_submitted() {
+            if let Some(idx) = gpu.outputs.iter().position(|o| o.crtc == c) {
+                if let Err(e) = gpu.outputs[idx].compositor.frame_submitted() {
                     tracing::warn!("frame_submitted: {e}");
                 }
-                gpu.queued = false;
-                render_and_queue(state, &mut gpu);
+                gpu.outputs[idx].queued = false;
+                render_and_queue(state, &mut gpu, idx);
             }
         }
         DrmEvent::Error(e) => tracing::error!("drm: {e}"),
     })?;
 
-    // the first frame starts the vblank cycle
-    render_and_queue(&mut state, &mut gpu.borrow_mut());
+    // the first frame of every monitor starts its vblank cycle
+    let count = gpu.borrow().outputs.len();
+    for idx in 0..count {
+        render_and_queue(&mut state, &mut gpu.borrow_mut(), idx);
+    }
     let _ = (&mut drm, &mut session);
 
     while state.running {
         event_loop.dispatch(Some(Duration::from_millis(16)), &mut state)?;
         // an idle compositor still needs a frame going: restart the cycle if it stalled
         let mut g = gpu.borrow_mut();
-        if !g.queued {
-            render_and_queue(&mut state, &mut g);
+        for idx in 0..count {
+            if !g.outputs[idx].queued {
+                render_and_queue(&mut state, &mut g, idx);
+            }
         }
     }
     Ok(())

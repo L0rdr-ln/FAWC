@@ -21,3 +21,17 @@ autostart = []         # e.g. ["nm-applet", "foot"]
 
 [session]
 idle_lock_seconds = 0  # lock after this many idle seconds; 0 = never
+
+# One block per monitor, named like the connector (see the log line "monitor DP-1 (...)").
+# Without a block a monitor uses its preferred mode at scale 1, placed to the right of the others.
+[outputs."DP-1"]
+scale = 1.5            # physical pixels per logical pixel: 1, 1.25, 1.5, 2 ...
+mode = "2560x1440@144" # empty = the monitor's preferred mode
+x = 0                  # position in the shared space (in logical pixels); x and y go together
+y = 0
+enabled = true
+
+[outputs."HDMI-A-1"]
+scale = 1.0
+x = 1707               # 2560 / 1.5, right of DP-1
+y = 0

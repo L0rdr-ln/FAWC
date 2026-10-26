@@ -70,9 +70,42 @@ pub struct Session {
     pub idle_lock_seconds: u32,
 }
 
+/// One monitor, by connector name (`DP-1`, `HDMI-A-1`, `eDP-1`; `fawc-0` for the nested window).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct OutputConfig {
+    /// how many physical pixels make one logical pixel: 1, 1.25, 1.5, 2 ...
+    pub scale: f64,
+    /// "WIDTHxHEIGHT" or "WIDTHxHEIGHT@HZ"; empty = the monitor's preferred mode
+    pub mode: String,
+    /// position of the top left corner in the shared logical space; both or none
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+    /// false turns the monitor off
+    pub enabled: bool,
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        OutputConfig { scale: 1.0, mode: String::new(), x: None, y: None, enabled: true }
+    }
+}
+
+/// "1920x1080" or "1920x1080@60" as (width, height, refresh in Hz).
+pub fn parse_mode(s: &str) -> Option<(i32, i32, Option<f64>)> {
+    let (size, hz) = match s.split_once('@') {
+        Some((a, b)) => (a, Some(b.parse::<f64>().ok()?)),
+        None => (s, None),
+    };
+    let (w, h) = size.split_once('x')?;
+    let (w, h): (i32, i32) = (w.parse().ok()?, h.parse().ok()?);
+    (w > 0 && h > 0).then_some((w, h, hz))
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub outputs: std::collections::BTreeMap<String, OutputConfig>,
     pub appearance: Appearance,
     pub input: Input,
     pub shell: Shell,
@@ -131,6 +164,17 @@ impl Config {
         }
         if !(1..=6).contains(&self.appearance.blur) {
             return Err("appearance.blur must be between 1 and 6".into());
+        }
+        for (name, o) in &self.outputs {
+            if !(0.5..=4.0).contains(&o.scale) {
+                return Err(format!("outputs.{name}.scale must be between 0.5 and 4"));
+            }
+            if !o.mode.is_empty() && parse_mode(&o.mode).is_none() {
+                return Err(format!("outputs.{name}.mode: \"{}\" is not WIDTHxHEIGHT or WIDTHxHEIGHT@HZ", o.mode));
+            }
+            if o.x.is_some() != o.y.is_some() {
+                return Err(format!("outputs.{name}: x and y go together"));
+            }
         }
         if self.input.repeat_rate < 0 || self.input.repeat_delay < 0 {
             return Err("input.repeat_rate and input.repeat_delay must not be negative".into());
@@ -229,6 +273,20 @@ mod tests {
         assert_eq!(c.appearance.blur, 4);
         assert_eq!(c.appearance.gloss, 0.5);
         assert_eq!(c.shell.terminal, "xterm");
+    }
+
+    #[test]
+    fn outputs_are_configured_by_connector_name_and_checked() {
+        let c = Config::parse("[outputs.\"DP-1\"]\nscale = 1.5\nmode = \"2560x1440@144\"\nx = 0\ny = 0\n[outputs.\"HDMI-A-1\"]\nenabled = false\n").unwrap();
+        assert_eq!(c.outputs["DP-1"].scale, 1.5);
+        assert_eq!(parse_mode(&c.outputs["DP-1"].mode), Some((2560, 1440, Some(144.0))));
+        assert!(!c.outputs["HDMI-A-1"].enabled);
+        assert!(c.outputs["HDMI-A-1"].x.is_none());
+        assert_eq!(parse_mode("1920x1080"), Some((1920, 1080, None)));
+        assert_eq!(parse_mode("big"), None);
+        assert!(Config::parse("[outputs.A]\nscale = 9.0\n").unwrap_err().contains("scale"));
+        assert!(Config::parse("[outputs.A]\nmode = \"x\"\n").unwrap_err().contains("mode"));
+        assert!(Config::parse("[outputs.A]\nx = 5\n").unwrap_err().contains("x and y"));
     }
 
     #[test]

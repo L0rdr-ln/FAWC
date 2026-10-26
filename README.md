@@ -35,8 +35,16 @@ the client. Clients can ask for the same blur behind their own translucent areas
 | **Lock screen** `fawc-lock` | `Alt+L`: a glass login card; the password is checked by PAM's `unix_chkpwd` |
 | **Tests** | pixel tests of the glass on a software GL, and end-to-end tests with real Wayland clients (including the real panel and lock programs); no display or GPU needed |
 
+**Multi-monitor and HiDPI:** several outputs side by side in one space, each with its own scale
+(`[outputs.NAME]` in `fawc.toml`: scale, mode, position, on/off); windows can be on or across
+any of them, the pointer moves between them, maximize fills the monitor the window is on, the
+lock screen covers every monitor. Tested with virtual outputs (two monitors; a 2x monitor draws
+the frame, title and client at double size). The task bar and notifications are on the first
+monitor only.
+
 **Not verified:** the DRM/KMS backend (real console / GPU) has been written and compiled but never
-run on hardware, multi-monitor, hot-plug, HiDPI, cursor themes, GTK/Qt apps asking for blur.
+run on hardware, so multi-monitor output on real GPUs is untested too. Not done: plugging a monitor
+in or out while running, cursor themes, GTK/Qt apps asking for blur.
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Try it

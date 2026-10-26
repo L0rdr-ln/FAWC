@@ -412,7 +412,7 @@ fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
     }
 
     // the usable area is what the panel leaves
-    let usable = hn.state.usable_area();
+    let usable = hn.state.usable_area(&hn.state.output.clone());
     assert_eq!((usable.loc.y, usable.size.h), (0, 560));
 
     // a window maximized now stops above the panel
@@ -540,7 +540,7 @@ fn the_lock_screen_locks_the_session_and_unlocks_with_the_right_password() {
             step(hn, renderer, scene);
         }
     };
-    wait(&mut hn, &mut renderer, &mut scene, "the session locks", &|hn| hn.state.locked && hn.state.lock_surface.is_some() && hn.state.lock_confirmation.is_none());
+    wait(&mut hn, &mut renderer, &mut scene, "the session locks", &|hn| hn.state.locked && !hn.state.lock_surfaces.is_empty() && hn.state.lock_confirmation.is_none());
     // let the card be drawn and shown
     for _ in 0..60 {
         step(&mut hn, &mut renderer, &mut scene);
@@ -832,4 +832,128 @@ fn a_new_window_fades_and_grows_in() {
     let late = green(&mut hn, &mut renderer, &mut scene);
     assert_eq!(hn.state.open_progress(&win), 1.0, "the animation is over");
     assert!(early > late + 25, "the window faded in: green {early} then {late}");
+}
+
+/// A client window of `w` x `h` and the server side to look at it: `scenes` are the outputs' pictures.
+fn open_window(hn: &mut Harness, dir: &std::path::Path, name: &str, w: i32, h: i32) {
+    let (tx, rx) = mpsc::channel();
+    let path = dir.join(name);
+    std::thread::spawn(move || client(path, tx, w, h, 0xff2030e0));
+    let t0 = Instant::now();
+    loop {
+        hn.pump();
+        if let Ok(Msg::Mapped { .. }) = rx.try_recv() {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "no window");
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    hn.pump_for(100);
+}
+
+fn grab_scene(renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture) -> Vec<u8> {
+    let size = scene.size();
+    let target = renderer.bind(scene).unwrap();
+    let m = renderer.copy_framebuffer(&target, Rectangle::from_size(size), Fourcc::Abgr8888).unwrap();
+    renderer.map_texture(&m).unwrap().to_vec()
+}
+
+#[test]
+fn a_window_on_the_second_monitor_is_drawn_there_and_the_pointer_and_maximize_follow() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): multi-monitor test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let second = state.add_output("fawc-1", (800, 600), 60_000);
+    let socket = ListeningSocket::bind("fawc-e2e-two").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene0: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    let mut scene1: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+
+    open_window(&mut hn, dir.path(), "fawc-e2e-two", 200, 100);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+
+    // the window is on the first monitor: drawn there, not on the second
+    let primary = hn.state.output.clone();
+    hn.state.render_output(&mut renderer, &glass, &mut scene0, &primary).unwrap();
+    hn.state.render_output(&mut renderer, &glass, &mut scene1, &second).unwrap();
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    let (cx, cy) = (g.loc.x + g.size.w / 2, g.loc.y + g.size.h / 2);
+    assert!(pixel(&grab_scene(&mut renderer, &mut scene0), w, cx, cy)[1] < 90, "dark window on monitor 1");
+    assert!(pixel(&grab_scene(&mut renderer, &mut scene1), w, cx, cy)[1] > 120, "monitor 2 shows only sky there");
+
+    // move it onto the second monitor (x >= 800): now it shows there
+    hn.state.space.map_element(win.clone(), (900, 200), false);
+    hn.state.render_output(&mut renderer, &glass, &mut scene0, &primary).unwrap();
+    hn.state.render_output(&mut renderer, &glass, &mut scene1, &second).unwrap();
+    assert!(pixel(&grab_scene(&mut renderer, &mut scene1), w, 900 - 800 + 100, 200 + 50)[1] < 90, "dark window on monitor 2, at its local position");
+    assert!(pixel(&grab_scene(&mut renderer, &mut scene0), w, 700, 250)[1] > 120, "and nothing of it on monitor 1");
+
+    // the pointer crosses over and cannot leave the monitors
+    hn.state.pointer_moved((1200.0, 100.0).into(), 0);
+    assert_eq!(hn.state.pointer_location, (1200.0, 100.0).into());
+    hn.state.pointer_moved((5000.0, 100.0).into(), 0);
+    assert_eq!(hn.state.pointer_location, (1599.0, 100.0).into());
+
+    // maximize: the window fills the monitor it is on, not the first
+    hn.state.set_maximized(&win, true);
+    hn.pump_for(50);
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    let area = hn.state.usable_area(&second);
+    assert!(g.loc.x >= 800 && g.loc.x + g.size.w <= 1600, "inside the second monitor: {g:?}");
+    assert_eq!((g.loc.x, g.loc.y), (area.loc.x + 5, area.loc.y + 5 + 32), "at the top left of that monitor's usable area, inside its frame: {g:?} {area:?}");
+}
+
+#[test]
+fn a_hidpi_monitor_draws_everything_at_double_size() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): HiDPI test skipped");
+            return;
+        }
+    };
+    let display: Display<Fawc> = Display::new().unwrap();
+    // a 1600x1200 monitor at scale 2: a logical space of 800x600
+    let mut state = Fawc::new(&display.handle(), (1600, 1200).into());
+    state.config.appearance.animations = false;
+    state.output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(2.0)), None);
+    assert_eq!(state.output_size(), (800, 600).into());
+    let socket = ListeningSocket::bind("fawc-e2e-hidpi").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (1600, 1200).into()).unwrap();
+
+    open_window(&mut hn, dir.path(), "fawc-e2e-hidpi", 200, 100);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    let g = hn.state.space.element_geometry(&win).unwrap(); // logical
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let px = grab_scene(&mut renderer, &mut scene);
+    let dark = |x: i32, y: i32| pixel(&px, 1600, x, y)[1] < 90;
+    // the 200x100 client is 400x200 pixels: dark up to its edge, sky beyond the glass border
+    let (x0, y0) = (g.loc.x * 2, g.loc.y * 2);
+    eprintln!("client geometry {g:?}; samples {:?} {:?}", pixel(&px, 1600, x0 + 200, y0 + 100), pixel(&px, 1600, x0 / 2 + 100, y0 / 2 + 50));
+    assert!(dark(x0 + 200, y0 + 100), "the middle of the client");
+    assert!(dark(x0 + 390, y0 + 100), "still the client 390 px to the right (it would be sky at 1x)");
+    assert!(dark(x0 + 100, y0 + 190), "and 190 px down");
+    assert!(!dark(x0 + 400 + 40, y0 + 100), "sky beyond the frame");
+    assert!(!dark(x0 + 100, y0 + 200 + 40), "sky below the frame");
+    // the title bar is double height too: its glass is at 2x32 above the client
+    let title = pixel(&px, 1600, x0 + 200, y0 - 40);
+    let sky = pixel(&px, 1600, x0 + 200, y0 - 120);
+    assert!(title != sky, "the frame is drawn 40 px above the client");
 }

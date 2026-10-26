@@ -33,32 +33,38 @@ impl Fawc {
         }
     }
 
-    /// The layer surface (and the point on its origin) under `p` on the given layers.
+    /// The layer surface (and the point on its origin, in the shared space) under `p` on the
+    /// given layers of the monitor `p` is on.
     pub fn layer_surface_under(
         &self,
         p: Point<f64, Logical>,
         layers: &[Layer],
     ) -> Option<(LayerSurface, WlSurface, Point<i32, Logical>)> {
-        let map = layer_map_for_output(&self.output);
+        let output = self.output_at(p)?;
+        let origin = self.output_rect(&output).loc;
+        let map = layer_map_for_output(&output);
+        let p = p - origin.to_f64();
         for l in layers {
             if let Some(ls) = map.layer_under(*l, p) {
                 let geo = map.layer_geometry(ls)?;
                 let local = p - geo.loc.to_f64();
                 if let Some((s, loc)) = ls.surface_under(local, WindowSurfaceType::ALL) {
-                    return Some((ls.clone(), s, geo.loc + loc));
+                    return Some((ls.clone(), s, origin + geo.loc + loc));
                 }
             }
         }
         None
     }
 
-    /// The area windows may use: the output minus what panels reserve.
-    pub fn usable_area(&self) -> smithay::utils::Rectangle<i32, Logical> {
-        let zone = layer_map_for_output(&self.output).non_exclusive_zone();
+    /// The area windows may use on `output`: the monitor minus what panels reserve (in the
+    /// shared space).
+    pub fn usable_area(&self, output: &smithay::output::Output) -> smithay::utils::Rectangle<i32, Logical> {
+        let rect = self.output_rect(output);
+        let zone = layer_map_for_output(output).non_exclusive_zone();
         if zone.size.w > 0 && zone.size.h > 0 {
-            zone
+            smithay::utils::Rectangle::new(rect.loc + zone.loc, zone.size)
         } else {
-            smithay::utils::Rectangle::from_size(self.output_size())
+            rect
         }
     }
 }

@@ -152,15 +152,19 @@ impl Fawc {
     }
 
     pub fn pointer_moved(&mut self, pos: Point<f64, Logical>, time: u32) {
-        let size = self.output_size();
-        let pos = (pos.x.clamp(0.0, size.w as f64 - 1.0), pos.y.clamp(0.0, size.h as f64 - 1.0)).into();
+        let pos = self.clamp_to_outputs(pos);
         self.pointer_location = pos;
 
         // the lock screen has the pointer to itself
         if self.locked {
             let serial = SERIAL_COUNTER.next_serial();
             let Some(ptr) = self.seat.get_pointer() else { return };
-            let focus = self.lock_surface.as_ref().map(|l| (l.wl_surface().clone(), (0.0, 0.0).into()));
+            let under = self.output_at(pos);
+            let focus = self
+                .lock_surfaces
+                .iter()
+                .find(|(o, _)| Some(o) == under.as_ref())
+                .map(|(o, l)| (l.wl_surface().clone(), self.output_rect(o).loc.to_f64()));
             ptr.motion(self, focus, &MotionEvent { location: pos, serial, time });
             ptr.frame(self);
             return;

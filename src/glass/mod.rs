@@ -35,6 +35,22 @@ pub struct GlassStyle {
     pub blur_levels: usize,
 }
 
+impl GlassStyle {
+    /// The same style for a monitor that has `s` physical pixels per logical one: every length
+    /// grows with it (colours and strengths stay).
+    pub fn scaled(&self, s: f32) -> GlassStyle {
+        GlassStyle {
+            radius: self.radius * s,
+            border: self.border * s,
+            titlebar: self.titlebar * s,
+            orb_size: self.orb_size * s,
+            orb_gap: self.orb_gap * s,
+            orb_margin: self.orb_margin * s,
+            ..*self
+        }
+    }
+}
+
 impl Default for GlassStyle {
     fn default() -> Self {
         GlassStyle {

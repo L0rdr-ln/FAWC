@@ -58,11 +58,12 @@ impl CompositorHandler for Fawc {
             }
         }
         // a layer surface (panel, wallpaper, launcher): lay the layers out again
-        let layer = layer_map_for_output(&self.output)
-            .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
-            .cloned();
-        if let Some(layer) = layer {
-            layer_map_for_output(&self.output).arrange();
+        let found = self.all_outputs().into_iter().find_map(|o| {
+            let l = layer_map_for_output(&o).layer_for_surface(surface, WindowSurfaceType::TOPLEVEL).cloned();
+            l.map(|l| (o, l))
+        });
+        if let Some((layer_output, layer)) = found {
+            layer_map_for_output(&layer_output).arrange();
             self.focus_layer_if_exclusive(&layer);
             // the first configure answers the first commit; arrange never sends it
             let sent = with_states(surface, |states| {
@@ -170,7 +171,8 @@ impl XdgShellHandler for Fawc {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        self.titles.remove(&smithay::reexports::wayland_server::Resource::id(surface.wl_surface()));
+        let sid = smithay::reexports::wayland_server::Resource::id(surface.wl_surface());
+        self.titles.retain(|(id, _), _| *id != sid);
         if let Some(w) = self.window_for_surface(surface.wl_surface()) {
             self.space.unmap_elem(&w);
         }
@@ -212,13 +214,15 @@ impl WlrLayerShellHandler for Fawc {
     fn new_layer_surface(
         &mut self,
         surface: LayerSurface,
-        _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
+        output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
         layer: Layer,
         namespace: String,
     ) {
-        tracing::info!("layer surface {namespace} on {layer:?}");
+        // on the monitor the client names, else the first
+        let output = self.output_for_resource(output.as_ref());
+        tracing::info!("layer surface {namespace} on {layer:?} of {}", output.name());
         let desktop_layer = DesktopLayer::new(surface, namespace);
-        let mut map = layer_map_for_output(&self.output);
+        let mut map = layer_map_for_output(&output);
         let _ = map.map_layer(&desktop_layer);
         map.arrange();
         drop(map);
@@ -227,13 +231,14 @@ impl WlrLayerShellHandler for Fawc {
     }
 
     fn layer_destroyed(&mut self, surface: LayerSurface) {
-        let mut map = layer_map_for_output(&self.output);
-        let found = map.layers().find(|l| l.layer_surface() == &surface).cloned();
-        if let Some(l) = found {
-            map.unmap_layer(&l);
+        for output in self.all_outputs() {
+            let mut map = layer_map_for_output(&output);
+            let found = map.layers().find(|l| l.layer_surface() == &surface).cloned();
+            if let Some(l) = found {
+                map.unmap_layer(&l);
+                map.arrange();
+            }
         }
-        map.arrange();
-        drop(map);
         self.focus_top_window();
     }
 }
@@ -260,20 +265,24 @@ impl smithay::wayland::session_lock::SessionLockHandler for Fawc {
 
     fn unlock(&mut self) {
         self.locked = false;
-        self.lock_surface = None;
+        self.lock_surfaces.clear();
         self.lock_confirmation = None;
         self.focus_top_window();
         tracing::info!("session unlocked");
     }
 
-    fn new_surface(&mut self, surface: smithay::wayland::session_lock::LockSurface, _output: smithay::reexports::wayland_server::protocol::wl_output::WlOutput) {
-        let size = self.output_size();
+    fn new_surface(&mut self, surface: smithay::wayland::session_lock::LockSurface, wl_output: smithay::reexports::wayland_server::protocol::wl_output::WlOutput) {
+        // one lock surface per monitor, each as big as its monitor
+        let output = self.output_for_resource(Some(&wl_output));
+        let size = self.output_logical_size(&output);
         surface.with_pending_state(|s| s.size = Some((size.w as u32, size.h as u32).into()));
         surface.send_configure();
-        if let Some(kb) = self.seat.get_keyboard() {
-            kb.set_focus(self, Some(surface.wl_surface().clone()), smithay::utils::SERIAL_COUNTER.next_serial());
+        if self.lock_surfaces.is_empty() {
+            if let Some(kb) = self.seat.get_keyboard() {
+                kb.set_focus(self, Some(surface.wl_surface().clone()), smithay::utils::SERIAL_COUNTER.next_serial());
+            }
         }
-        self.lock_surface = Some(surface);
+        self.lock_surfaces.push((output, surface));
     }
 }
 crate::delegate_background_effect!(Fawc);
