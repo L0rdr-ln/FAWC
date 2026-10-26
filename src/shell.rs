@@ -48,10 +48,11 @@ pub fn export_environment() {
     if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
         return;
     }
-    let vars = ["WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "XDG_SESSION_TYPE"];
-    let ok = Command::new("dbus-update-activation-environment").arg("--systemd").args(vars).status().map(|s| s.success()).unwrap_or(false);
-    if !ok {
-        let _ = Command::new("dbus-update-activation-environment").args(vars).status();
+    // in the background: this can wait a long time for a systemd user session that is not there
+    let script = "dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE \
+        || dbus-update-activation-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE";
+    if let Err(e) = Command::new("timeout").args(["10", "sh", "-c", script]).spawn() {
+        tracing::debug!("dbus-update-activation-environment: {e}");
     }
 }
 
