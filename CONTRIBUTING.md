@@ -31,7 +31,7 @@ against the compositor inside the test process.
 - Say honestly what is verified and what is not (hardware, other GPUs, other toolkits).
 - Keep the style of the code around you: comments explain *why*, names are plain.
 - All artwork (icons, wallpapers, sounds) must be original or under a compatible free licence.
-  Nothing taken from Windows or other proprietary desktops.
+  Nothing taken from Windows or other proprietary desktops. That includes the stock wallpapers, icons and sounds of Windows Vista/7 and the picture collections of "Frutiger Aero archives": they are other people's copyrighted work and must not be committed here. (Users can of course point `wallpaper.path` at any picture they own or like on their own machine.) Free sources are fine when the licence is clear: public domain / CC0 pictures, with the source and licence noted in the commit.
 - Small, focused commits; one logical change each.
 
 ## Layout

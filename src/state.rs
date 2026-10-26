@@ -120,7 +120,7 @@ pub fn load_wallpaper(path: &str) -> Option<crate::wallpaper::Image> {
     if path.is_empty() {
         return None;
     }
-    match crate::wallpaper::load_png(std::path::Path::new(path)) {
+    match crate::wallpaper::load_image(std::path::Path::new(path)) {
         Ok(i) => Some(i),
         Err(e) => {
             tracing::warn!("wallpaper: {e} (using the built-in sky)");

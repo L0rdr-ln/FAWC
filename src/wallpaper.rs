@@ -131,6 +131,40 @@ pub struct Image {
     pub rgba: Vec<u8>,
 }
 
+/// Read a PNG or a JPEG file (found out from the first bytes, not the name) as RGBA.
+pub fn load_image(path: &std::path::Path) -> Result<Image, String> {
+    let head = {
+        use std::io::Read;
+        let mut f = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let mut b = [0u8; 4];
+        let n = f.read(&mut b).map_err(|e| format!("{}: {e}", path.display()))?;
+        b[..n].to_vec()
+    };
+    if head.starts_with(&[0xff, 0xd8]) {
+        load_jpeg(path)
+    } else {
+        load_png(path)
+    }
+}
+
+/// Read a JPEG (colour or grey) as RGBA.
+pub fn load_jpeg(path: &std::path::Path) -> Result<Image, String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut dec = jpeg_decoder::Decoder::new(std::io::BufReader::new(file));
+    let data = dec.decode().map_err(|e| format!("{}: {e}", path.display()))?;
+    let info = dec.info().ok_or_else(|| format!("{}: no picture information", path.display()))?;
+    let (w, h) = (info.width as i32, info.height as i32);
+    let rgba: Vec<u8> = match info.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => data.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
+        jpeg_decoder::PixelFormat::L8 => data.iter().flat_map(|&g| [g, g, g, 255]).collect(),
+        other => return Err(format!("{}: JPEG kind {other:?} is not supported", path.display())),
+    };
+    if w == 0 || h == 0 {
+        return Err(format!("{}: empty picture", path.display()));
+    }
+    Ok(Image { width: w, height: h, rgba })
+}
+
 /// Read a PNG (any colour type, 8 or 16 bit) as RGBA.
 pub fn load_png(path: &std::path::Path) -> Result<Image, String> {
     let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -245,6 +279,28 @@ mod tests {
         assert_eq!(at(&tile, 8, 1, 3), [0, 0, 255]);
         assert_eq!(at(&tile, 8, 2, 3), [255, 0, 0]);
         assert!(tile.chunks_exact(4).all(|p| p[3] == 255), "always opaque");
+    }
+
+    #[test]
+    fn a_jpeg_is_found_by_its_content_whatever_its_name() {
+        let dir = tempfile::tempdir().unwrap();
+        // a solid orange 16x16 JPEG saved under a .png name
+        let path = dir.path().join("really-a-jpeg.png");
+        let rgb: Vec<u8> = (0..16 * 16).flat_map(|_| [230u8, 120, 20]).collect();
+        jpeg_encoder::Encoder::new_file(&path, 95).unwrap().encode(&rgb, 16, 16, jpeg_encoder::ColorType::Rgb).unwrap();
+        let img = load_image(&path).unwrap();
+        assert_eq!((img.width, img.height), (16, 16));
+        let p = &img.rgba[(8 * 16 + 8) * 4..(8 * 16 + 8) * 4 + 4];
+        assert!((p[0] as i32 - 230).abs() < 8 && (p[1] as i32 - 120).abs() < 8 && (p[2] as i32 - 20).abs() < 8 && p[3] == 255, "orange: {p:?}");
+        // and a PNG still goes through load_image
+        let png_path = dir.path().join("a.png");
+        let file = std::fs::File::create(&png_path).unwrap();
+        let mut enc = png::Encoder::new(file, 1, 1);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&[1, 2, 3]).unwrap();
+        assert_eq!(load_image(&png_path).unwrap().rgba, vec![1, 2, 3, 255]);
+        assert!(load_image(&dir.path().join("nothing")).is_err());
     }
 
     #[test]

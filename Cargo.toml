@@ -24,6 +24,7 @@ smithay = { version = "0.7", default-features = false, features = [
 ] }
 tracing = "0.1"
 png = "0.17"
+jpeg-decoder = "0.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 cosmic-text = "0.19.0"
 wayland-client = "0.31"
@@ -42,3 +43,4 @@ lto = "thin"
 
 [dev-dependencies]
 tempfile = "3"
+jpeg-encoder = "0.6"
