@@ -189,6 +189,7 @@ impl Fde {
         }
         crate::shell::start_other_clients(&self.config);
         self.write_outputs_state();
+        self.write_workspace_state();
     }
 
     /// A monitor was unplugged: windows on it move to the first monitor, layer surfaces on it

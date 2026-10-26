@@ -297,3 +297,12 @@ fn nested_keys_can_be_written_and_monitor_settings_apply_to_a_running_compositor
     assert_eq!(after[0].scale, 1.5, "the new scale is in effect and reported");
     assert_eq!(state.output_logical_size(&state.output.clone()), (1280, 720).into());
 }
+
+#[test]
+fn the_number_of_workspaces_is_checked() {
+    use fde::config::Config;
+    assert_eq!(Config::parse("").unwrap().session.workspaces, 4);
+    assert_eq!(Config::parse("[session]\nworkspaces = 2\n").unwrap().session.workspaces, 2);
+    assert!(Config::parse("[session]\nworkspaces = 0\n").is_err());
+    assert!(Config::parse("[session]\nworkspaces = 12\n").is_err());
+}

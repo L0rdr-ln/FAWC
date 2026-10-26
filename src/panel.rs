@@ -180,6 +180,43 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, s: i32, hover: boo
     buf
 }
 
+/// The workspace dots left of the clock: `current` of `count` (1-based). Drawn over the bar.
+pub fn draw_workspaces(buf: &mut [u8], width: i32, height: i32, s: i32, current: usize, count: usize) {
+    if count < 2 {
+        return;
+    }
+    let sf = s as f32;
+    let r = 4.5 * sf;
+    let gap = 8.0 * sf;
+    let total = count as f32 * (2.0 * r) + (count as f32 - 1.0) * gap;
+    let x0 = width as f32 - 112.0 * sf - total;
+    let cy = height as f32 / 2.0;
+    for i in 0..count {
+        let cx = x0 + r + i as f32 * (2.0 * r + gap);
+        let on = i + 1 == current;
+        for y in (cy - r - 2.0) as i32..=(cy + r + 2.0) as i32 {
+            for x in (cx - r - 2.0) as i32..=(cx + r + 2.0) as i32 {
+                if x < 0 || y < 0 || x >= width || y >= height {
+                    continue;
+                }
+                let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+                let cover = (r + 0.5 - d).clamp(0.0, 1.0);
+                if cover <= 0.0 {
+                    continue;
+                }
+                let idx = ((y * width + x) * 4) as usize;
+                if on {
+                    blend(&mut buf[idx..idx + 4], [1.0, 1.0, 1.0], 0.95 * cover);
+                } else {
+                    // a ring
+                    let ring = (1.0 - ((r - d) / (1.4 * sf)).clamp(0.0, 1.0)).max(0.0);
+                    blend(&mut buf[idx..idx + 4], [1.0, 1.0, 1.0], (0.12 + 0.6 * ring) * cover);
+                }
+            }
+        }
+    }
+}
+
 pub const MENU_W: i32 = 320;
 pub const MENU_ROW: i32 = 28;
 const MENU_PAD: i32 = 8;
@@ -397,6 +434,25 @@ mod tests {
         assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + MENU_ROW + 3) as f64, 3), Some(1));
         assert_eq!(menu_row_at(2.0, 3), None, "the search field is not a row");
         assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + 3 * MENU_ROW + 3) as f64, 3), None, "below the last row");
+    }
+
+    #[test]
+    fn the_workspace_dots_show_which_one_is_on_and_stay_away_from_a_single_workspace() {
+        let (w, h) = (400, HEIGHT);
+        let mut plain = vec![0u8; (w * h * 4) as usize];
+        draw_workspaces(&mut plain, w, h, 1, 1, 1);
+        assert!(plain.iter().all(|&b| b == 0), "one workspace: nothing to show");
+        let mut a = vec![0u8; (w * h * 4) as usize];
+        let mut b = a.clone();
+        draw_workspaces(&mut a, w, h, 1, 1, 4);
+        draw_workspaces(&mut b, w, h, 1, 3, 4);
+        assert!(a.iter().any(|&p| p > 0) && a != b, "the lit dot moves");
+        // the first dot is brighter when it is the current one
+        let r = 4.5f32;
+        let total = 4.0 * (2.0 * r) + 3.0 * 8.0;
+        let cx = (w as f32 - 112.0 - total + r) as i32;
+        let at = |buf: &Vec<u8>| buf[(((h / 2) * w + cx) * 4 + 3) as usize];
+        assert!(at(&a) > at(&b) + 100, "lit {} vs ring {}", at(&a), at(&b));
     }
 
     #[test]

@@ -46,6 +46,7 @@ impl Fde {
         self.space
             .elements()
             .chain(self.minimized.iter())
+            .chain(self.parked.iter())
             .find(|w| w.wl_surface().map(|s| &*s == surface).unwrap_or(false))
             .cloned()
     }
@@ -64,6 +65,7 @@ impl Fde {
         self.cascade = (self.cascade + step) % (6 * step);
         let loc = (origin + b, origin + b + t);
         info(&window).lock().unwrap().opened = Some(std::time::Instant::now());
+        self.place_on_current_workspace(&window);
         self.space.map_element(window.clone(), loc, true);
         self.focus_window(&window);
     }
@@ -437,7 +439,9 @@ impl Fde {
 
     /// Bring back the most recently minimized window.
     pub fn restore_window(&mut self) {
-        if let Some(w) = self.minimized.pop() {
+        // the latest minimized window of the workspace being shown
+        let idx = self.minimized.iter().rposition(|w| self.on_current_workspace(w));
+        if let Some(w) = idx.map(|i| self.minimized.remove(i)) {
             let (last, was_shrinking) = {
                 let mut i = info(&w).lock().unwrap();
                 i.minimized = false;
@@ -457,6 +461,11 @@ impl Fde {
 
     /// Bring back one particular minimized window.
     pub fn restore_specific(&mut self, window: &Window) {
+        // a window of another workspace: go there first
+        if !self.on_current_workspace(window) {
+            let target = self.window_workspace_of(window);
+            self.switch_workspace(target);
+        }
         if let Some(i) = self.minimized.iter().position(|w| w == window) {
             let w = self.minimized.remove(i);
             self.minimized.push(w);

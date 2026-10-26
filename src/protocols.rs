@@ -23,6 +23,10 @@ impl XdgActivationHandler for Fde {
             return;
         }
         if let Some(w) = self.window_for_surface(&surface) {
+            if !self.on_current_workspace(&w) {
+                let n = self.window_workspace_of(&w);
+                self.switch_workspace(n);
+            }
             self.restore_specific(&w);
             self.focus_window(&w);
         }
@@ -81,7 +85,7 @@ impl Fde {
         self.idle_inhibitors.iter().any(|s| {
             s.is_alive()
                 && match self.window_for_surface(s) {
-                    Some(w) => !self.minimized.contains(&w),
+                    Some(w) => !self.minimized.contains(&w) && !self.parked.contains(&w),
                     None => true, // a panel or other surface
                 }
         })

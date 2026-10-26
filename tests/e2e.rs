@@ -2602,3 +2602,53 @@ fn windows_snap_to_half_the_screen_by_keys_and_by_dragging_to_the_edge() {
     hn.state.pointer_button(0x110, false, 12);
     assert!(hn.state.is_maximized(&win), "let go at the top edge: maximized");
 }
+
+#[test]
+fn windows_live_on_workspaces_and_only_the_shown_ones_are_on_the_screen() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-ws").unwrap();
+    let mut hn = Harness { display, state, socket };
+    assert_eq!(hn.state.workspace_count(), 4);
+
+    open_window(&mut hn, dir.path(), "fde-e2e-ws", 200, 100);
+    let a = hn.state.space.elements().next().cloned().unwrap();
+    let a_loc = hn.state.space.element_location(&a).unwrap();
+    assert_eq!(hn.state.workspace, 0);
+
+    // workspace 2: empty; a new window opens there
+    hn.state.switch_workspace(1);
+    assert_eq!(hn.state.space.elements().count(), 0, "the first workspace's window is off the screen");
+    assert_eq!(fde::workspaces::read_workspace_state(), Some((2, 4)));
+    assert!(hn.state.hud.is_some(), "\"Workspace 2\" is announced");
+    open_window(&mut hn, dir.path(), "fde-e2e-ws", 200, 100);
+    assert_eq!(hn.state.space.elements().count(), 1);
+    let b = hn.state.space.elements().next().cloned().unwrap();
+    assert_ne!(a, b);
+    assert!(hn.state.on_current_workspace(&b) && !hn.state.on_current_workspace(&a));
+    // a parked window is still known to the compositor (its surface keeps committing)
+    let a_surface = a.toplevel().unwrap().wl_surface().clone();
+    assert_eq!(hn.state.window_for_surface(&a_surface), Some(a.clone()));
+
+    // back to the first: its window returns to the same place, the other leaves
+    hn.state.switch_workspace(0);
+    assert_eq!(hn.state.space.elements().collect::<Vec<_>>(), vec![&a]);
+    assert_eq!(hn.state.space.element_location(&a), Some(a_loc));
+    assert!(hn.state.parked.contains(&b));
+
+    // send the window to workspace 3: it leaves; going there brings it back
+    hn.state.move_window_to_workspace(&a, 2);
+    assert_eq!(hn.state.space.elements().count(), 0);
+    hn.state.switch_workspace_by(2);
+    assert_eq!(hn.state.workspace, 2);
+    assert_eq!(hn.state.space.elements().collect::<Vec<_>>(), vec![&a]);
+    // stepping wraps around, and a number beyond the count does nothing
+    hn.state.switch_workspace_by(2);
+    assert_eq!(hn.state.workspace, 0);
+    hn.state.switch_workspace(7);
+    assert_eq!(hn.state.workspace, 0);
+}

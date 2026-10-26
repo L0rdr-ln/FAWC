@@ -505,6 +505,23 @@ impl Fde {
             }
         }
 
+        // "Workspace 2" for a moment after switching
+        if let Some((since, text)) = self.hud.clone() {
+            let age = since.elapsed().as_secs_f32();
+            if age > 1.0 {
+                self.hud = None;
+            } else if let Some(img) = self.text.line(&text, 600, 34.0 * view.scale as f32, [255, 255, 255], Some(([8, 40, 90], 0.95)), (6.0 * view.scale) as i32) {
+                let tex = renderer.import_memory(&img.rgba, Fourcc::Abgr8888, Size::<i32, BufferCoord>::from((img.width, img.height)), false)?;
+                let alpha = if age < 0.7 { 1.0 } else { 1.0 - (age - 0.7) / 0.3 };
+                let dest = Rectangle::<i32, Physical>::new(((size.w - img.width) / 2, size.h / 4 - img.height / 2).into(), (img.width, img.height).into());
+                let src = Rectangle::<f64, BufferCoord>::from_size((img.width as f64, img.height as f64).into());
+                let mut target = renderer.bind(scene)?;
+                let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                frame.render_texture_from_to(&tex, src, dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, alpha, None, &[])?;
+                let _ = frame.finish()?;
+            }
+        }
+
         // screenshots that want no cursor are taken before it is drawn
         self.fulfill_screencopy(renderer, output, scene, false);
 

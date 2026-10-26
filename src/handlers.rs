@@ -216,6 +216,7 @@ impl XdgShellHandler for Fde {
             self.space.unmap_elem(&w);
         }
         self.minimized.retain(|w| w.toplevel().map(|t| t != &surface).unwrap_or(true));
+        self.parked.retain(|w| w.toplevel().map(|t| t != &surface).unwrap_or(true));
         self.focus_top_window();
         self.sync_foreign_toplevels();
     }

@@ -26,6 +26,9 @@ enum Action {
     Restore,
     Lock,
     Snap(crate::windows::Snap),
+    Workspace(usize),
+    MoveToWorkspace(usize),
+    WorkspaceStep(i32),
     Up,
     Down,
     Screenshot,
@@ -71,6 +74,18 @@ impl Fde {
                             return FilterResult::Intercept(Action::Screenshot);
                         }
                         if event.state() == KeyState::Pressed && mods.alt {
+                            // workspaces: Alt+1..9 (by key position, so Shift does not change it)
+                            let digit = (handle.raw_code().raw() as i64 - 8 - 1).clamp(0, 99) as usize;
+                            if (1..=9).contains(&digit) {
+                                return FilterResult::Intercept(if mods.shift { Action::MoveToWorkspace(digit - 1) } else { Action::Workspace(digit - 1) });
+                            }
+                            if mods.ctrl {
+                                match handle.modified_sym().raw() {
+                                    keysyms::KEY_Left => return FilterResult::Intercept(Action::WorkspaceStep(-1)),
+                                    keysyms::KEY_Right => return FilterResult::Intercept(Action::WorkspaceStep(1)),
+                                    _ => {}
+                                }
+                            }
                             let action = match handle.modified_sym().raw() {
                                 keysyms::KEY_Return | keysyms::KEY_KP_Enter => Some(Action::Terminal),
                                 keysyms::KEY_Escape => Some(Action::Quit),
@@ -158,6 +173,13 @@ impl Fde {
             Action::Cycle => self.cycle_windows(),
             Action::Restore => self.restore_window(),
             Action::Lock => crate::shell::start_sibling("fde-lock"),
+            Action::Workspace(n) => self.switch_workspace(n),
+            Action::WorkspaceStep(d) => self.switch_workspace_by(d),
+            Action::MoveToWorkspace(n) => {
+                if let Some(w) = self.space.elements().last().cloned() {
+                    self.move_window_to_workspace(&w, n);
+                }
+            }
             Action::Snap(side) => {
                 if let Some(w) = self.space.elements().last().cloned() {
                     self.snap_window(&w, side);

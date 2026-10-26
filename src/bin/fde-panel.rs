@@ -440,6 +440,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut text = TextRenderer::default();
     let mut shown = String::new();
     let mut shown_hover = false;
+    let mut shown_ws: Option<(usize, usize)> = None;
     let mut shown_scale = 1;
     let mut last_clock = Instant::now() - Duration::from_secs(60);
     let mut current_clock = String::new();
@@ -470,6 +471,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        let ws = fde::workspaces::read_workspace_state();
+        if ws != shown_ws {
+            dirty = true;
+        }
         if app.size != size || app.hover != shown_hover || current_clock != shown || app.scale.current() != shown_scale {
             dirty = true;
         }
@@ -480,7 +485,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             size = app.size;
             let tasks: Vec<panel::Task> = app.toplevels.iter().map(|t| t.task.clone()).collect();
             let s = app.scale.current();
-            let rgba = panel::draw(&mut text, size.0 * s, size.1 * s, s, app.hover, &current_clock, &tasks);
+            let mut rgba = panel::draw(&mut text, size.0 * s, size.1 * s, s, app.hover, &current_clock, &tasks);
+            shown_ws = ws;
+            if let Some((cur, count)) = ws {
+                panel::draw_workspaces(&mut rgba, size.0 * s, size.1 * s, s, cur, count);
+            }
             attach(&shm, &qh, &surface, &mut file, rgba, (size.0 * s, size.1 * s), s)?;
             shown_scale = s;
             // tell the compositor where each window's button is: minimizing shrinks towards it
@@ -584,7 +593,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         queue.flush()?;
         if let Some(guard) = queue.prepare_read() {
             let mut fds = [libc::pollfd { fd: guard.connection_fd().as_raw_fd_(), events: libc::POLLIN, revents: 0 }];
-            let n = unsafe { libc::poll(fds.as_mut_ptr(), 1, 5000) };
+            let n = unsafe { libc::poll(fds.as_mut_ptr(), 1, 500) };
             if n > 0 {
                 let _ = guard.read();
             }

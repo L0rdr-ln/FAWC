@@ -29,6 +29,8 @@ pub struct WinInfo {
     /// where the window was before it went fullscreen (set while it is fullscreen)
     pub fullscreen: Option<Rectangle<i32, Logical>>,
     pub minimized: bool,
+    /// the workspace the window lives on (0 = the first)
+    pub workspace: usize,
     /// when the window appeared, for the opening animation
     pub opened: Option<std::time::Instant>,
     /// the window is shrinking into the task bar since this moment
@@ -98,6 +100,11 @@ pub struct Fde {
     pub xwayland_shell_state: smithay::wayland::xwayland_shell::XWaylandShellState,
     pub screencopy: crate::screencopy::Screencopy,
     pub wobbles: Vec<(Window, crate::wobble::Wobble)>,
+    /// the workspace being shown, and windows on the others (taken off the screen)
+    pub workspace: usize,
+    pub parked: Vec<Window>,
+    /// "Workspace 2", shown for a moment after a switch
+    pub hud: Option<(std::time::Instant, String)>,
     pub wobble_time: Instant,
     pub viewporter_state: smithay::wayland::viewporter::ViewporterState,
     pub fractional_scale_state: smithay::wayland::fractional_scale::FractionalScaleManagerState,
@@ -279,6 +286,9 @@ impl Fde {
             xwayland_shell_state,
             screencopy: Default::default(),
             wobbles: Vec::new(),
+            workspace: 0,
+            parked: Vec::new(),
+            hud: None,
             wobble_time: Instant::now(),
             viewporter_state,
             fractional_scale_state,

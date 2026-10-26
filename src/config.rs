@@ -107,11 +107,19 @@ impl Default for Shell {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Session {
     /// lock after this many idle seconds; 0 = never
     pub idle_lock_seconds: u32,
+    /// how many workspaces (virtual desktops), 1 .. 9
+    pub workspaces: u32,
+}
+
+impl Default for Session {
+    fn default() -> Self {
+        Session { idle_lock_seconds: 0, workspaces: 4 }
+    }
 }
 
 /// One monitor, by connector name (`DP-1`, `HDMI-A-1`, `eDP-1`; `fde-0` for the nested window).
@@ -220,6 +228,9 @@ impl Config {
         }
         if !(1..=6).contains(&self.appearance.blur) {
             return Err("appearance.blur must be between 1 and 6".into());
+        }
+        if !(1..=9).contains(&self.session.workspaces) {
+            return Err("session.workspaces must be between 1 and 9".into());
         }
         for (name, o) in &self.outputs {
             if !(0.5..=4.0).contains(&o.scale) {

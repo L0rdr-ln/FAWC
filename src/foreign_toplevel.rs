@@ -195,7 +195,8 @@ impl Fde {
         if self.foreign_toplevels.managers.is_empty() {
             return;
         }
-        let windows: Vec<Window> = self.space.elements().chain(self.minimized.iter()).cloned().collect();
+        // the task bar shows the windows of the workspace being shown
+        let windows: Vec<Window> = self.space.elements().chain(self.minimized.iter()).filter(|w| self.on_current_workspace(w)).cloned().collect();
         let snaps: Vec<(WlSurface, Snapshot)> = windows.iter().filter_map(|w| snapshot(self, w)).collect();
         let dh = self.display_handle.clone();
         for m in &mut self.foreign_toplevels.managers {

@@ -91,6 +91,7 @@ impl Fde {
         if let Some(w) = self.x11_window(surface) {
             self.space.unmap_elem(&w);
             self.minimized.retain(|m| m != &w);
+            self.parked.retain(|m| m != &w);
             self.wobbles.retain(|(m, _)| m != &w);
             self.focus_top_window();
             self.sync_foreign_toplevels();

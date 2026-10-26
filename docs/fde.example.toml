@@ -35,6 +35,7 @@ panel = true           # start the task bar with the session
 autostart = []         # e.g. ["nm-applet", "foot"]
 
 [session]
+workspaces = 4         # virtual desktops, 1 .. 9
 idle_lock_seconds = 0  # lock after this many idle seconds; 0 = never
 
 # One block per monitor, named like the connector (see the log line "monitor DP-1 (...)").
