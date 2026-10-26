@@ -1,5 +1,4 @@
-mod demo;
-mod glass;
+use fawc::{backend_winit, demo, glass};
 
 use smithay::utils::Rectangle;
 
@@ -28,8 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("wrote {out}");
             Ok(())
         }
+        Some("winit") | None => backend_winit::run(),
         _ => {
-            eprintln!("usage: fawc glass-demo [out.png]");
+            eprintln!("usage: fawc [winit]            run nested in a window\n       fawc glass-demo [out.png]");
             std::process::exit(2);
         }
     }

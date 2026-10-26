@@ -65,6 +65,12 @@ uniform vec4 tint_client;   // tint over the client area
 uniform float gloss;        // 0..1
 uniform float highlight;    // 0..1 light line inside the border
 uniform float focus;        // 0..1
+uniform float orb_size;     // button diameter in pixels (0 = none)
+uniform float orb_gap;
+uniform float orb_margin;
+uniform vec3 orb_close;
+uniform vec3 orb_max;
+uniform vec3 orb_min;
 
 float rounded_box(vec2 p, vec2 half_size, float r) {
     vec2 q = abs(p) - half_size + vec2(r);
@@ -94,6 +100,30 @@ void main() {
         float edge = 0.40 + 0.22 * smoothstep(0.0, 1.0, px.x / size.x) - 0.12 * sin(px.x / size.x * 3.14159);
         float band = (1.0 - smoothstep(edge - 0.06, edge + 0.02, t)) * (1.0 - t / max(edge, 0.01) * 0.82);
         rgb = mix(rgb, vec3(1.0), clamp(band, 0.0, 1.0) * gloss * (0.35 + 0.65 * focus));
+    }
+    // round glass buttons at the right of the title bar: close, maximize, minimize (right to left)
+    if (orb_size > 0.0) {
+        for (int i = 0; i < 3; i++) {
+            vec3 c = i == 0 ? orb_close : (i == 1 ? orb_max : orb_min);
+            vec2 center = vec2(size.x - border - orb_margin - orb_size * 0.5 - float(i) * (orb_size + orb_gap),
+                               border + titlebar * 0.5);
+            vec2 o = px - center;
+            float r = orb_size * 0.5;
+            float od = length(o) - r;
+            float orb_cover = clamp(0.5 - od, 0.0, 1.0);
+            if (orb_cover > 0.0) {
+                vec2 lp = (o - vec2(-0.3, -0.45) * r) / r;      // light from the upper left
+                float lit = clamp(1.0 - length(lp) * 0.85, 0.0, 1.0);
+                vec3 body = mix(c * 0.62, c, smoothstep(0.0, 0.55, lit));
+                body = mix(body, mix(c, vec3(1.0), 0.55), smoothstep(0.55, 1.0, lit));
+                body = mix(body, vec3(0.5), 1.0 - focus * 0.85);   // dimmed when the window is not focused
+                float glint = smoothstep(0.0, 1.0, 1.0 - length((o - vec2(0.0, -r * 0.42)) / vec2(r * 0.72, r * 0.42)));
+                body = mix(body, vec3(1.0), glint * 0.75);
+                float orb_rim = smoothstep(1.2, 0.0, abs(od + 0.5));
+                body = mix(body, vec3(0.0), orb_rim * 0.35);
+                rgb = mix(rgb, body, orb_cover);
+            }
+        }
     }
     // light line just inside the border and a dark hairline at the very edge
     float inner = smoothstep(1.2, 0.0, abs(d + border - 0.5));

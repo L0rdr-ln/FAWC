@@ -23,6 +23,14 @@ pub struct GlassStyle {
     pub gloss: f32,
     pub highlight: f32,
     pub focus: f32,
+    /// buttons: diameter, gap between them, distance from the right edge, colours (close,
+    /// maximize, minimize)
+    pub orb_size: f32,
+    pub orb_gap: f32,
+    pub orb_margin: f32,
+    pub orb_close: [f32; 3],
+    pub orb_max: [f32; 3],
+    pub orb_min: [f32; 3],
     /// blur: number of down/up levels (more = blurrier) and the offset multiplier of a pass
     pub blur_levels: usize,
 }
@@ -38,6 +46,12 @@ impl Default for GlassStyle {
             gloss: 0.8,
             highlight: 0.9,
             focus: 1.0,
+            orb_size: 17.0,
+            orb_gap: 7.0,
+            orb_margin: 8.0,
+            orb_close: [0.90, 0.31, 0.18],
+            orb_max: [0.33, 0.73, 0.29],
+            orb_min: [0.24, 0.61, 0.88],
             blur_levels: 3,
         }
     }
@@ -69,6 +83,12 @@ impl Glass {
             UniformName::new("gloss", UniformType::_1f),
             UniformName::new("highlight", UniformType::_1f),
             UniformName::new("focus", UniformType::_1f),
+            UniformName::new("orb_size", UniformType::_1f),
+            UniformName::new("orb_gap", UniformType::_1f),
+            UniformName::new("orb_margin", UniformType::_1f),
+            UniformName::new("orb_close", UniformType::_3f),
+            UniformName::new("orb_max", UniformType::_3f),
+            UniformName::new("orb_min", UniformType::_3f),
         ];
         let clip_uniforms = [
             UniformName::new("size", UniformType::_2f),
@@ -197,6 +217,12 @@ impl Glass {
                 Uniform::new("gloss", style.gloss),
                 Uniform::new("highlight", style.highlight),
                 Uniform::new("focus", style.focus),
+                Uniform::new("orb_size", style.orb_size),
+                Uniform::new("orb_gap", style.orb_gap),
+                Uniform::new("orb_margin", style.orb_margin),
+                Uniform::new("orb_close", (style.orb_close[0], style.orb_close[1], style.orb_close[2])),
+                Uniform::new("orb_max", (style.orb_max[0], style.orb_max[1], style.orb_max[2])),
+                Uniform::new("orb_min", (style.orb_min[0], style.orb_min[1], style.orb_min[2])),
             ],
         )
     }
@@ -232,6 +258,12 @@ impl Glass {
                 Uniform::new("gloss", style.gloss),
                 Uniform::new("highlight", style.highlight),
                 Uniform::new("focus", style.focus),
+                Uniform::new("orb_size", style.orb_size),
+                Uniform::new("orb_gap", style.orb_gap),
+                Uniform::new("orb_margin", style.orb_margin),
+                Uniform::new("orb_close", (style.orb_close[0], style.orb_close[1], style.orb_close[2])),
+                Uniform::new("orb_max", (style.orb_max[0], style.orb_max[1], style.orb_max[2])),
+                Uniform::new("orb_min", (style.orb_min[0], style.orb_min[1], style.orb_min[2])),
             ],
         )
     }

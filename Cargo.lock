@@ -432,8 +432,11 @@ version = "0.1.0"
 dependencies = [
  "png",
  "smithay",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]
