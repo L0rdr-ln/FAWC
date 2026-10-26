@@ -40,7 +40,10 @@ the client. Clients can ask for the same blur behind their own translucent areas
 any of them, the pointer moves between them, maximize fills the monitor the window is on, the
 lock screen covers every monitor. Tested with virtual outputs (two monitors; a 2x monitor draws
 the frame, title and client at double size). The task bar and notifications are on the first
-monitor only.
+monitor only. On a scaled monitor the task bar, lock screen and notifications are still drawn at
+one pixel per logical pixel and stretched (a little soft); windows, frames and titles are sharp.
+
+![FAWC at scale 2 (nested)](docs/hidpi.png)
 
 **Not verified:** the DRM/KMS backend (real console / GPU) has been written and compiled but never
 run on hardware, so multi-monitor output on real GPUs is untested too. Not done: plugging a monitor
