@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=FDE
+Comment=Frutiger Desktop Environment
+Exec=start-fde
+Type=Application
+DesktopNames=FDE

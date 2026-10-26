@@ -29,6 +29,7 @@ repeat_rate = 25
 repeat_delay = 600
 
 [shell]
+polkit_agent = true    # start a graphical password prompt for programs that need admin rights (if one is installed)
 terminal = "foot"
 launcher = ""          # what the start orb runs when no applications are found
 panel = true           # start the task bar with the session

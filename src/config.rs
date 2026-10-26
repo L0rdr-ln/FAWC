@@ -99,11 +99,13 @@ pub struct Shell {
     pub panel: bool,
     /// programs (shell command lines) started with the session
     pub autostart: Vec<String>,
+    /// start a graphical password prompt for programs that need administrator rights (polkit), if one is installed
+    pub polkit_agent: bool,
 }
 
 impl Default for Shell {
     fn default() -> Self {
-        Shell { terminal: "foot".into(), launcher: String::new(), panel: true, autostart: Vec::new() }
+        Shell { terminal: "foot".into(), launcher: String::new(), panel: true, autostart: Vec::new(), polkit_agent: true }
     }
 }
 

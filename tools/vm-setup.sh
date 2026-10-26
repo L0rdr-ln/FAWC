@@ -17,7 +17,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential pkg-config curl git \
     libudev-dev libseat-dev libinput-dev libgbm-dev libegl-dev libgles-dev \
     libxkbcommon-dev libxkbcommon-x11-0 libdrm-dev libwayland-dev \
-    libgl1-mesa-dri libegl1-mesa-dev mesa-utils seatd foot adwaita-icon-theme fonts-dejavu-core dbus dbus-user-session libglib2.0-bin libgtk-4-dev libasound2-dev pipewire pipewire-pulse pipewire-alsa wireplumber xwayland
+    libgl1-mesa-dri libegl1-mesa-dev mesa-utils seatd foot adwaita-icon-theme fonts-dejavu-core dbus dbus-user-session libglib2.0-bin libgtk-4-dev libasound2-dev pipewire pipewire-pulse pipewire-alsa wireplumber xwayland xclip xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk policykit-1-gnome grim
 
 if ! command -v cargo >/dev/null; then
     say "installing Rust"
@@ -41,6 +41,10 @@ ENTRY
 
 say "checking the glass renderer on software GL"
 LIBGL_ALWAYS_SOFTWARE=1 cargo test --release 2>&1 | tail -5 || echo "(some tests failed, see above)"
+
+say "telling the desktop portals to use FDE's screen capture for screen sharing"
+mkdir -p "$HOME/.config/xdg-desktop-portal"
+cp "$ROOT/data/fde-portals.conf" "$HOME/.config/xdg-desktop-portal/fde-portals.conf"
 
 say "writing the launcher ~/start-fde"
 cat >"$HOME/start-fde" <<LAUNCH

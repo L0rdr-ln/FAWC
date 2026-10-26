@@ -22,9 +22,53 @@ pub fn start_panel(config: &crate::config::Config, output: &str) {
     }
 }
 
+/// Where the common polkit authentication agents live.
+pub const POLKIT_AGENTS: &[&str] = &[
+    "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1",
+    "/usr/libexec/polkit-gnome-authentication-agent-1",
+    "/usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1",
+    "/usr/libexec/polkit-kde-authentication-agent-1",
+    "/usr/lib/polkit-kde-authentication-agent-1",
+    "/usr/libexec/polkit-mate-authentication-agent-1",
+    "/usr/bin/lxqt-policykit-agent",
+    "/usr/bin/lxpolkit",
+];
+
+/// The first of `candidates` that exists.
+pub fn find_polkit_agent(candidates: &[&str]) -> Option<std::path::PathBuf> {
+    candidates.iter().map(std::path::PathBuf::from).find(|p| p.exists())
+}
+
+/// Tell the programs of the session what desktop this is, and tell the session bus (so that
+/// services it starts, like the screen-sharing portal, find our display).
+pub fn export_environment() {
+    std::env::set_var("XDG_CURRENT_DESKTOP", "FDE");
+    std::env::set_var("XDG_SESSION_DESKTOP", "fde");
+    std::env::set_var("XDG_SESSION_TYPE", "wayland");
+    if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
+        return;
+    }
+    let vars = ["WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "XDG_SESSION_TYPE"];
+    let ok = Command::new("dbus-update-activation-environment").arg("--systemd").args(vars).status().map(|s| s.success()).unwrap_or(false);
+    if !ok {
+        let _ = Command::new("dbus-update-activation-environment").args(vars).status();
+    }
+}
+
 /// The rest of the session: the notification daemon and the autostart programs.
 /// `FDE_NO_NOTIFY=1` skips the daemon; `FDE_AUTOSTART` may name one more program.
 pub fn start_other_clients(config: &crate::config::Config) {
+    export_environment();
+    if config.shell.polkit_agent && std::env::var_os("FDE_NO_POLKIT").is_none() {
+        match find_polkit_agent(POLKIT_AGENTS) {
+            Some(agent) => {
+                if let Err(e) = Command::new(&agent).spawn() {
+                    tracing::warn!("cannot start {}: {e}", agent.display());
+                }
+            }
+            None => tracing::info!("no polkit agent installed: programs that need administrator rights cannot ask for a password"),
+        }
+    }
     // the notification daemon needs the session bus
     if std::env::var_os("FDE_NO_NOTIFY").is_none() && std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some() {
         start_sibling("fde-notify");
@@ -85,6 +129,16 @@ pub fn termination_requested() -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_first_installed_polkit_agent_is_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let second = dir.path().join("second");
+        std::fs::write(&second, "").unwrap();
+        let (a, b) = (dir.path().join("missing"), second.clone());
+        assert_eq!(super::find_polkit_agent(&[a.to_str().unwrap(), b.to_str().unwrap()]), Some(second));
+        assert_eq!(super::find_polkit_agent(&[dir.path().join("none").to_str().unwrap()]), None);
+    }
+
     #[test]
     fn a_terminate_signal_asks_the_session_to_end_instead_of_killing_it() {
         super::watch_signals();
