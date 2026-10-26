@@ -131,7 +131,7 @@ pub struct Image {
     pub rgba: Vec<u8>,
 }
 
-/// Read a PNG or a JPEG file (found out from the first bytes, not the name) as RGBA.
+/// Read a PNG, JPEG or WebP file (found out from the first bytes, not the name) as RGBA.
 pub fn load_image(path: &std::path::Path) -> Result<Image, String> {
     let head = {
         use std::io::Read;
@@ -142,9 +142,31 @@ pub fn load_image(path: &std::path::Path) -> Result<Image, String> {
     };
     if head.starts_with(&[0xff, 0xd8]) {
         load_jpeg(path)
+    } else if head.starts_with(b"RIFF") {
+        load_webp(path)
     } else {
         load_png(path)
     }
+}
+
+/// Read a WebP (lossy or lossless, with or without transparency) as RGBA.
+pub fn load_webp(path: &std::path::Path) -> Result<Image, String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut dec = image_webp::WebPDecoder::new(std::io::BufReader::new(file)).map_err(|e| format!("{}: {e}", path.display()))?;
+    let (w, h) = dec.dimensions();
+    let has_alpha = dec.has_alpha();
+    let size = dec.output_buffer_size().ok_or_else(|| format!("{}: picture too large", path.display()))?;
+    let mut data = vec![0u8; size];
+    dec.read_image(&mut data).map_err(|e| format!("{}: {e}", path.display()))?;
+    let rgba: Vec<u8> = if has_alpha {
+        data
+    } else {
+        data.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect()
+    };
+    if w == 0 || h == 0 {
+        return Err(format!("{}: empty picture", path.display()));
+    }
+    Ok(Image { width: w as i32, height: h as i32, rgba })
 }
 
 /// Read a JPEG (colour or grey) as RGBA.
@@ -301,6 +323,19 @@ mod tests {
         enc.write_header().unwrap().write_image_data(&[1, 2, 3]).unwrap();
         assert_eq!(load_image(&png_path).unwrap().rgba, vec![1, 2, 3, 255]);
         assert!(load_image(&dir.path().join("nothing")).is_err());
+    }
+
+    #[test]
+    fn a_webp_is_read_by_its_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pic.jpg"); // a lie of a name
+        let rgb: Vec<u8> = (0..4 * 4).flat_map(|_| [30u8, 160, 60]).collect();
+        let mut out = Vec::new();
+        image_webp::WebPEncoder::new(&mut out).encode(&rgb, 4, 4, image_webp::ColorType::Rgb8).unwrap();
+        std::fs::write(&path, out).unwrap();
+        let img = load_image(&path).unwrap();
+        assert_eq!((img.width, img.height), (4, 4));
+        assert_eq!(&img.rgba[..4], &[30, 160, 60, 255], "a lossless picture comes back exactly");
     }
 
     #[test]

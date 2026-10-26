@@ -26,8 +26,8 @@ curl -fL --retry 2 -o "$tmp" "$url"
 # it must be a picture we can read: JPEG or PNG, found by the first bytes
 magic="$(head -c 4 "$tmp" | od -An -tx1 | tr -d ' \n')"
 case "$magic" in
-    ffd8*|89504e47) ;;
-    *) echo "that is not a JPEG or PNG picture (the first bytes are $magic)"; exit 1;;
+    ffd8*|89504e47|52494646) ;;   # JPEG, PNG, WebP (RIFF)
+    *) echo "that is not a JPEG, PNG or WebP picture (the first bytes are $magic)"; exit 1;;
 esac
 mv "$tmp" "$file"
 trap - EXIT

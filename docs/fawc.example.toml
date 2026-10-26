@@ -11,7 +11,7 @@ cursor_theme = ""      # an XCursor theme (a folder with cursors/ in ~/.icons, /
 cursor_size = 0        # pixels at scale 1; 0 = $XCURSOR_SIZE, else 24
 
 [wallpaper]
-path = ""              # a PNG or JPEG file; empty = the built-in sky
+path = ""              # a PNG, JPEG or WebP file; empty = the built-in sky
 mode = "fill"          # fill (cover, crop) | fit (all of it, black bars) | stretch | center | tile
 
 [input]

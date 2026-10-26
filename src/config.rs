@@ -37,7 +37,7 @@ impl Default for Appearance {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Wallpaper {
-    /// a PNG or JPEG file; empty = the built-in sky
+    /// a PNG, JPEG or WebP file; empty = the built-in sky
     pub path: String,
     /// fill | fit | stretch | center | tile
     pub mode: String,

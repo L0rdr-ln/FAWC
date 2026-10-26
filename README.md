@@ -32,7 +32,7 @@ the client. Clients can ask for the same blur behind their own translucent areas
 | **Task bar** `fawc-panel` | glass strip with the start orb, a button per open window (click to raise or minimize), clock; blurred behind |
 | **Start menu** | the installed applications from `.desktop` files with a search field: type to filter, Up/Down, Enter starts, Esc clears or closes; glass sheet, closes when the pointer leaves |
 | **Notifications** `fawc-notify` | the `org.freedesktop.Notifications` service on the session bus (what `notify-send` and every app talks to); glass bubbles at the top right, newest on top, expire on their timeout, critical ones stay, click to dismiss; started with the session when a D-Bus session bus exists |
-| **Settings** `fawc-settings` | GTK4 control panel with the FAWC look: accent colour, glass tint, blur, gloss, wallpaper (a PNG or JPEG, with fill / fit / stretch / center / tile), keyboard layout and repeat, terminal, task bar, idle lock. Every change is written to `fawc.toml` (comments kept, bad values refused) and the running desktop follows at once. Build it with `cargo build -p fawc-settings` (needs `libgtk-4-dev`) |
+| **Settings** `fawc-settings` | GTK4 control panel with the FAWC look: accent colour, glass tint, blur, gloss, wallpaper (a PNG, JPEG or WebP, with fill / fit / stretch / center / tile), keyboard layout and repeat, terminal, task bar, idle lock. Every change is written to `fawc.toml` (comments kept, bad values refused) and the running desktop follows at once. Build it with `cargo build -p fawc-settings` (needs `libgtk-4-dev`) |
 | **Lock screen** `fawc-lock` | `Alt+L`: a glass login card; the password is checked by PAM's `unix_chkpwd` |
 | **Tests** | pixel tests of the glass on a software GL, and end-to-end tests with real Wayland clients (including the real panel and lock programs); no display or GPU needed |
 
@@ -87,7 +87,7 @@ On a console FAWC uses the GPU directly (DRM/KMS, libseat, libinput). Please att
 
 ## Wallpapers
 
-Point `wallpaper.path` at any PNG or JPEG you like, or use the Wallpaper page in settings. To fetch
+Point `wallpaper.path` at any PNG, JPEG or WebP you like, or use the Wallpaper page in settings. To fetch
 one from the web: `tools/get-wallpaper.sh URL [fill|fit|stretch|center|tile]` downloads it to
 `~/.local/share/fawc/wallpapers/` and sets it. The repository itself contains no third-party
 pictures; `tools/vm-setup.sh` fetches one (change or skip it with `FAWC_WALLPAPER_URL`).

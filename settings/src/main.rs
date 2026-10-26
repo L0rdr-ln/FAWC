@@ -152,7 +152,7 @@ fn appearance_page(cfg: &Config, status: &Status) -> GBox {
 }
 
 fn wallpaper_page(cfg: &Config, status: &Status) -> GBox {
-    let (outer, body) = page("Wallpaper", "A PNG or JPEG picture for the desktop background. Leave it empty for the built-in sky.");
+    let (outer, body) = page("Wallpaper", "A PNG, JPEG or WebP picture for the desktop background. Leave it empty for the built-in sky.");
     let path = gtk4::Entry::new();
     path.set_text(&cfg.wallpaper.path);
     path.set_placeholder_text(Some("built-in sky"));
@@ -178,9 +178,10 @@ fn wallpaper_page(cfg: &Config, status: &Status) -> GBox {
         let dialog = gtk4::FileDialog::new();
         dialog.set_title("Choose a wallpaper");
         let filter = gtk4::FileFilter::new();
-        filter.set_name(Some("Pictures (PNG, JPEG)"));
+        filter.set_name(Some("Pictures (PNG, JPEG, WebP)"));
         filter.add_mime_type("image/png");
         filter.add_mime_type("image/jpeg");
+        filter.add_mime_type("image/webp");
         let filters = gtk4::gio::ListStore::new::<gtk4::FileFilter>();
         filters.append(&filter);
         dialog.set_filters(Some(&filters));
