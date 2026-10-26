@@ -96,7 +96,11 @@ pub struct Fawc {
     pub text: crate::text::TextRenderer,
     /// draw our own mouse cursor (backends without a host cursor)
     pub draw_cursor: bool,
-    pub cursor_texture: Option<smithay::backend::renderer::gles::GlesTexture>,
+    /// the cursor theme and the textures made from it, by name and scale
+    pub cursor_theme: crate::cursortheme::CursorTheme,
+    pub cursor_textures: std::collections::HashMap<String, (smithay::backend::renderer::gles::GlesTexture, crate::cursortheme::CursorImage)>,
+    /// the cursor the compositor wants where no client has the pointer (borders, title bars)
+    pub hover_cursor: &'static str,
     /// the login session, on the DRM backend (virtual terminal switching)
     pub session: Option<smithay::backend::session::libseat::LibSeatSession>,
     /// rendered window titles, by surface
@@ -159,6 +163,7 @@ impl Fawc {
         let mut style = GlassStyle::default();
         config.apply_style(&mut style);
         seat.add_pointer();
+        let cursor_theme = crate::cursortheme::CursorTheme::load(&config.appearance.cursor_theme, config.appearance.cursor_size);
 
         let output = Output::new(
             name.to_string(),
@@ -221,7 +226,9 @@ impl Fawc {
             wallpapers: std::collections::HashMap::new(),
             text: crate::text::TextRenderer::default(),
             draw_cursor: false,
-            cursor_texture: None,
+            cursor_theme,
+            cursor_textures: std::collections::HashMap::new(),
+            hover_cursor: "default",
             session: None,
             titles: std::collections::HashMap::new(),
         }
@@ -260,6 +267,10 @@ impl Fawc {
                     tracing::warn!("cannot set the keyboard layout: {e:?}");
                 }
             }
+        }
+        if new.appearance.cursor_theme != self.config.appearance.cursor_theme || new.appearance.cursor_size != self.config.appearance.cursor_size {
+            self.cursor_theme = crate::cursortheme::CursorTheme::load(&new.appearance.cursor_theme, new.appearance.cursor_size);
+            self.cursor_textures.clear();
         }
         self.config = new;
     }

@@ -393,33 +393,73 @@ impl Fawc {
             && p.x < (out_rect.loc.x + out_rect.size.w) as f64
             && p.y < (out_rect.loc.y + out_rect.size.h) as f64;
         if self.draw_cursor && on_this {
-            if self.cursor_texture.is_none() {
-                self.cursor_texture = Some(renderer.import_memory(
-                    &crate::cursor::arrow(),
-                    Fourcc::Abgr8888,
-                    Size::<i32, BufferCoord>::from((crate::cursor::SIZE, crate::cursor::SIZE)),
-                    false,
-                )?);
-            }
-            let tex = self.cursor_texture.as_ref().expect("cursor texture");
-            let loc = (sc((p.x - view.origin.x as f64) as i32, view.scale) - 1, sc((p.y - view.origin.y as f64) as i32, view.scale) - 1);
-            let cursor_px = sc(crate::cursor::SIZE, view.scale.max(1.0));
-            let dest = Rectangle::<i32, Physical>::new(loc.into(), (cursor_px, cursor_px).into());
-            let mut target = renderer.bind(scene)?;
-            let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
-            frame.render_texture_from_to(
-                tex,
-                Rectangle::from_size((crate::cursor::SIZE as f64, crate::cursor::SIZE as f64).into()),
-                dest,
-                &[Rectangle::from_size(dest.size)],
-                &[],
-                Transform::Normal,
-                1.0,
-                None,
-                &[],
-            )?;
-            let _ = frame.finish()?;
+            self.draw_cursor_on(renderer, scene, size, view)?;
         }
+        Ok(())
+    }
+
+    /// The cursor: what the client under the pointer asked for (a name from the theme, a picture
+    /// of its own, or none), else what the compositor wants (resize arrows on borders).
+    fn draw_cursor_on(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        scene: &mut GlesTexture,
+        size: Size<i32, Physical>,
+        view: View,
+    ) -> Result<(), GlesError> {
+        use smithay::input::pointer::CursorImageStatus;
+        let full = Rectangle::<i32, Physical>::from_size(size);
+        let p = self.pointer_location;
+        let pos = (sc((p.x - view.origin.x as f64) as i32, view.scale), sc((p.y - view.origin.y as f64) as i32, view.scale));
+        let client_has_pointer = self.seat.get_pointer().map(|ptr| ptr.current_focus().is_some()).unwrap_or(false);
+        let status = if client_has_pointer { self.cursor_status.clone() } else { CursorImageStatus::Named(smithay::input::pointer::CursorIcon::Default) };
+        let name: String = match &status {
+            CursorImageStatus::Hidden => return Ok(()),
+            CursorImageStatus::Surface(surface) => {
+                // a picture the client drew itself, with its hot spot
+                let hot = with_states(surface, |s| {
+                    s.data_map
+                        .get::<smithay::input::pointer::CursorImageSurfaceData>()
+                        .map(|d| d.lock().unwrap().hotspot)
+                        .unwrap_or_default()
+                });
+                let loc: smithay::utils::Point<i32, Physical> = (pos.0 - sc(hot.x, view.scale), pos.1 - sc(hot.y, view.scale)).into();
+                let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                    render_elements_from_surface_tree(renderer, surface, loc, view.scale, 1.0, Kind::Cursor);
+                let mut target = renderer.bind(scene)?;
+                let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                draw_render_elements(&mut frame, view.scale, &elements, &[full])?;
+                let _ = frame.finish()?;
+                return Ok(());
+            }
+            CursorImageStatus::Named(icon) => {
+                // the client asked for a name; where the compositor owns the pointer, its choice
+                if client_has_pointer { icon.name().to_string() } else { self.hover_cursor.to_string() }
+            }
+        };
+        let scale_px = view.scale.round().max(1.0) as u32;
+        let key = format!("{name}@{scale_px}");
+        if !self.cursor_textures.contains_key(&key) {
+            let img = self.cursor_theme.image(&name, scale_px);
+            let tex = renderer.import_memory(&img.rgba, Fourcc::Abgr8888, Size::<i32, BufferCoord>::from((img.width, img.height)), false)?;
+            self.cursor_textures.insert(key.clone(), (tex, img));
+        }
+        let (tex, img) = self.cursor_textures.get(&key).expect("cursor texture");
+        let dest = Rectangle::<i32, Physical>::new((pos.0 - img.xhot, pos.1 - img.yhot).into(), (img.width, img.height).into());
+        let mut target = renderer.bind(scene)?;
+        let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+        frame.render_texture_from_to(
+            tex,
+            Rectangle::from_size((img.width as f64, img.height as f64).into()),
+            dest,
+            &[Rectangle::from_size(dest.size)],
+            &[],
+            Transform::Normal,
+            1.0,
+            None,
+            &[],
+        )?;
+        let _ = frame.finish()?;
         Ok(())
     }
 }

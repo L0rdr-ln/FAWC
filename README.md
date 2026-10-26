@@ -28,6 +28,7 @@ the client. Clients can ask for the same blur behind their own translucent areas
 | | |
 |---|---|
 | **Compositor** | xdg-shell windows with server-side glass frames, move / resize / maximize / minimize, focus, popups, keyboard and pointer; layer-shell (panels, launchers, wallpapers) with exclusive zones; `ext-background-effect-v1`; `ext-session-lock-v1`; `wlr-foreign-toplevel-management`; nested (winit) backend and a DRM/KMS backend |
+| **Cursors** | the mouse cursor comes from your XCursor theme (`appearance.cursor_theme`/`cursor_size`, or `$XCURSOR_THEME`), at the monitor's scale; clients can ask for named cursors (text beam, hand ...) or draw their own; resize arrows on window borders. The nested window uses the host's cursor |
 | **Task bar** `fawc-panel` | glass strip with the start orb, a button per open window (click to raise or minimize), clock; blurred behind |
 | **Start menu** | the installed applications from `.desktop` files with a search field: type to filter, Up/Down, Enter starts, Esc clears or closes; glass sheet, closes when the pointer leaves |
 | **Notifications** `fawc-notify` | the `org.freedesktop.Notifications` service on the session bus (what `notify-send` and every app talks to); glass bubbles at the top right, newest on top, expire on their timeout, critical ones stay, click to dismiss; started with the session when a D-Bus session bus exists |
@@ -49,7 +50,7 @@ everything is sharp.
 ![FAWC at scale 2 (nested)](docs/hidpi.png)
 
 **Not verified:** the DRM/KMS backend (real console / GPU) has been written and compiled but never
-run on hardware, so multi-monitor output on real GPUs is untested too. Not done: cursor themes, GTK/Qt apps asking for blur.
+run on hardware, so multi-monitor output on real GPUs is untested too. Not done: GTK/Qt apps asking for blur.
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Try it

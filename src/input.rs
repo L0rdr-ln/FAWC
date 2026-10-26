@@ -27,6 +27,16 @@ enum Action {
     SwitchVt(i32),
 }
 
+/// The cursor for resizing at `e`.
+pub fn edges_cursor(e: &Edges) -> &'static str {
+    match (e.left, e.right, e.top, e.bottom) {
+        (true, _, true, _) | (_, true, _, true) => "nwse-resize",
+        (_, true, true, _) | (true, _, _, true) => "nesw-resize",
+        (true, _, _, _) | (_, true, _, _) => "ew-resize",
+        _ => "ns-resize",
+    }
+}
+
 impl Fawc {
     pub fn process_input_event<B: InputBackend>(&mut self, event: InputEvent<B>) {
         self.note_activity();
@@ -207,6 +217,14 @@ impl Fawc {
                     .map(|(_, s, loc)| (s, loc.to_f64())),
             }
         };
+        // where no client has the pointer, the compositor chooses the cursor: resize arrows on
+        // the borders, the ordinary arrow elsewhere
+        if focus.is_none() {
+            self.hover_cursor = match &under {
+                Some((_, _, Hit::Border(e))) => edges_cursor(e),
+                _ => "default",
+            };
+        }
         ptr.motion(self, focus, &MotionEvent { location: pos, serial, time });
         ptr.frame(self);
     }
@@ -279,6 +297,7 @@ impl Fawc {
             return;
         }
         let grab_offset = self.pointer_location - client.loc.to_f64();
+        self.hover_cursor = "grabbing";
         self.drag = Some(Drag::Move { window: window.clone(), grab_offset });
     }
 

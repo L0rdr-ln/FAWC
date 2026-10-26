@@ -1076,3 +1076,79 @@ fn every_monitor_gets_its_own_task_bar_and_unplugging_one_closes_its_bar() {
     assert!(exited, "the bar of the removed monitor closes");
     assert!(still_running, "the other bar keeps running");
 }
+
+/// A one-image XCursor file of `size` x `size` in one colour (R, G, B, A).
+fn write_xcursor(path: &std::path::Path, size: u32, color: [u8; 4], hot: (u32, u32)) {
+    let mut out = Vec::new();
+    out.extend_from_slice(b"Xcur");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&0x10000u32.to_le_bytes());
+    out.extend_from_slice(&1u32.to_le_bytes());
+    out.extend_from_slice(&0xfffd0002u32.to_le_bytes());
+    out.extend_from_slice(&size.to_le_bytes());
+    out.extend_from_slice(&28u32.to_le_bytes());
+    for v in [36u32, 0xfffd0002, size, 1, size, size, hot.0, hot.1, 0] {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    for _ in 0..size * size {
+        out.extend_from_slice(&[color[2], color[1], color[0], color[3]]);
+    }
+    std::fs::write(path, out).unwrap();
+}
+
+#[test]
+fn the_cursor_comes_from_the_theme_and_turns_into_resize_arrows_on_a_border() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): cursor test skipped");
+            return;
+        }
+    };
+    // a theme: red arrow with its tip at the corner, blue double arrow centred
+    let cursors = dir.path().join("testtheme/cursors");
+    std::fs::create_dir_all(&cursors).unwrap();
+    write_xcursor(&cursors.join("default"), 24, [255, 0, 0, 255], (0, 0));
+    write_xcursor(&cursors.join("ew-resize"), 24, [0, 0, 255, 255], (12, 12));
+    std::env::set_var("XCURSOR_PATH", dir.path());
+    std::env::set_var("XCURSOR_THEME", "testtheme");
+    std::env::set_var("XCURSOR_SIZE", "24");
+
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    state.draw_cursor = true;
+    let socket = ListeningSocket::bind("fawc-e2e-cursor").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+
+    // on the bare desktop: the theme's arrow, tip at the pointer
+    hn.state.pointer_moved((600.0, 500.0).into(), 0);
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let px = grab_scene(&mut renderer, &mut scene);
+    let red = |x: i32, y: i32| {
+        let p = pixel(&px, w, x, y);
+        p[0] > 200 && p[1] < 60 && p[2] < 60
+    };
+    assert!(red(605, 505) && red(620, 520), "the red arrow from the theme at the pointer");
+    assert!(!red(595, 495) && !red(640, 540), "and only there");
+
+    // over the left border of a window: the resize cursor, centred on the pointer
+    open_window(&mut hn, dir.path(), "fawc-e2e-cursor", 200, 100);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    hn.state.pointer_moved(((g.loc.x - 2) as f64, (g.loc.y + 50) as f64).into(), 0);
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let px = grab_scene(&mut renderer, &mut scene);
+    let blue = |x: i32, y: i32| {
+        let p = pixel(&px, w, x, y);
+        p[2] > 200 && p[0] < 60 && p[1] < 60
+    };
+    let (cx, cy) = (g.loc.x - 2, g.loc.y + 50);
+    assert!(blue(cx, cy) && blue(cx + 10, cy - 10) && blue(cx - 10, cy + 10), "the blue double arrow centred on the pointer");
+}

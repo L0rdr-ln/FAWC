@@ -7,6 +7,7 @@ pub mod backend_winit;
 pub mod clientscale;
 pub mod config;
 pub mod cursor;
+pub mod cursortheme;
 pub mod demo;
 pub mod foreign_toplevel;
 pub mod glass;

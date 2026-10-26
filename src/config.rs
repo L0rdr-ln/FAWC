@@ -22,11 +22,15 @@ pub struct Appearance {
     /// the gloss band on the title bar, 0 .. 1
     pub gloss: f32,
     pub animations: bool,
+    /// the mouse cursor theme (a directory with `cursors/` in an icon path); empty = `$XCURSOR_THEME`
+    pub cursor_theme: String,
+    /// cursor size in pixels at scale 1; 0 = `$XCURSOR_SIZE`, else 24
+    pub cursor_size: u32,
 }
 
 impl Default for Appearance {
     fn default() -> Self {
-        Appearance { accent: "#4aa8ee".into(), transparency: 0.38, blur: 3, gloss: 0.8, animations: true }
+        Appearance { accent: "#4aa8ee".into(), transparency: 0.38, blur: 3, gloss: 0.8, animations: true, cursor_theme: String::new(), cursor_size: 0 }
     }
 }
 
@@ -175,6 +179,9 @@ impl Config {
             if o.x.is_some() != o.y.is_some() {
                 return Err(format!("outputs.{name}: x and y go together"));
             }
+        }
+        if self.appearance.cursor_size > 256 {
+            return Err("appearance.cursor_size must be at most 256".into());
         }
         if self.input.repeat_rate < 0 || self.input.repeat_delay < 0 {
             return Err("input.repeat_rate and input.repeat_delay must not be negative".into());
