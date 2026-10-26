@@ -1,6 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="FDE logo" height="128">
-  <img src="assets/mascot.svg" alt="Aero-chan, the mascot" height="128">
+  <img src="assets/mascot.svg" alt="Aero-chan, the FDE mascot" height="320">
 </p>
 
 # FDE: Frutiger Desktop Environment
