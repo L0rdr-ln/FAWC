@@ -85,7 +85,8 @@ fixed layout, they start instantly and they have no toolkit dependency.
    (appearance, input, shell, session sections; see `docs/fawc.example.toml`). Tests: merge
    rules, bad values, live reload applies a change and a broken edit changes nothing.
    Still to move over: wallpaper, outputs.
-2. Appearance + Wallpaper + Keyboard & mouse (only need the file; testable end-to-end:
+2. **Done (first version, in `settings/`):** Appearance, Keyboard, Desktop and Session pages; GTK4 with FAWC CSS; every control writes the file through `config::set`. Still to do: Wallpaper, pointer settings.
+   Original plan: Appearance + Wallpaper + Keyboard & mouse (only need the file; testable end-to-end:
    change the file, the pixels / input change).
 3. Displays (needs `wlr-output-management` in the compositor).
 4. Sound / Network / Power (D-Bus; tested against fake D-Bus services where possible).

@@ -240,3 +240,85 @@ mod tests {
         assert_eq!((style.blur_levels, style.gloss), (2, 0.1));
     }
 }
+
+/// Where the settings app writes: `$FAWC_CONFIG`, else the user's file.
+pub fn user_path() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("FAWC_CONFIG") {
+        return Some(PathBuf::from(p));
+    }
+    paths().into_iter().next_back()
+}
+
+/// A value for [`set`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Setting {
+    Str(String),
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+}
+
+/// Change keys of the file at `path` and save it, keeping everything else (comments, order,
+/// unknown keys). `changes` are `("section.key", value)`. The result must still be a valid
+/// configuration, or nothing is written. The file is replaced atomically, so the compositor
+/// never reads half of it.
+pub fn set(path: &std::path::Path, changes: &[(&str, Setting)]) -> Result<(), String> {
+    use toml_edit::{value, DocumentMut};
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let mut doc: DocumentMut = text.parse().map_err(|e| format!("{}: {e}", path.display()))?;
+    for (key, v) in changes {
+        let (section, name) = key.split_once('.').ok_or_else(|| format!("{key}: expected section.key"))?;
+        let mut item = match v {
+            Setting::Str(s) => value(s.as_str()),
+            Setting::Int(i) => value(*i),
+            Setting::Float(f) => value(*f),
+            Setting::Bool(b) => value(*b),
+        };
+        if !doc.contains_key(section) {
+            doc[section] = toml_edit::table();
+        }
+        // keep the comment that sits after the old value
+        if let (Some(old), Some(new)) = (doc[section].get(name).and_then(|i| i.as_value()), item.as_value_mut()) {
+            *new.decor_mut() = old.decor().clone();
+        }
+        doc[section][name] = item;
+    }
+    let new_text = doc.to_string();
+    // refuse to save something the compositor would reject
+    Config::parse(&new_text)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, new_text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod write_tests {
+    use super::*;
+
+    #[test]
+    fn set_keeps_comments_and_other_keys_and_refuses_bad_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("sub/fawc.toml");
+        // a new file, in a directory that does not exist yet
+        set(&f, &[("appearance.blur", Setting::Int(4))]).unwrap();
+        assert_eq!(Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap().appearance.blur, 4);
+
+        std::fs::write(&f, "# my theme\n[appearance]\nblur = 2 # soft\naccent = \"#112233\"\n\n[custom]\nthing = 1\n").unwrap();
+        set(&f, &[("appearance.blur", Setting::Int(5)), ("shell.terminal", Setting::Str("xterm".into())), ("shell.panel", Setting::Bool(false))]).unwrap();
+        let text = std::fs::read_to_string(&f).unwrap();
+        assert!(text.contains("# my theme") && text.contains("# soft"), "comments stay: {text}");
+        assert!(text.contains("[custom]") && text.contains("thing = 1"), "unknown keys stay");
+        let c = Config::parse(&text).unwrap();
+        assert_eq!((c.appearance.blur, c.appearance.accent.as_str(), c.shell.terminal.as_str(), c.shell.panel), (5, "#112233", "xterm", false));
+
+        // a value the compositor would reject is not written
+        let before = std::fs::read_to_string(&f).unwrap();
+        assert!(set(&f, &[("appearance.blur", Setting::Int(99))]).is_err());
+        assert!(set(&f, &[("appearance.accent", Setting::Str("red".into()))]).is_err());
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), before);
+    }
+}

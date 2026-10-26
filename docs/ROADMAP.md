@@ -29,7 +29,7 @@ possible; hardware and VM runs are noted as such.
 - [ ] S3c power menu, greeter (greetd), session entry, autostart, polkit agent
 
 ## Desktop suite
-- [ ] D1 `fawc-settings` (plan in [SETTINGS.md](SETTINGS.md); first step: one config file both the compositor and the app use): appearance, wallpaper, displays, input, sound, network, power
+- [~] D1 first version done (appearance, keyboard, desktop, session pages); displays, sound, network, power to come. `fawc-settings` (plan in [SETTINGS.md](SETTINGS.md); first step: one config file both the compositor and the app use): appearance, wallpaper, displays, input, sound, network, power
 - [ ] D2 GTK4 theme + Qt style + icon theme + cursors + sounds + wallpapers (original art)
 - [ ] D3 portal backend, screenshots/screen recording, file manager, installer / one-command setup
 - [ ] D4 packaging (Debian/Arch), documentation, accessibility basics

@@ -1,3 +1,6 @@
+[workspace]
+members = ["settings"]
+
 [package]
 name = "fawc"
 version = "0.1.0"
@@ -30,6 +33,7 @@ libc = "0.2"
 zbus = "5"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+toml_edit = "0.22"
 xkbcommon = "0.8"
 
 [profile.release]
