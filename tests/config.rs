@@ -1,20 +1,20 @@
 //! The configuration file reaches a running compositor: read at start, applied when it changes,
 //! and a broken edit changes nothing.
 
-use fawc::state::Fawc;
+use fde::state::Fde;
 use smithay::reexports::wayland_server::Display;
 
 #[test]
 fn the_config_file_is_read_reloaded_and_a_bad_edit_is_ignored() {
     let dir = tempfile::tempdir().unwrap();
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let file = dir.path().join("fawc.toml");
+    let file = dir.path().join("fde.toml");
     std::fs::write(&file, "[appearance]\naccent = \"#ff0000\"\ntransparency = 0.9\nblur = 2\n[shell]\nterminal = \"xterm\"\n").unwrap();
-    std::env::set_var("FAWC_CONFIG", &file);
-    std::env::remove_var("FAWC_TERMINAL");
+    std::env::set_var("FDE_CONFIG", &file);
+    std::env::remove_var("FDE_TERMINAL");
 
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (800, 600).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
     assert_eq!(state.style.tint_frame, [1.0, 0.0, 0.0, 0.9], "read at start");
     assert_eq!(state.style.blur_levels, 2);
     assert_eq!(state.terminal, "xterm");
@@ -54,9 +54,9 @@ fn the_session_locks_by_itself_when_idle_and_activity_resets_the_timer() {
     std::fs::write(&file, "[session]\nidle_lock_seconds = 1\n").unwrap();
     // the other test in this file uses the same variable: tests of one file share the process
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_CONFIG", &file);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (800, 600).into());
+    std::env::set_var("FDE_CONFIG", &file);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
     assert!(!state.check_idle(), "not idle yet");
     std::thread::sleep(std::time::Duration::from_millis(1100));
     assert!(state.check_idle(), "idle for a second: the lock starts");
@@ -87,10 +87,10 @@ fn the_wallpaper_file_is_loaded_and_follows_edits() {
     write_png(&blue, [10, 10, 200]);
     let file = dir.path().join("wall.toml");
     std::fs::write(&file, format!("[wallpaper]\npath = \"{}\"\nmode = \"stretch\"\n", red.display())).unwrap();
-    std::env::set_var("FAWC_CONFIG", &file);
+    std::env::set_var("FDE_CONFIG", &file);
 
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (800, 600).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
     assert_eq!(state.wallpaper_image.as_ref().unwrap().rgba[..3], [200, 10, 10]);
 
     std::thread::sleep(std::time::Duration::from_millis(30));
@@ -105,7 +105,7 @@ fn the_wallpaper_file_is_loaded_and_follows_edits() {
     state.check_config(true);
     assert_eq!(state.wallpaper_image.as_ref().unwrap().rgba[..3], [10, 10, 200]);
 
-    // a path that is not a picture: the wallpaper that comes with FAWC (and a note in the log)
+    // a path that is not a picture: the wallpaper that comes with FDE (and a note in the log)
     std::thread::sleep(std::time::Duration::from_millis(30));
     std::fs::write(&file, "[wallpaper]\npath = \"/nonexistent/x.png\"\n").unwrap();
     state.check_config(true);

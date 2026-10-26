@@ -22,11 +22,11 @@ use wayland_client::{delegate_noop, Connection, Dispatch, QueueHandle};
 use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
-use fawc::demo::offscreen_renderer;
-use fawc::glass::Glass;
-use fawc::layout::{button_center, Button};
-use fawc::render::create_scene;
-use fawc::state::{ClientState, Fawc};
+use fde::demo::offscreen_renderer;
+use fde::glass::Glass;
+use fde::layout::{button_center, Button};
+use fde::render::create_scene;
+use fde::state::{ClientState, Fde};
 
 // ------------------------------------------------------------------ the client
 
@@ -130,8 +130,8 @@ fn client(path: std::path::PathBuf, tx: mpsc::Sender<Msg>, w: i32, h: i32, argb:
 // ------------------------------------------------------------------ the server side of the test
 
 struct Harness {
-    display: Display<Fawc>,
-    state: Fawc,
+    display: Display<Fde>,
+    state: Fde,
     socket: ListeningSocket,
 }
 
@@ -165,7 +165,7 @@ fn pixel(buf: &[u8], w: i32, x: i32, y: i32) -> [i32; 3] {
 fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -175,16 +175,16 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
         }
     };
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
     state.config.appearance.animations = false;
-    let socket = ListeningSocket::bind("fawc-e2e").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
 
     let (tx, rx) = mpsc::channel();
-    let path = dir.path().join("fawc-e2e");
+    let path = dir.path().join("fde-e2e");
     let handle = std::thread::spawn(move || client(path, tx, 300, 200, 0xffe03020));
 
     // 1. the window appears and the compositor asked for server side decoration
@@ -217,12 +217,12 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     let c = pixel(&bytes, w, g.loc.x + 150, g.loc.y + 100);
     assert!(c[0] > 200 && c[1] < 70 && c[2] < 60, "the client's red shows in its area: {c:?}");
     let outside = pixel(&bytes, w, 700, 500);
-    let wp = fawc::wallpaper::procedural(w, h, false);
+    let wp = fde::wallpaper::procedural(w, h, false);
     let wi = ((500 * w + 700) * 4) as usize;
     assert!((outside[0] - wp[wi] as i32).abs() < 6 && (outside[2] - wp[wi + 2] as i32).abs() < 6, "wallpaper outside the window: {outside:?}");
     let top = pixel(&bytes, w, g.loc.x + 150, g.loc.y - 30);
     assert!(top[2] > top[0] + 20, "the title bar is blue glass: {top:?}");
-    let outer = fawc::layout::outer_rect(g, &hn.state.style);
+    let outer = fde::layout::outer_rect(g, &hn.state.style);
     let corner = pixel(&bytes, w, outer.loc.x, outer.loc.y);
     // the rounded corner shows the wallpaper behind, a little darkened by the drop shadow, but
     // none of the glass (which would be lighter and bluer)
@@ -236,7 +236,7 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     assert!(o[0] > o[2] + 30, "the close orb is red: {o:?}");
 
     // the title ("e2e") is drawn in dark ink at the left of the title bar (when fonts exist)
-    if fawc::text::TextRenderer::default().line("e2e", 100, 13.0, [0, 0, 0], None, 0).is_some() {
+    if fde::text::TextRenderer::default().line("e2e", 100, 13.0, [0, 0, 0], None, 0).is_some() {
         let mut ink = 0;
         for y in (outer.loc.y + 5)..(outer.loc.y + 5 + 32) {
             for x in (outer.loc.x + 12)..(outer.loc.x + 12 + 40) {
@@ -262,7 +262,7 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     assert_eq!((after.x - before.x, after.y - before.y), (100, 40), "dragging the title bar moves the window");
 
     // 5. click the close orb: the client gets xdg_toplevel.close
-    let outer = fawc::layout::outer_rect(hn.state.space.element_geometry(hn.state.space.elements().next().unwrap()).unwrap(), &hn.state.style);
+    let outer = fde::layout::outer_rect(hn.state.space.element_geometry(hn.state.space.elements().next().unwrap()).unwrap(), &hn.state.style);
     let orb = button_center(outer, &hn.state.style, Button::Close);
     hn.state.pointer_moved(orb, 5);
     hn.state.pointer_button(0x110, true, 6);
@@ -363,7 +363,7 @@ fn panel_client(path: std::path::PathBuf, tx: mpsc::Sender<(u32, u32)>, argb: u3
 fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -373,16 +373,16 @@ fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
         }
     };
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
     state.config.appearance.animations = false;
-    let socket = ListeningSocket::bind("fawc-e2e-layer").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-layer").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
 
     let (ptx, prx) = mpsc::channel();
-    let path = dir.path().join("fawc-e2e-layer");
+    let path = dir.path().join("fde-e2e-layer");
     let p2 = path.clone();
     std::thread::spawn(move || panel_client(p2, ptx, 0xff20b040));
     let t0 = Instant::now();
@@ -415,7 +415,7 @@ fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
     {
         let map = smithay::desktop::layer_map_for_output(&hn.state.output);
         let layer = map.layers().next().expect("the panel is mapped");
-        let b = fawc::background_effect::blur_bounds(layer.wl_surface()).expect("a blur region");
+        let b = fde::background_effect::blur_bounds(layer.wl_surface()).expect("a blur region");
         assert_eq!((b.loc.x, b.loc.y, b.size.w, b.size.h), (400, 0, 400, 40));
     }
 
@@ -447,7 +447,7 @@ fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
 fn the_real_task_bar_shows_a_button_for_an_open_window() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -457,17 +457,17 @@ fn the_real_task_bar_shows_a_button_for_an_open_window() {
         }
     };
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
     state.config.appearance.animations = false;
-    let socket = ListeningSocket::bind("fawc-e2e-tasks").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-tasks").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
 
     // the real panel program, as the compositor starts it
-    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
-        .env("WAYLAND_DISPLAY", "fawc-e2e-tasks")
+    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fde-panel"))
+        .env("WAYLAND_DISPLAY", "fde-e2e-tasks")
         .env_remove("DISPLAY")
         .spawn()
         .unwrap();
@@ -485,7 +485,7 @@ fn the_real_task_bar_shows_a_button_for_an_open_window() {
 
     // open a window: a button for it appears in the bar
     let (tx, rx) = mpsc::channel();
-    let path = dir.path().join("fawc-e2e-tasks");
+    let path = dir.path().join("fde-e2e-tasks");
     std::thread::spawn(move || client(path, tx, 200, 100, 0xff2030e0));
     let t0 = Instant::now();
     let mut appeared = false;
@@ -512,7 +512,7 @@ fn the_lock_screen_locks_the_session_and_unlocks_with_the_right_password() {
 
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -522,18 +522,18 @@ fn the_lock_screen_locks_the_session_and_unlocks_with_the_right_password() {
         }
     };
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
     state.config.appearance.animations = false;
-    let socket = ListeningSocket::bind("fawc-e2e-lock").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-lock").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
 
-    let mut lock = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-lock"))
-        .env("WAYLAND_DISPLAY", "fawc-e2e-lock")
+    let mut lock = std::process::Command::new(env!("CARGO_BIN_EXE_fde-lock"))
+        .env("WAYLAND_DISPLAY", "fde-e2e-lock")
         .env("USER", "tester")
-        .env("FAWC_LOCK_CHECK", "[ \"$(tr -d '\\000')\" = secret ]")
+        .env("FDE_LOCK_CHECK", "[ \"$(tr -d '\\000')\" = secret ]")
         .env_remove("DISPLAY")
         .spawn()
         .unwrap();
@@ -553,7 +553,7 @@ fn the_lock_screen_locks_the_session_and_unlocks_with_the_right_password() {
     wait(&mut hn, &mut renderer, &mut scene, "the session locks", &|hn| hn.state.locked && !hn.state.lock_surfaces.is_empty() && hn.state.lock_confirmation.is_none());
     // Everything below watches the picture instead of waiting a fixed time: the lock program
     // draws one dot per typed character, so a dot proves that the keyboard path works.
-    let (card_x0, card_y0) = ((w - fawc::lockscreen::CARD_W) / 2, (h - fawc::lockscreen::CARD_H) / 2);
+    let (card_x0, card_y0) = ((w - fde::lockscreen::CARD_W) / 2, (h - fde::lockscreen::CARD_H) / 2);
     let dots = |hn: &mut Harness, renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture| -> (bool, usize) {
         hn.pump();
         hn.state.render_scene(renderer, &glass, scene).unwrap();
@@ -638,7 +638,7 @@ fn a_notification_sent_over_dbus_appears_as_a_bubble_and_goes_away() {
     }
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -658,10 +658,10 @@ fn a_notification_sent_over_dbus_appears_as_a_bubble_and_goes_away() {
     let address = address.trim().to_string();
 
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
     state.config.appearance.animations = false;
-    let socket = ListeningSocket::bind("fawc-e2e-notify").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-notify").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
@@ -683,9 +683,9 @@ fn a_notification_sent_over_dbus_appears_as_a_bubble_and_goes_away() {
             }
         }
     }
-    let daemon = Command::new(env!("CARGO_BIN_EXE_fawc-notify"))
+    let daemon = Command::new(env!("CARGO_BIN_EXE_fde-notify"))
         .env("DBUS_SESSION_BUS_ADDRESS", &address)
-        .env("WAYLAND_DISPLAY", "fawc-e2e-notify")
+        .env("WAYLAND_DISPLAY", "fde-e2e-notify")
         .env_remove("DISPLAY")
         .spawn()
         .unwrap();
@@ -761,7 +761,7 @@ fn typing_in_the_start_menu_filters_and_enter_starts_the_program() {
 
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -780,18 +780,18 @@ fn typing_in_the_start_menu_filters_and_enter_starts_the_program() {
     std::fs::write(apps.join("z.desktop"), format!("[Desktop Entry]\nType=Application\nName=Zzterm Test\nExec=touch {}\n", marker_z.display())).unwrap();
 
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
     state.config.appearance.animations = false;
-    let socket = ListeningSocket::bind("fawc-e2e-menu").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-menu").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
 
-    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
-        .env("WAYLAND_DISPLAY", "fawc-e2e-menu")
+    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fde-panel"))
+        .env("WAYLAND_DISPLAY", "fde-e2e-menu")
         .env("HOME", &home)
-        .env("FAWC_PANEL_OPEN_MENU", "1")
+        .env("FDE_PANEL_OPEN_MENU", "1")
         .env_remove("DISPLAY")
         .spawn()
         .unwrap();
@@ -833,7 +833,7 @@ fn typing_in_the_start_menu_filters_and_enter_starts_the_program() {
 fn a_new_window_fades_and_grows_in() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -843,16 +843,16 @@ fn a_new_window_fades_and_grows_in() {
         }
     };
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let state = Fde::new(&display.handle(), (w, h).into());
     assert!(state.config.appearance.animations, "on by default");
-    let socket = ListeningSocket::bind("fawc-e2e-anim").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-anim").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
 
     let (tx, rx) = mpsc::channel();
-    let path = dir.path().join("fawc-e2e-anim");
+    let path = dir.path().join("fde-e2e-anim");
     std::thread::spawn(move || client(path, tx, 200, 100, 0xff2030e0));
     let t0 = Instant::now();
     loop {
@@ -914,7 +914,7 @@ fn grab_scene(renderer: &mut smithay::backend::renderer::gles::GlesRenderer, sce
 fn a_window_on_the_second_monitor_is_drawn_there_and_the_pointer_and_maximize_follow() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -924,17 +924,17 @@ fn a_window_on_the_second_monitor_is_drawn_there_and_the_pointer_and_maximize_fo
         }
     };
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
     state.config.appearance.animations = false;
-    let second = state.add_output("fawc-1", (800, 600), 60_000);
-    let socket = ListeningSocket::bind("fawc-e2e-two").unwrap();
+    let second = state.add_output("fde-1", (800, 600), 60_000);
+    let socket = ListeningSocket::bind("fde-e2e-two").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene0: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
     let mut scene1: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
 
-    open_window(&mut hn, dir.path(), "fawc-e2e-two", 200, 100);
+    open_window(&mut hn, dir.path(), "fde-e2e-two", 200, 100);
     let win = hn.state.space.elements().next().cloned().unwrap();
 
     // the window is on the first monitor: drawn there, not on the second
@@ -972,7 +972,7 @@ fn a_window_on_the_second_monitor_is_drawn_there_and_the_pointer_and_maximize_fo
 fn a_hidpi_monitor_draws_everything_at_double_size() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -981,18 +981,18 @@ fn a_hidpi_monitor_draws_everything_at_double_size() {
             return;
         }
     };
-    let display: Display<Fawc> = Display::new().unwrap();
+    let display: Display<Fde> = Display::new().unwrap();
     // a 1600x1200 monitor at scale 2: a logical space of 800x600
-    let mut state = Fawc::new(&display.handle(), (1600, 1200).into());
+    let mut state = Fde::new(&display.handle(), (1600, 1200).into());
     state.config.appearance.animations = false;
     state.output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(2.0)), None);
     assert_eq!(state.output_size(), (800, 600).into());
-    let socket = ListeningSocket::bind("fawc-e2e-hidpi").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-hidpi").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (1600, 1200).into()).unwrap();
 
-    open_window(&mut hn, dir.path(), "fawc-e2e-hidpi", 200, 100);
+    open_window(&mut hn, dir.path(), "fde-e2e-hidpi", 200, 100);
     let win = hn.state.space.elements().next().cloned().unwrap();
     let g = hn.state.space.element_geometry(&win).unwrap(); // logical
     hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
@@ -1018,7 +1018,7 @@ fn the_task_bar_draws_at_the_monitors_scale() {
 
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -1027,17 +1027,17 @@ fn the_task_bar_draws_at_the_monitors_scale() {
             return;
         }
     };
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (1600, 1200).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (1600, 1200).into());
     state.config.appearance.animations = false;
     state.output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(2.0)), None);
-    let socket = ListeningSocket::bind("fawc-e2e-pscale").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-pscale").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (1600, 1200).into()).unwrap();
 
-    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
-        .env("WAYLAND_DISPLAY", "fawc-e2e-pscale")
+    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fde-panel"))
+        .env("WAYLAND_DISPLAY", "fde-e2e-pscale")
         .env_remove("DISPLAY")
         .spawn()
         .unwrap();
@@ -1070,24 +1070,24 @@ fn the_task_bar_draws_at_the_monitors_scale() {
 fn every_monitor_gets_its_own_task_bar_and_unplugging_one_closes_its_bar() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (800, 600).into());
-    let second = state.add_output("fawc-1", (640, 480), 60_000);
-    let socket = ListeningSocket::bind("fawc-e2e-bars").unwrap();
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    let second = state.add_output("fde-1", (640, 480), 60_000);
+    let socket = ListeningSocket::bind("fde-e2e-bars").unwrap();
     let mut hn = Harness { display, state, socket };
 
     let spawn = |name: &str| {
-        std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
-            .env("WAYLAND_DISPLAY", "fawc-e2e-bars")
-            .env("FAWC_PANEL_OUTPUT", name)
+        std::process::Command::new(env!("CARGO_BIN_EXE_fde-panel"))
+            .env("WAYLAND_DISPLAY", "fde-e2e-bars")
+            .env("FDE_PANEL_OUTPUT", name)
             .env_remove("DISPLAY")
             .spawn()
             .unwrap()
     };
-    let mut bar0 = spawn("fawc-0");
-    let mut bar1 = spawn("fawc-1");
+    let mut bar0 = spawn("fde-0");
+    let mut bar1 = spawn("fde-1");
 
     let layers_on = |o: &smithay::output::Output| smithay::desktop::layer_map_for_output(o).layers().count();
     let t0 = Instant::now();
@@ -1156,7 +1156,7 @@ fn write_xcursor(path: &std::path::Path, size: u32, color: [u8; 4], hot: (u32, u
 fn the_cursor_comes_from_the_theme_and_turns_into_resize_arrows_on_a_border() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -1175,11 +1175,11 @@ fn the_cursor_comes_from_the_theme_and_turns_into_resize_arrows_on_a_border() {
     std::env::set_var("XCURSOR_SIZE", "24");
 
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
     state.config.appearance.animations = false;
     state.draw_cursor = true;
-    let socket = ListeningSocket::bind("fawc-e2e-cursor").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-cursor").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
@@ -1196,7 +1196,7 @@ fn the_cursor_comes_from_the_theme_and_turns_into_resize_arrows_on_a_border() {
     assert!(!red(595, 495) && !red(640, 540), "and only there");
 
     // over the left border of a window: the resize cursor, centred on the pointer
-    open_window(&mut hn, dir.path(), "fawc-e2e-cursor", 200, 100);
+    open_window(&mut hn, dir.path(), "fde-e2e-cursor", 200, 100);
     let win = hn.state.space.elements().next().cloned().unwrap();
     let g = hn.state.space.element_geometry(&win).unwrap();
     hn.state.pointer_moved(((g.loc.x - 2) as f64, (g.loc.y + 50) as f64).into(), 0);
@@ -1214,7 +1214,7 @@ fn the_cursor_comes_from_the_theme_and_turns_into_resize_arrows_on_a_border() {
 fn minimizing_shrinks_into_the_task_bar_button_and_restoring_brings_it_back() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -1224,20 +1224,20 @@ fn minimizing_shrinks_into_the_task_bar_button_and_restoring_brings_it_back() {
         }
     };
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let state = Fawc::new(&display.handle(), (w, h).into());
-    let socket = ListeningSocket::bind("fawc-e2e-min").unwrap();
+    let display: Display<Fde> = Display::new().unwrap();
+    let state = Fde::new(&display.handle(), (w, h).into());
+    let socket = ListeningSocket::bind("fde-e2e-min").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
 
     // the real task bar, so that the window learns where its button is
-    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
-        .env("WAYLAND_DISPLAY", "fawc-e2e-min")
+    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fde-panel"))
+        .env("WAYLAND_DISPLAY", "fde-e2e-min")
         .env_remove("DISPLAY")
         .spawn()
         .unwrap();
-    open_window(&mut hn, dir.path(), "fawc-e2e-min", 200, 100);
+    open_window(&mut hn, dir.path(), "fde-e2e-min", 200, 100);
     let win = hn.state.space.elements().next().cloned().unwrap();
     hn.state.set_open_start(&win, Instant::now() - Duration::from_secs(10)); // fully open
     let t0 = Instant::now();
@@ -1285,7 +1285,7 @@ fn minimizing_shrinks_into_the_task_bar_button_and_restoring_brings_it_back() {
 fn a_wallpaper_picture_from_the_configuration_is_what_the_monitor_shows() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
+    std::env::set_var("FDE_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -1304,13 +1304,13 @@ fn a_wallpaper_picture_from_the_configuration_is_what_the_monitor_shows() {
         let data: Vec<u8> = (0..4).flat_map(|_| [10u8, 120, 20]).collect();
         enc.write_header().unwrap().write_image_data(&data).unwrap();
     }
-    let cfg = dir.path().join("fawc.toml");
+    let cfg = dir.path().join("fde.toml");
     std::fs::write(&cfg, format!("[wallpaper]\npath = \"{}\"\nmode = \"stretch\"\n", png_path.display())).unwrap();
-    std::env::set_var("FAWC_CONFIG", &cfg);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let state = Fawc::new(&display.handle(), (800, 600).into());
-    std::env::remove_var("FAWC_CONFIG");
-    let socket = ListeningSocket::bind("fawc-e2e-wall").unwrap();
+    std::env::set_var("FDE_CONFIG", &cfg);
+    let display: Display<Fde> = Display::new().unwrap();
+    let state = Fde::new(&display.handle(), (800, 600).into());
+    std::env::remove_var("FDE_CONFIG");
+    let socket = ListeningSocket::bind("fde-e2e-wall").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (800, 600).into()).unwrap();
@@ -1326,7 +1326,7 @@ fn a_wallpaper_picture_from_the_configuration_is_what_the_monitor_shows() {
 fn a_fullscreen_window_fills_the_monitor_without_a_frame_and_hides_the_panels() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    std::env::set_var("FAWC_BUILTIN_SKY", "1");
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -1336,14 +1336,14 @@ fn a_fullscreen_window_fills_the_monitor_without_a_frame_and_hides_the_panels() 
         }
     };
     let (w, h) = (800, 600);
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
     state.config.appearance.animations = false;
-    let socket = ListeningSocket::bind("fawc-e2e-full").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-full").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
     let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
-    open_window(&mut hn, dir.path(), "fawc-e2e-full", 200, 100);
+    open_window(&mut hn, dir.path(), "fde-e2e-full", 200, 100);
 
     let win = hn.state.space.elements().next().cloned().unwrap();
     let before = hn.state.space.element_geometry(&win).unwrap();
@@ -1467,14 +1467,14 @@ fn a_program_can_lock_the_pointer_and_read_relative_motion() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
-    let display: Display<Fawc> = Display::new().unwrap();
-    let mut state = Fawc::new(&display.handle(), (800, 600).into());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
     state.config.appearance.animations = false;
-    let socket = ListeningSocket::bind("fawc-e2e-grab").unwrap();
+    let socket = ListeningSocket::bind("fde-e2e-grab").unwrap();
     let mut hn = Harness { display, state, socket };
     let (tx, rx) = mpsc::channel();
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let (path, s2) = (dir.path().join("fawc-e2e-grab"), stop.clone());
+    let (path, s2) = (dir.path().join("fde-e2e-grab"), stop.clone());
     let th = std::thread::spawn(move || grab_client(path, tx, s2));
     let t0 = Instant::now();
     while hn.state.space.elements().next().is_none() {

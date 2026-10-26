@@ -1,5 +1,5 @@
 //! The lock screen's picture: the wallpaper with a glass login card in the middle.
-//! Pure drawing (RGBA, top row first) so it can be tested; `bin/fawc-lock.rs` shows it.
+//! Pure drawing (RGBA, top row first) so it can be tested; `bin/fde-lock.rs` shows it.
 
 use crate::panel::{blend, blit};
 use crate::text::TextRenderer;
@@ -123,16 +123,16 @@ mod tests {
     }
 }
 
-/// Is `password` right for `user`? Runs `$FAWC_LOCK_CHECK` (a shell command that reads the
+/// Is `password` right for `user`? Runs `$FDE_LOCK_CHECK` (a shell command that reads the
 /// password on its standard input and exits 0 if it is right) or else PAM's own helper
 /// `unix_chkpwd`, which checks the password of the user running it.
 pub fn check_password(user: &str, password: &str) -> bool {
     use std::io::Write;
     use std::process::{Command, Stdio};
-    let mut cmd = match std::env::var("FAWC_LOCK_CHECK") {
+    let mut cmd = match std::env::var("FDE_LOCK_CHECK") {
         Ok(c) => {
             let mut cmd = Command::new("sh");
-            cmd.arg("-c").arg(c).env("FAWC_LOCK_USER", user);
+            cmd.arg("-c").arg(c).env("FDE_LOCK_USER", user);
             cmd
         }
         Err(_) => {

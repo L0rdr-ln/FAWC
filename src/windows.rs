@@ -8,7 +8,7 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 
 use crate::layout::{client_rect, hit, outer_rect, Hit};
-use crate::state::{Fawc, WinInfo};
+use crate::state::{Fde, WinInfo};
 
 /// The opening animation: a short fade and zoom.
 pub const OPEN_SECONDS: f32 = 0.18;
@@ -33,7 +33,7 @@ fn info(window: &Window) -> &Mutex<WinInfo> {
     window.user_data().get_or_insert_threadsafe(|| Mutex::new(WinInfo::default()))
 }
 
-impl Fawc {
+impl Fde {
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<Window> {
         self.space
             .elements()

@@ -6,9 +6,9 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
 
-use crate::state::Fawc;
+use crate::state::Fde;
 
-impl Fawc {
+impl Fde {
     /// A layer surface that wants the keyboard exclusively takes it. Called on every commit: the
     /// client sets its interactivity after creating the surface, so it is known only from the
     /// first commit on.

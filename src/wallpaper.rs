@@ -173,7 +173,7 @@ fn decode_webp<R: std::io::BufRead + std::io::Seek>(reader: R) -> Result<Image, 
     Ok(Image { width: w as i32, height: h as i32, rgba })
 }
 
-/// The wallpaper that comes with FAWC (`assets/wallpaper.webp`, built into the program), used
+/// The wallpaper that comes with FDE (`assets/wallpaper.webp`, built into the program), used
 /// when the configuration names none.
 const BUNDLED: &[u8] = include_bytes!("../assets/wallpaper.webp");
 
@@ -182,7 +182,7 @@ pub fn bundled() -> Option<Image> {
 }
 
 /// The picture to show: the file `path` names; if that is empty or cannot be read, the bundled
-/// one. `FAWC_BUILTIN_SKY=1` asks for the generated sky instead (None), which the tests use so
+/// one. `FDE_BUILTIN_SKY=1` asks for the generated sky instead (None), which the tests use so
 /// that their pixel checks do not depend on a photograph.
 pub fn configured(path: &str) -> Option<Image> {
     if !path.is_empty() {
@@ -191,7 +191,7 @@ pub fn configured(path: &str) -> Option<Image> {
             Err(e) => eprintln!("wallpaper: {e} (using the bundled picture)"),
         }
     }
-    if std::env::var_os("FAWC_BUILTIN_SKY").is_some() {
+    if std::env::var_os("FDE_BUILTIN_SKY").is_some() {
         return None;
     }
     bundled()

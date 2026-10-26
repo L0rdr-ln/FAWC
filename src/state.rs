@@ -52,7 +52,7 @@ pub struct Edges {
     pub bottom: bool,
 }
 
-pub struct Fawc {
+pub struct Fde {
     pub start_time: Instant,
     pub display_handle: DisplayHandle,
     pub running: bool,
@@ -82,13 +82,13 @@ pub struct Fawc {
     pub background_effect_state: crate::background_effect::BackgroundEffectState,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
-    pub seat_state: SeatState<Fawc>,
+    pub seat_state: SeatState<Fde>,
     pub data_device_state: DataDeviceState,
     pub pointer_constraints_state: smithay::wayland::pointer_constraints::PointerConstraintsState,
     pub relative_pointer_state: smithay::wayland::relative_pointer::RelativePointerManagerState,
     /// where the surface that has the pointer starts (for pointer constraint regions)
     pub pointer_focus_origin: Point<f64, Logical>,
-    pub seat: Seat<Fawc>,
+    pub seat: Seat<Fde>,
 
     pub pointer_location: Point<f64, Logical>,
     pub cursor_status: CursorImageStatus,
@@ -152,26 +152,26 @@ pub fn client_state(client: &Client) -> &CompositorClientState {
     &client.get_data::<ClientState>().expect("client data").compositor_state
 }
 
-impl Fawc {
-    pub fn new(dh: &DisplayHandle, size: Size<i32, Logical>) -> Fawc {
-        Fawc::new_named(dh, "fawc-0", size)
+impl Fde {
+    pub fn new(dh: &DisplayHandle, size: Size<i32, Logical>) -> Fde {
+        Fde::new_named(dh, "fde-0", size)
     }
 
     /// `size` is the monitor's mode in physical pixels; `name` is its connector name.
-    pub fn new_named(dh: &DisplayHandle, name: &str, size: Size<i32, Logical>) -> Fawc {
-        let compositor_state = CompositorState::new::<Fawc>(dh);
-        let xdg_shell_state = XdgShellState::new::<Fawc>(dh);
-        let xdg_decoration_state = XdgDecorationState::new::<Fawc>(dh);
-        let layer_shell_state = WlrLayerShellState::new::<Fawc>(dh);
-        let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Fawc, _>(dh, |_| true);
-        let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new::<Fawc>(dh);
-        let background_effect_state = crate::background_effect::BackgroundEffectState::new::<Fawc>(dh);
-        let shm_state = ShmState::new::<Fawc>(dh, vec![]);
-        let output_manager_state = OutputManagerState::new_with_xdg_output::<Fawc>(dh);
+    pub fn new_named(dh: &DisplayHandle, name: &str, size: Size<i32, Logical>) -> Fde {
+        let compositor_state = CompositorState::new::<Fde>(dh);
+        let xdg_shell_state = XdgShellState::new::<Fde>(dh);
+        let xdg_decoration_state = XdgDecorationState::new::<Fde>(dh);
+        let layer_shell_state = WlrLayerShellState::new::<Fde>(dh);
+        let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Fde, _>(dh, |_| true);
+        let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new::<Fde>(dh);
+        let background_effect_state = crate::background_effect::BackgroundEffectState::new::<Fde>(dh);
+        let shm_state = ShmState::new::<Fde>(dh, vec![]);
+        let output_manager_state = OutputManagerState::new_with_xdg_output::<Fde>(dh);
         let mut seat_state = SeatState::new();
-        let data_device_state = DataDeviceState::new::<Fawc>(dh);
-        let pointer_constraints_state = smithay::wayland::pointer_constraints::PointerConstraintsState::new::<Fawc>(dh);
-        let relative_pointer_state = smithay::wayland::relative_pointer::RelativePointerManagerState::new::<Fawc>(dh);
+        let data_device_state = DataDeviceState::new::<Fde>(dh);
+        let pointer_constraints_state = smithay::wayland::pointer_constraints::PointerConstraintsState::new::<Fde>(dh);
+        let relative_pointer_state = smithay::wayland::relative_pointer::RelativePointerManagerState::new::<Fde>(dh);
         let mut seat = seat_state.new_wl_seat(dh, "seat0");
         let config = match crate::config::Config::load() {
             Ok(c) => c,
@@ -193,14 +193,14 @@ impl Fawc {
             PhysicalProperties {
                 size: (0, 0).into(),
                 subpixel: Subpixel::Unknown,
-                make: "FAWC".into(),
+                make: "FDE".into(),
                 model: "virtual".into(),
             },
         );
         let mode = OutputMode { size: (size.w, size.h).into(), refresh: 60_000 };
         output.change_current_state(Some(mode), Some(Transform::Normal), None, Some((0, 0).into()));
         output.set_preferred(mode);
-        let _global = output.create_global::<Fawc>(dh);
+        let _global = output.create_global::<Fde>(dh);
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
         // scale and position from the configuration
@@ -209,7 +209,7 @@ impl Fawc {
             space.map_output(&output, (oc.x.unwrap_or(0), oc.y.unwrap_or(0)));
         }
 
-        Fawc {
+        Fde {
             start_time: Instant::now(),
             display_handle: dh.clone(),
             running: true,
@@ -243,7 +243,7 @@ impl Fawc {
             drag: None,
             minimized: Vec::new(),
             cascade: 0,
-            terminal: std::env::var("FAWC_TERMINAL").unwrap_or_else(|_| config.shell.terminal.clone()),
+            terminal: std::env::var("FDE_TERMINAL").unwrap_or_else(|_| config.shell.terminal.clone()),
             last_activity: std::time::Instant::now(),
             idle_lock_started: false,
             config,
@@ -283,7 +283,7 @@ impl Fawc {
         }
         tracing::info!("configuration reloaded");
         new.apply_style(&mut self.style);
-        if std::env::var_os("FAWC_TERMINAL").is_none() {
+        if std::env::var_os("FDE_TERMINAL").is_none() {
             self.terminal = new.shell.terminal.clone();
         }
         if let Some(kb) = self.seat.get_keyboard() {
@@ -324,7 +324,7 @@ impl Fawc {
         }
         self.idle_lock_started = true;
         tracing::info!("idle for {limit} s: locking");
-        crate::shell::start_sibling("fawc-lock");
+        crate::shell::start_sibling("fde-lock");
         true
     }
 

@@ -831,7 +831,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
-name = "fawc"
+name = "fde"
 version = "0.1.0"
 dependencies = [
  "cosmic-text",
@@ -856,19 +856,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "fawc-music"
+name = "fde-music"
 version = "0.1.0"
 dependencies = [
- "fawc",
+ "fde",
  "rodio",
  "tempfile",
 ]
 
 [[package]]
-name = "fawc-settings"
+name = "fde-settings"
 version = "0.1.0"
 dependencies = [
- "fawc",
+ "fde",
  "gtk4",
  "tempfile",
 ]

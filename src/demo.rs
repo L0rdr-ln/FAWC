@@ -1,4 +1,4 @@
-//! `fawc glass-demo out.png`: renders a still scene (a bright backdrop and two glass windows)
+//! `fde glass-demo out.png`: renders a still scene (a bright backdrop and two glass windows)
 //! offscreen and writes it as a PNG. It is how the glass look is developed and tested without
 //! a display.
 

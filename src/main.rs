@@ -1,4 +1,4 @@
-use fawc::{backend_drm, backend_winit, demo, glass};
+use fde::{backend_drm, backend_winit, demo, glass};
 
 use smithay::utils::Rectangle;
 
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         _ => {
-            eprintln!("usage: fawc [winit|drm]        run nested in a window (winit) or on the hardware (drm); default: by environment\n       fawc glass-demo [out.png]");
+            eprintln!("usage: fde [winit|drm]        run nested in a window (winit) or on the hardware (drm); default: by environment\n       fde glass-demo [out.png]");
             std::process::exit(2);
         }
     }

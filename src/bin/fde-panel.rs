@@ -1,14 +1,14 @@
 //! The task bar: a glass strip along the bottom of the screen with the start orb and a clock.
 //! A plain layer-shell client; it reserves its height so windows stop above it.
-//! Click the orb to start $FAWC_LAUNCHER (default: $FAWC_TERMINAL, else foot).
+//! Click the orb to start $FDE_LAUNCHER (default: $FDE_TERMINAL, else foot).
 
 use std::io::Write;
 use std::os::fd::AsFd;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use fawc::panel;
-use fawc::text::TextRenderer;
+use fde::panel;
+use fde::text::TextRenderer;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{delegate_noop, Connection, Dispatch, Proxy, QueueHandle, WEnum};
@@ -43,7 +43,7 @@ struct App {
     toggle_menu: bool,
     close_menu: bool,
     menu_entries: usize,
-    scale: fawc::clientscale::ScaleTracker,
+    scale: fde::clientscale::ScaleTracker,
     output_names: std::collections::HashMap<wayland_client::backend::ObjectId, String>,
     // typing in the start menu
     query: String,
@@ -304,18 +304,18 @@ fn clock() -> String {
 }
 
 fn launch() {
-    let config = fawc::config::Config::load().unwrap_or_default();
-    let cmd = std::env::var("FAWC_LAUNCHER")
-        .or_else(|_| std::env::var("FAWC_TERMINAL"))
+    let config = fde::config::Config::load().unwrap_or_default();
+    let cmd = std::env::var("FDE_LAUNCHER")
+        .or_else(|_| std::env::var("FDE_TERMINAL"))
         .unwrap_or_else(|_| if config.shell.launcher.is_empty() { config.shell.terminal.clone() } else { config.shell.launcher.clone() });
     if let Err(e) = Command::new(&cmd).spawn() {
-        eprintln!("fawc-panel: cannot start {cmd}: {e}");
+        eprintln!("fde-panel: cannot start {cmd}: {e}");
     }
 }
 
 fn launch_exec(exec: &str) {
     if let Err(e) = Command::new("sh").arg("-c").arg(format!("exec {exec}")).spawn() {
-        eprintln!("fawc-panel: cannot start {exec}: {e}");
+        eprintln!("fde-panel: cannot start {exec}: {e}");
     }
 }
 
@@ -405,7 +405,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
     queue.roundtrip(&mut app)?;
     // the monitor this task bar belongs to (the compositor starts one per monitor)
-    let my_output: Option<wl_output::WlOutput> = std::env::var("FAWC_PANEL_OUTPUT")
+    let my_output: Option<wl_output::WlOutput> = std::env::var("FDE_PANEL_OUTPUT")
         .ok()
         .and_then(|name| _outputs.iter().find(|o| app.output_names.get(&o.id()) == Some(&name)).cloned());
     let surface = compositor.create_surface(&qh, ());
@@ -438,8 +438,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut file: Option<std::fs::File> = None;
     let mut menu: Option<Menu> = None;
     // for screenshots and tests: open the start menu at once
-    app.toggle_menu = std::env::var_os("FAWC_PANEL_OPEN_MENU").is_some();
-    let entries = fawc::apps::installed();
+    app.toggle_menu = std::env::var_os("FDE_PANEL_OPEN_MENU").is_some();
+    let entries = fde::apps::installed();
     let mut filtered: Vec<usize> = Vec::new();
 
     while !app.closed {
@@ -495,7 +495,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let m = open_menu(&compositor, &shell, &qh, &blur_manager, my_output.as_ref());
                 app.menu_surface = Some(m.surface.clone());
                 app.query.clear();
-                filtered = fawc::apps::filter(&entries, "");
+                filtered = fde::apps::filter(&entries, "");
                 app.menu_entries = filtered.len().min(panel::MENU_MAX_ROWS);
                 app.menu_configured = false;
                 menu = Some(m);
@@ -506,7 +506,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if menu.is_some() {
             if app.query_changed {
                 app.query_changed = false;
-                filtered = fawc::apps::filter(&entries, &app.query);
+                filtered = fde::apps::filter(&entries, &app.query);
                 app.menu_entries = filtered.len().min(panel::MENU_MAX_ROWS);
                 // the best match is selected, so Enter starts it
                 app.menu_hover = if filtered.is_empty() { None } else { Some(0) };
@@ -572,7 +572,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn tempfile_in_runtime_dir() -> std::io::Result<std::fs::File> {
     let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
-    let path = format!("{dir}/fawc-panel-{}", std::process::id());
+    let path = format!("{dir}/fde-panel-{}", std::process::id());
     let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(&path)?;
     let _ = std::fs::remove_file(&path);
     Ok(f)

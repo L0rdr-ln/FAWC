@@ -34,12 +34,12 @@ fn a_real_file_decodes_and_a_broken_one_is_reported() {
     let bad = dir.path().join("broken.mp3");
     std::fs::write(&bad, b"this is not music at all").unwrap();
 
-    let out = Command::new(env!("CARGO_BIN_EXE_fawc-music")).arg("--check").arg(&good).output().unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fde-music")).arg("--check").arg(&good).output().unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(out.status.success(), "{text}");
     assert!(text.contains("1 channel") && text.contains("8000 Hz") && text.contains("3.0 s"), "{text}");
 
-    let out = Command::new(env!("CARGO_BIN_EXE_fawc-music")).arg("--check").arg(&good).arg(&bad).output().unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fde-music")).arg("--check").arg(&good).arg(&bad).output().unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert_eq!(out.status.code(), Some(1), "one bad file makes the exit status 1: {text}");
     assert!(text.contains("tone.wav: ok") && text.contains("broken.mp3: cannot be played"), "{text}");

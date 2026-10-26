@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <title>FAWC logo: a glass orb over a sky and a hill</title>
+  <title>FDE logo: a glass orb over a sky and a hill</title>
   <defs>
     <radialGradient id="sky" cx="50%" cy="30%" r="80%">
       <stop offset="0" stop-color="#bfeaff"/><stop offset="1" stop-color="#2a9fe0"/>

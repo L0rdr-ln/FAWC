@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# One command to get FAWC built and ready on a fresh Debian/Ubuntu machine (a test VM, say).
+# One command to get FDE built and ready on a fresh Debian/Ubuntu machine (a test VM, say).
 #
 #   sudo apt install -y git
-#   git clone https://github.com/L0rdr-ln/fawc && fawc/tools/vm-setup.sh
+#   git clone https://github.com/L0rdr-ln/fde && fde/tools/vm-setup.sh
 #
-# Afterwards:  ~/start-fawc    starts FAWC: nested if the machine has a desktop, else on the
-#                              hardware (run it on a console: Ctrl+Alt+F3, log in, then ~/start-fawc)
+# Afterwards:  ~/start-fde    starts FDE: nested if the machine has a desktop, else on the
+#                              hardware (run it on a console: Ctrl+Alt+F3, log in, then ~/start-fde)
 set -eu
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 say() { printf '\n==> %s\n' "$*"; }
@@ -26,37 +26,37 @@ fi
 # shellcheck disable=SC1091
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
-say "building FAWC (several minutes the first time)"
+say "building FDE (several minutes the first time)"
 cd "$ROOT"
 cargo build --release --workspace
 
 # the settings app in the start menu
 mkdir -p "$HOME/.local/share/applications"
-cat >"$HOME/.local/share/applications/fawc-settings.desktop" <<ENTRY
+cat >"$HOME/.local/share/applications/fde-settings.desktop" <<ENTRY
 [Desktop Entry]
 Type=Application
 Name=Settings
-Exec=$ROOT/target/release/fawc-settings
+Exec=$ROOT/target/release/fde-settings
 ENTRY
 
 say "checking the glass renderer on software GL"
 LIBGL_ALWAYS_SOFTWARE=1 cargo test --release 2>&1 | tail -5 || echo "(some tests failed, see above)"
 
-say "writing the launcher ~/start-fawc"
-cat >"$HOME/start-fawc" <<LAUNCH
+say "writing the launcher ~/start-fde"
+cat >"$HOME/start-fde" <<LAUNCH
 #!/usr/bin/env bash
-# Starts FAWC. Log: ~/fawc-last.log
-export FAWC_TERMINAL=\${FAWC_TERMINAL:-foot}
+# Starts FDE. Log: ~/fde-last.log
+export FDE_TERMINAL=\${FDE_TERMINAL:-foot}
 export RUST_LOG=\${RUST_LOG:-info}
 # virtual GPUs
 export WLR_NO_HARDWARE_CURSORS=1
-"$ROOT/target/release/fawc" "\$@" 2>&1 | tee "\$HOME/fawc-last.log"
+"$ROOT/target/release/fde" "\$@" 2>&1 | tee "\$HOME/fde-last.log"
 LAUNCH
-chmod +x "$HOME/start-fawc"
+chmod +x "$HOME/start-fde"
 
-# FAWC comes with a wallpaper (assets/wallpaper.webp). To use another picture from the web, run
-# FAWC_WALLPAPER_URL=https://... tools/vm-setup.sh  (or tools/get-wallpaper.sh URL later).
-wall_url="${FAWC_WALLPAPER_URL:-none}"
+# FDE comes with a wallpaper (assets/wallpaper.webp). To use another picture from the web, run
+# FDE_WALLPAPER_URL=https://... tools/vm-setup.sh  (or tools/get-wallpaper.sh URL later).
+wall_url="${FDE_WALLPAPER_URL:-none}"
 if [ "$wall_url" != "none" ]; then
     say "downloading the wallpaper"
     "$ROOT/tools/get-wallpaper.sh" "$wall_url" fill || echo "(no wallpaper downloaded: the built-in picture stays; try tools/get-wallpaper.sh URL later)"
@@ -68,7 +68,7 @@ sudo usermod -aG _seatd "$USER" 2>/dev/null || sudo usermod -aG seat "$USER" 2>/
 
 cat <<DONE
 
-Done. Start it with:  ~/start-fawc
+Done. Start it with:  ~/start-fde
  - in a desktop session it opens as a window (nested)
  - on a console (Ctrl+Alt+F3, log in) it takes over the screen; if it says it cannot open the
    seat, log out and in once (the seatd group was just added) or run it with sudo

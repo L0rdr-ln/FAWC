@@ -5,9 +5,9 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::pointer_constraints::{with_pointer_constraint, PointerConstraint, PointerConstraintsHandler};
 
-use crate::state::Fawc;
+use crate::state::Fde;
 
-impl PointerConstraintsHandler for Fawc {
+impl PointerConstraintsHandler for Fde {
     fn new_constraint(&mut self, surface: &WlSurface, _pointer: &smithay::input::pointer::PointerHandle<Self>) {
         // a program that already has the pointer gets its grab at once
         if self.seat.get_pointer().and_then(|p| p.current_focus()).as_ref() == Some(surface) {
@@ -18,10 +18,10 @@ impl PointerConstraintsHandler for Fawc {
     fn cursor_position_hint(&mut self, _: &WlSurface, _: &smithay::input::pointer::PointerHandle<Self>, _: Point<f64, Logical>) {}
 }
 
-smithay::delegate_pointer_constraints!(Fawc);
-smithay::delegate_relative_pointer!(Fawc);
+smithay::delegate_pointer_constraints!(Fde);
+smithay::delegate_relative_pointer!(Fde);
 
-impl Fawc {
+impl Fde {
     /// Tell the program under the pointer how far the mouse moved (games read this).
     pub fn send_relative_motion(&mut self, delta: Point<f64, Logical>, time_msec: u32) {
         if delta.x == 0.0 && delta.y == 0.0 {

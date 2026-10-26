@@ -30,13 +30,13 @@ use smithay::{
     delegate_layer_shell, delegate_xdg_decoration, delegate_xdg_shell,
 };
 
-use crate::state::{client_state, Fawc};
+use crate::state::{client_state, Fde};
 
-impl BufferHandler for Fawc {
+impl BufferHandler for Fde {
     fn buffer_destroyed(&mut self, _buffer: &wl_buffer::WlBuffer) {}
 }
 
-impl CompositorHandler for Fawc {
+impl CompositorHandler for Fde {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
     }
@@ -87,15 +87,15 @@ impl CompositorHandler for Fawc {
     }
 }
 
-impl ShmHandler for Fawc {
+impl ShmHandler for Fde {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
     }
 }
 
-impl OutputHandler for Fawc {}
+impl OutputHandler for Fde {}
 
-impl SeatHandler for Fawc {
+impl SeatHandler for Fde {
     type KeyboardFocus = WlSurface;
     type PointerFocus = WlSurface;
     type TouchFocus = WlSurface;
@@ -111,21 +111,21 @@ impl SeatHandler for Fawc {
     }
 }
 
-impl SelectionHandler for Fawc {
+impl SelectionHandler for Fde {
     type SelectionUserData = ();
 }
 
-impl DataDeviceHandler for Fawc {
+impl DataDeviceHandler for Fde {
     fn data_device_state(&self) -> &DataDeviceState {
         &self.data_device_state
     }
 }
-impl ClientDndGrabHandler for Fawc {}
-impl ServerDndGrabHandler for Fawc {
+impl ClientDndGrabHandler for Fde {}
+impl ServerDndGrabHandler for Fde {
     fn send(&mut self, _mime_type: String, _fd: OwnedFd, _seat: Seat<Self>) {}
 }
 
-impl XdgShellHandler for Fawc {
+impl XdgShellHandler for Fde {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -198,7 +198,7 @@ impl XdgShellHandler for Fawc {
     }
 }
 
-impl XdgDecorationHandler for Fawc {
+impl XdgDecorationHandler for Fde {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         // the compositor draws the frame
         toplevel.with_pending_state(|s| s.decoration_mode = Some(DecoMode::ServerSide));
@@ -222,7 +222,7 @@ impl XdgDecorationHandler for Fawc {
     }
 }
 
-impl WlrLayerShellHandler for Fawc {
+impl WlrLayerShellHandler for Fde {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
         &mut self.layer_shell_state
     }
@@ -259,11 +259,11 @@ impl WlrLayerShellHandler for Fawc {
     }
 }
 
-delegate_compositor!(Fawc);
-delegate_layer_shell!(Fawc);
-smithay::delegate_session_lock!(Fawc);
+delegate_compositor!(Fde);
+delegate_layer_shell!(Fde);
+smithay::delegate_session_lock!(Fde);
 
-impl smithay::wayland::session_lock::SessionLockHandler for Fawc {
+impl smithay::wayland::session_lock::SessionLockHandler for Fde {
     fn lock_state(&mut self) -> &mut smithay::wayland::session_lock::SessionLockManagerState {
         &mut self.session_lock_state
     }
@@ -301,13 +301,13 @@ impl smithay::wayland::session_lock::SessionLockHandler for Fawc {
         self.lock_surfaces.push((output, surface));
     }
 }
-crate::delegate_background_effect!(Fawc);
-delegate_shm!(Fawc);
-delegate_output!(Fawc);
-delegate_seat!(Fawc);
-delegate_data_device!(Fawc);
-delegate_xdg_shell!(Fawc);
-delegate_xdg_decoration!(Fawc);
+crate::delegate_background_effect!(Fde);
+delegate_shm!(Fde);
+delegate_output!(Fde);
+delegate_seat!(Fde);
+delegate_data_device!(Fde);
+delegate_xdg_shell!(Fde);
+delegate_xdg_decoration!(Fde);
 
 #[allow(dead_code)]
 fn _unused(_: xdg_toplevel::State, _: &XdgDecorationState, _: &PopupManager) {}

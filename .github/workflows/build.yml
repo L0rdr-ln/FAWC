@@ -21,15 +21,15 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
       - name: Settings app (GTK4)
         run: |
-          cargo build --locked -p fawc-settings
-          cargo test --locked -p fawc-settings
+          cargo build --locked -p fde-settings
+          cargo test --locked -p fde-settings
           # it opens, draws and closes by itself on a virtual display
-          xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo FAWC_CONFIG=$RUNNER_TEMP/fawc.toml \
-            ./target/debug/fawc-settings --quit-after 1500
+          xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo FDE_CONFIG=$RUNNER_TEMP/fde.toml \
+            ./target/debug/fde-settings --quit-after 1500
       - name: Music player
         run: |
-          cargo build --locked -p fawc-music
-          cargo test --locked -p fawc-music
+          cargo build --locked -p fde-music
+          cargo test --locked -p fde-music
       - name: Render the demo scene
         run: |
           cargo run --locked -- glass-demo glass-demo.png

@@ -1,11 +1,11 @@
-# fawc-settings: the plan
+# fde-settings: the plan
 
 The control panel of the desktop. Not started; this page decides the shape before any code,
 so the compositor, the shell and the settings app agree on one configuration.
 
 ## One configuration, one writer
 
-Everything lives in **`~/.config/fawc/fawc.toml`** (system defaults in `/etc/fawc/fawc.toml`,
+Everything lives in **`~/.config/fde/fde.toml`** (system defaults in `/etc/fde/fde.toml`,
 the user file wins per key). One file, sectioned, with comments kept when the app rewrites it
 (`toml_edit`):
 
@@ -52,7 +52,7 @@ idle_blank_seconds = 0
   management protocol.
 - The settings app only ever **writes the file**. No private channel to the compositor: if the
   app is closed, nothing breaks, and hand-editing works the same way.
-- Things that are not FAWC's (volume, Wi-Fi, bluetooth, power profile, battery) are not in the
+- Things that are not FDE's (volume, Wi-Fi, bluetooth, power profile, battery) are not in the
   file: the app talks to **PipeWire, NetworkManager, BlueZ, UPower / power-profiles-daemon over
   D-Bus** and shows their state, exactly as GNOME Settings does.
 
@@ -72,20 +72,20 @@ idle_blank_seconds = 0
 
 ## Toolkit
 
-**GTK4**, with FAWC's own CSS theme (no libadwaita: its look is fixed). GTK4 gives text input,
+**GTK4**, with FDE's own CSS theme (no libadwaita: its look is fixed). GTK4 gives text input,
 accessibility, input methods and file choosers for free, which a hand-drawn UI (like the panel
 and lock screen) would need years to match. The glass look comes from `ext-background-effect-v1`
-(the window asks the compositor to blur behind its translucent areas) plus the FAWC GTK theme.
+(the window asks the compositor to blur behind its translucent areas) plus the FDE GTK theme.
 The panel and lock screen stay small hand-drawn layer-shell programs: they are few pixels of
 fixed layout, they start instantly and they have no toolkit dependency.
 
 ## Order of work
 
 1. **Done:** `src/config.rs` reads, merges and validates the file and the compositor watches it
-   (appearance, input, shell, session sections; see `docs/fawc.example.toml`). Tests: merge
+   (appearance, input, shell, session sections; see `docs/fde.example.toml`). Tests: merge
    rules, bad values, live reload applies a change and a broken edit changes nothing.
    Still to move over: wallpaper, outputs.
-2. **Done (first version, in `settings/`):** Appearance, Keyboard, Desktop and Session pages; GTK4 with FAWC CSS; every control writes the file through `config::set`. Still to do: Wallpaper, pointer settings.
+2. **Done (first version, in `settings/`):** Appearance, Keyboard, Desktop and Session pages; GTK4 with FDE CSS; every control writes the file through `config::set`. Still to do: Wallpaper, pointer settings.
    Original plan: Appearance + Wallpaper + Keyboard & mouse (only need the file; testable end-to-end:
    change the file, the pixels / input change).
 3. Displays (needs `wlr-output-management` in the compositor).

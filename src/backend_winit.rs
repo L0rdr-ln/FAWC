@@ -1,4 +1,4 @@
-//! Running nested in a window of another desktop (and the first way to try FAWC).
+//! Running nested in a window of another desktop (and the first way to try FDE).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,16 +14,16 @@ use smithay::utils::{Rectangle, Transform};
 
 use crate::glass::Glass;
 use crate::render::create_scene;
-use crate::state::{ClientState, Fawc};
+use crate::state::{ClientState, Fde};
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut event_loop: EventLoop<Fawc> = EventLoop::try_new()?;
-    let mut display: Display<Fawc> = Display::new()?;
+    let mut event_loop: EventLoop<Fde> = EventLoop::try_new()?;
+    let mut display: Display<Fde> = Display::new()?;
     let dh = display.handle();
 
     let (mut backend, winit_loop) = winit::init::<GlesRenderer>().map_err(|e| format!("winit: {e:?}"))?;
     let size = backend.window_size();
-    let mut state = Fawc::new(&dh, (size.w, size.h).into());
+    let mut state = Fde::new(&dh, (size.w, size.h).into());
 
     let glass = Glass::new(backend.renderer())?;
     let mut scene: GlesTexture = create_scene(backend.renderer(), size)?;

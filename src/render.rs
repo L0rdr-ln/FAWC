@@ -16,7 +16,7 @@ use smithay::utils::{Buffer as BufferCoord, Logical, Physical, Rectangle, Size, 
 
 use crate::glass::{Glass, GlassStyle};
 use crate::layout::outer_rect;
-use crate::state::{Fawc, TitleTex};
+use crate::state::{Fde, TitleTex};
 
 /// The scene texture of an output of `size`.
 pub fn create_scene(renderer: &mut GlesRenderer, size: Size<i32, Physical>) -> Result<GlesTexture, GlesError> {
@@ -46,7 +46,7 @@ impl View {
     }
 }
 
-impl Fawc {
+impl Fde {
     /// The window's title as a texture and where to draw it (in scene pixels; `style` and `outer`
     /// are already in those pixels, `scale` is the monitor's), or None if there is no title.
     fn title_texture(

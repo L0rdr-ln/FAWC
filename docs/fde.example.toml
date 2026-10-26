@@ -1,4 +1,4 @@
-# Copy to ~/.config/fawc/fawc.toml. Every key is optional; changes apply while FAWC runs
+# Copy to ~/.config/fde/fde.toml. Every key is optional; changes apply while FDE runs
 # (a file that does not parse is reported in the log and ignored).
 
 [appearance]
@@ -15,7 +15,7 @@ path = ""              # a PNG, JPEG or WebP file; empty = the built-in sky
 mode = "fill"          # fill (cover, crop) | fit (all of it, black bars) | stretch | center | tile
 
 [music]
-enabled = false        # background music from your own files, played by fawc-music
+enabled = false        # background music from your own files, played by fde-music
 path = ""              # a music file or a folder (mp3, ogg, flac, wav, m4a, aac, opus)
 volume = 0.5           # 0 .. 1
 shuffle = false

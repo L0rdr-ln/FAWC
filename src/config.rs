@@ -1,5 +1,5 @@
-//! The one configuration file: `~/.config/fawc/fawc.toml`, with system defaults in
-//! `/etc/fawc/fawc.toml` (the user's file wins, key by key). Missing keys mean defaults; a file
+//! The one configuration file: `~/.config/fde/fde.toml`, with system defaults in
+//! `/etc/fde/fde.toml` (the user's file wins, key by key). Missing keys mean defaults; a file
 //! that does not parse is reported and the previous configuration stays.
 //! See docs/SETTINGS.md for the plan this belongs to.
 
@@ -54,7 +54,7 @@ pub const WALLPAPER_MODES: [&str; 5] = ["fill", "fit", "stretch", "center", "til
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Music {
-    /// play background music with `fawc-music`
+    /// play background music with `fde-music`
     pub enabled: bool,
     /// a music file, or a folder of them
     pub path: String,
@@ -110,7 +110,7 @@ pub struct Session {
     pub idle_lock_seconds: u32,
 }
 
-/// One monitor, by connector name (`DP-1`, `HDMI-A-1`, `eDP-1`; `fawc-0` for the nested window).
+/// One monitor, by connector name (`DP-1`, `HDMI-A-1`, `eDP-1`; `fde-0` for the nested window).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct OutputConfig {
@@ -154,17 +154,17 @@ pub struct Config {
     pub session: Session,
 }
 
-/// Where the files are: `$FAWC_CONFIG` replaces both, else system then user.
+/// Where the files are: `$FDE_CONFIG` replaces both, else system then user.
 pub fn paths() -> Vec<PathBuf> {
-    if let Some(p) = std::env::var_os("FAWC_CONFIG") {
+    if let Some(p) = std::env::var_os("FDE_CONFIG") {
         return vec![PathBuf::from(p)];
     }
-    let mut v = vec![PathBuf::from("/etc/fawc/fawc.toml")];
+    let mut v = vec![PathBuf::from("/etc/fde/fde.toml")];
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
     if let Some(b) = base {
-        v.push(b.join("fawc/fawc.toml"));
+        v.push(b.join("fde/fde.toml"));
     }
     v
 }
@@ -350,9 +350,9 @@ mod tests {
     }
 }
 
-/// Where the settings app writes: `$FAWC_CONFIG`, else the user's file.
+/// Where the settings app writes: `$FDE_CONFIG`, else the user's file.
 pub fn user_path() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("FAWC_CONFIG") {
+    if let Some(p) = std::env::var_os("FDE_CONFIG") {
         return Some(PathBuf::from(p));
     }
     paths().into_iter().next_back()
@@ -411,7 +411,7 @@ mod write_tests {
     #[test]
     fn set_keeps_comments_and_other_keys_and_refuses_bad_values() {
         let dir = tempfile::tempdir().unwrap();
-        let f = dir.path().join("sub/fawc.toml");
+        let f = dir.path().join("sub/fde.toml");
         // a new file, in a directory that does not exist yet
         set(&f, &[("appearance.blur", Setting::Int(4))]).unwrap();
         assert_eq!(Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap().appearance.blur, 4);

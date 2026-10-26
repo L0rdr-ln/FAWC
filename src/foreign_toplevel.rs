@@ -18,7 +18,7 @@ use wayland_protocols_wlr::foreign_toplevel::v1::server::{
     zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
 };
 
-use crate::state::Fawc;
+use crate::state::Fde;
 
 /// What a client was last told about one window.
 #[derive(Clone, PartialEq, Default)]
@@ -56,14 +56,14 @@ impl ForeignToplevelState {
     }
 }
 
-impl GlobalDispatch<ZwlrForeignToplevelManagerV1, ()> for Fawc {
+impl GlobalDispatch<ZwlrForeignToplevelManagerV1, ()> for Fde {
     fn bind(
-        state: &mut Fawc,
+        state: &mut Fde,
         _: &DisplayHandle,
         _: &Client,
         resource: New<ZwlrForeignToplevelManagerV1>,
         _: &(),
-        data_init: &mut DataInit<'_, Fawc>,
+        data_init: &mut DataInit<'_, Fde>,
     ) {
         let resource = data_init.init(resource, ());
         state.foreign_toplevels.managers.push(Manager { resource, entries: Vec::new() });
@@ -71,15 +71,15 @@ impl GlobalDispatch<ZwlrForeignToplevelManagerV1, ()> for Fawc {
     }
 }
 
-impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for Fawc {
+impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for Fde {
     fn request(
-        state: &mut Fawc,
+        state: &mut Fde,
         _: &Client,
         manager: &ZwlrForeignToplevelManagerV1,
         request: zwlr_foreign_toplevel_manager_v1::Request,
         _: &(),
         _: &DisplayHandle,
-        _: &mut DataInit<'_, Fawc>,
+        _: &mut DataInit<'_, Fde>,
     ) {
         if let zwlr_foreign_toplevel_manager_v1::Request::Stop = request {
             manager.finished();
@@ -87,20 +87,20 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for Fawc {
         }
     }
 
-    fn destroyed(state: &mut Fawc, _: smithay::reexports::wayland_server::backend::ClientId, manager: &ZwlrForeignToplevelManagerV1, _: &()) {
+    fn destroyed(state: &mut Fde, _: smithay::reexports::wayland_server::backend::ClientId, manager: &ZwlrForeignToplevelManagerV1, _: &()) {
         state.foreign_toplevels.managers.retain(|m| &m.resource != manager);
     }
 }
 
-impl Dispatch<ZwlrForeignToplevelHandleV1, WlSurface> for Fawc {
+impl Dispatch<ZwlrForeignToplevelHandleV1, WlSurface> for Fde {
     fn request(
-        state: &mut Fawc,
+        state: &mut Fde,
         _: &Client,
         _: &ZwlrForeignToplevelHandleV1,
         request: zwlr_foreign_toplevel_handle_v1::Request,
         surface: &WlSurface,
         _: &DisplayHandle,
-        _: &mut DataInit<'_, Fawc>,
+        _: &mut DataInit<'_, Fde>,
     ) {
         let Some(window) = state.window_for_surface(surface) else { return };
         use zwlr_foreign_toplevel_handle_v1::Request as R;
@@ -131,14 +131,14 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, WlSurface> for Fawc {
         state.sync_foreign_toplevels();
     }
 
-    fn destroyed(state: &mut Fawc, _: smithay::reexports::wayland_server::backend::ClientId, handle: &ZwlrForeignToplevelHandleV1, _: &WlSurface) {
+    fn destroyed(state: &mut Fde, _: smithay::reexports::wayland_server::backend::ClientId, handle: &ZwlrForeignToplevelHandleV1, _: &WlSurface) {
         for m in &mut state.foreign_toplevels.managers {
             m.entries.retain(|e| &e.handle != handle);
         }
     }
 }
 
-fn snapshot(state: &Fawc, window: &Window) -> Option<(WlSurface, Snapshot)> {
+fn snapshot(state: &Fde, window: &Window) -> Option<(WlSurface, Snapshot)> {
     let top = window.toplevel()?;
     let surface = top.wl_surface().clone();
     let (title, app_id) = with_states(&surface, |states| {
@@ -184,7 +184,7 @@ fn states_of(s: &Snapshot) -> Vec<u8> {
     v
 }
 
-impl Fawc {
+impl Fde {
     pub fn sync_foreign_toplevels(&mut self) {
         if self.foreign_toplevels.managers.is_empty() {
             return;
@@ -207,7 +207,7 @@ impl Fawc {
                     Some(i) => i,
                     None => {
                         let Some(client) = m.resource.client() else { continue };
-                        let Ok(handle) = client.create_resource::<ZwlrForeignToplevelHandleV1, WlSurface, Fawc>(
+                        let Ok(handle) = client.create_resource::<ZwlrForeignToplevelHandleV1, WlSurface, Fde>(
                             &dh,
                             m.resource.version(),
                             surface.clone(),

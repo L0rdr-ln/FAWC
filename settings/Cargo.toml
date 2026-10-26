@@ -1,12 +1,12 @@
 [package]
-name = "fawc-settings"
+name = "fde-settings"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "The FAWC control panel: edits ~/.config/fawc/fawc.toml, which the running desktop applies at once"
+description = "The FDE control panel: edits ~/.config/fde/fde.toml, which the running desktop applies at once"
 
 [dependencies]
-fawc = { path = ".." }
+fde = { path = ".." }
 gtk4 = { version = "0.9", features = ["v4_10"] }
 
 [dev-dependencies]

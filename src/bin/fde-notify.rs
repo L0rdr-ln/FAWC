@@ -8,8 +8,8 @@ use std::os::fd::AsFd;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use fawc::notify::{self, Store};
-use fawc::text::TextRenderer;
+use fde::notify::{self, Store};
+use fde::text::TextRenderer;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{delegate_noop, Connection, Dispatch, Proxy, QueueHandle, WEnum};
@@ -62,7 +62,7 @@ impl Server {
     }
 
     fn get_server_information(&self) -> (String, String, String, String) {
-        ("fawc-notify".into(), "FAWC".into(), env!("CARGO_PKG_VERSION").into(), "1.2".into())
+        ("fde-notify".into(), "FDE".into(), env!("CARGO_PKG_VERSION").into(), "1.2".into())
     }
 }
 
@@ -74,7 +74,7 @@ struct App {
     configured: bool,
     pointer_y: f64,
     click: Option<f64>,
-    scale: fawc::clientscale::ScaleTracker,
+    scale: fde::clientscale::ScaleTracker,
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
@@ -153,7 +153,7 @@ struct Popup {
 
 fn tempfile_in_runtime_dir() -> std::io::Result<std::fs::File> {
     let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
-    let path = format!("{dir}/fawc-notify-{}", std::process::id());
+    let path = format!("{dir}/fde-notify-{}", std::process::id());
     let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(&path)?;
     let _ = std::fs::remove_file(&path);
     Ok(f)

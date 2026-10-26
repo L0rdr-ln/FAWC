@@ -1,5 +1,5 @@
-//! fawc-settings: the control panel. Every control writes `~/.config/fawc/fawc.toml` at once
-//! (through `fawc::config::set`, which keeps comments and refuses bad values); the running
+//! fde-settings: the control panel. Every control writes `~/.config/fde/fde.toml` at once
+//! (through `fde::config::set`, which keeps comments and refuses bad values); the running
 //! desktop watches that file and follows within half a second. No private channel to the
 //! compositor: closing this app, or editing the file by hand, changes nothing about how it works.
 
@@ -9,12 +9,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use fawc::config::{self, Config};
+use fde::config::{self, Config};
 use gtk4::prelude::*;
 use gtk4::{gdk, glib, Align, Box as GBox, Label, Orientation};
 
 const CSS: &str = r#"
-window.fawc { background-image: linear-gradient(to bottom, #8fd0ff 0%, #d6efff 38%, #eaf7ff 100%); }
+window.fde { background-image: linear-gradient(to bottom, #8fd0ff 0%, #d6efff 38%, #eaf7ff 100%); }
 .sidebar-box { background: rgba(255,255,255,0.35); border-radius: 14px; padding: 6px; margin: 10px 0 10px 10px;
                border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 1px 6px rgba(20,80,150,0.25); }
 .sidebar-box list { background: transparent; }
@@ -57,7 +57,7 @@ fn path_of_config() -> std::path::PathBuf {
 }
 
 fn path() -> std::path::PathBuf {
-    config::user_path().unwrap_or_else(|| "fawc.toml".into())
+    config::user_path().unwrap_or_else(|| "fde.toml".into())
 }
 
 /// Run `save` once, a moment after the last call: a slider drag makes one write, not hundreds.
@@ -205,7 +205,7 @@ fn wallpaper_page(cfg: &Config, status: &Status) -> GBox {
 }
 
 fn music_page(cfg: &Config, status: &Status) -> GBox {
-    let (outer, body) = page("Music", "Background music for the session: your own files, played in a loop by fawc-music. Takes effect at once if it is running, else at the next session.");
+    let (outer, body) = page("Music", "Background music for the session: your own files, played in a loop by fde-music. Takes effect at once if it is running, else at the next session.");
     let enabled = gtk4::Switch::new();
     enabled.set_active(cfg.music.enabled);
     enabled.set_halign(Align::Start);
@@ -319,7 +319,7 @@ fn session_page(cfg: &Config, status: &Status) -> GBox {
 }
 
 fn about_page() -> GBox {
-    let (outer, body) = page("About", "FAWC: a Frutiger Aero desktop on Wayland.");
+    let (outer, body) = page("About", "FDE: a Frutiger Aero desktop on Wayland.");
     for line in [
         format!("Settings file: {}", path().display()),
         format!("Version {}", env!("CARGO_PKG_VERSION")),
@@ -336,9 +336,9 @@ fn about_page() -> GBox {
 fn build(app: &gtk4::Application, quit_after: Option<u64>) {
     let cfg = Config::load().unwrap_or_default();
     let window = gtk4::ApplicationWindow::new(app);
-    window.set_title(Some("FAWC Settings"));
+    window.set_title(Some("FDE Settings"));
     window.set_default_size(820, 520);
-    window.add_css_class("fawc");
+    window.add_css_class("fde");
 
     let status = Status(Label::new(Some("")));
     status.0.add_css_class("status");
@@ -402,7 +402,7 @@ fn main() -> glib::ExitCode {
     // `--quit-after MS` closes the window by itself: for smoke tests
     let args: Vec<String> = std::env::args().collect();
     let quit_after = args.iter().position(|a| a == "--quit-after").and_then(|i| args.get(i + 1)).and_then(|v| v.parse().ok());
-    let app = gtk4::Application::builder().application_id("org.fawc.Settings").flags(gtk4::gio::ApplicationFlags::NON_UNIQUE).build();
+    let app = gtk4::Application::builder().application_id("org.fde.Settings").flags(gtk4::gio::ApplicationFlags::NON_UNIQUE).build();
     app.connect_startup(|_| {
         if let Some(display) = gdk::Display::default() {
             let css = gtk4::CssProvider::new();

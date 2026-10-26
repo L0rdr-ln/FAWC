@@ -11,7 +11,7 @@ use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
 
 use crate::layout::{Button, Hit};
-use crate::state::{Drag, Edges, Fawc};
+use crate::state::{Drag, Edges, Fde};
 
 const BTN_LEFT: u32 = 0x110;
 
@@ -37,7 +37,7 @@ pub fn edges_cursor(e: &Edges) -> &'static str {
     }
 }
 
-impl Fawc {
+impl Fde {
     pub fn process_input_event<B: InputBackend>(&mut self, event: InputEvent<B>) {
         self.note_activity();
         match event {
@@ -145,7 +145,7 @@ impl Fawc {
             }
             Action::Cycle => self.cycle_windows(),
             Action::Restore => self.restore_window(),
-            Action::Lock => crate::shell::start_sibling("fawc-lock"),
+            Action::Lock => crate::shell::start_sibling("fde-lock"),
             Action::SwitchVt(vt) => {
                 if let Some(session) = self.session.as_mut() {
                     use smithay::backend::session::Session;

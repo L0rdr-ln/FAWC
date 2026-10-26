@@ -1,7 +1,7 @@
 //! What each control of the settings app changes in the configuration file. No GTK in here, so
 //! it is tested without a display.
 
-use fawc::config::Setting;
+use fde::config::Setting;
 
 /// "#rrggbb" from 0..1 colour channels.
 pub fn hex_color(r: f32, g: f32, b: f32) -> String {
@@ -60,12 +60,12 @@ pub fn session(idle_lock_minutes: u32) -> Vec<(&'static str, Setting)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fawc::config::{set, Config};
+    use fde::config::{set, Config};
 
     #[test]
     fn every_page_writes_a_file_the_compositor_accepts_and_reads_back() {
         let dir = tempfile::tempdir().unwrap();
-        let f = dir.path().join("fawc.toml");
+        let f = dir.path().join("fde.toml");
         set(&f, &appearance(&hex_color(1.0, 0.5, 0.0), 0.61234, 4, 0.5, false)).unwrap();
         set(&f, &keyboard(" de ", 30, 400)).unwrap();
         set(&f, &shell("alacritty", "", false)).unwrap();

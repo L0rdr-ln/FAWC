@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="FAWC logo" height="128">
+  <img src="assets/logo.svg" alt="FDE logo" height="128">
   <img src="assets/mascot.svg" alt="Aero-chan, the mascot" height="128">
 </p>
 
-# FAWC
+# FDE: Frutiger Desktop Environment
 
-[![build](https://github.com/L0rdr-ln/FAWC/actions/workflows/build.yml/badge.svg)](https://github.com/L0rdr-ln/FAWC/actions/workflows/build.yml)
+[![build](https://github.com/L0rdr-ln/FDE/actions/workflows/build.yml/badge.svg)](https://github.com/L0rdr-ln/FDE/actions/workflows/build.yml)
 ![license MIT](https://img.shields.io/badge/license-MIT-blue)
 
 A Wayland desktop in the **Frutiger Aero** style: glass windows that really blur what is behind
@@ -16,13 +16,13 @@ list, and a lock screen.
 
 Written in Rust on [Smithay](https://github.com/Smithay/smithay), **not** on wlroots: wlroots'
 scene graph can only stack pictures and rectangles, it cannot read back what is behind a window,
-so a true blur is impossible there. FAWC draws the scene bottom to top into an offscreen
+so a true blur is impossible there. FDE draws the scene bottom to top into an offscreen
 texture, and before every glass window it blurs the part of that texture behind the window (dual
 Kawase blur), draws the glass panel over it (rounded shape, tint, gloss, light edge) and then
 the client. Clients can ask for the same blur behind their own translucent areas with
 `ext-background-effect-v1`.
 
-![FAWC with two windows, the task bar and its window list](docs/shell.png)
+![FDE with two windows, the task bar and its window list](docs/shell.png)
 
 | start menu | lock screen | notifications |
 |---|---|---|
@@ -34,16 +34,16 @@ the client. Clients can ask for the same blur behind their own translucent areas
 |---|---|
 | **Compositor** | xdg-shell windows with server-side glass frames, move / resize / maximize / minimize, focus, popups, keyboard and pointer; layer-shell (panels, launchers, wallpapers) with exclusive zones; `ext-background-effect-v1`; `ext-session-lock-v1`; `wlr-foreign-toplevel-management`; nested (winit) backend and a DRM/KMS backend |
 | **Cursors** | the mouse cursor comes from your XCursor theme (`appearance.cursor_theme`/`cursor_size`, or `$XCURSOR_THEME`), at the monitor's scale; clients can ask for named cursors (text beam, hand ...) or draw their own; resize arrows on window borders. The nested window uses the host's cursor |
-| **Task bar** `fawc-panel` | glass strip with the start orb, a button per open window (click to raise or minimize), clock; blurred behind |
+| **Task bar** `fde-panel` | glass strip with the start orb, a button per open window (click to raise or minimize), clock; blurred behind |
 | **Start menu** | the installed applications from `.desktop` files with a search field: type to filter, Up/Down, Enter starts, Esc clears or closes; glass sheet, closes when the pointer leaves |
-| **Notifications** `fawc-notify` | the `org.freedesktop.Notifications` service on the session bus (what `notify-send` and every app talks to); glass bubbles at the top right, newest on top, expire on their timeout, critical ones stay, click to dismiss; started with the session when a D-Bus session bus exists |
-| **Settings** `fawc-settings` | GTK4 control panel with the FAWC look: accent colour, glass tint, blur, gloss, wallpaper (a PNG, JPEG or WebP, with fill / fit / stretch / center / tile), keyboard layout and repeat, terminal, task bar, idle lock. Every change is written to `fawc.toml` (comments kept, bad values refused) and the running desktop follows at once. Build it with `cargo build -p fawc-settings` (needs `libgtk-4-dev`) |
-| **Music** `fawc-music` | background music from your own files (`[music]` in the config, or the Music page in settings): plays a file or a folder in a loop, volume, shuffle; follows the config live. Off by default, nothing is bundled. `fawc-music --check FILE` says whether a file plays. Needs a sound card and `libasound2-dev` to build |
-| **Lock screen** `fawc-lock` | `Alt+L`: a glass login card; the password is checked by PAM's `unix_chkpwd` |
+| **Notifications** `fde-notify` | the `org.freedesktop.Notifications` service on the session bus (what `notify-send` and every app talks to); glass bubbles at the top right, newest on top, expire on their timeout, critical ones stay, click to dismiss; started with the session when a D-Bus session bus exists |
+| **Settings** `fde-settings` | GTK4 control panel with the FDE look: accent colour, glass tint, blur, gloss, wallpaper (a PNG, JPEG or WebP, with fill / fit / stretch / center / tile), keyboard layout and repeat, terminal, task bar, idle lock. Every change is written to `fde.toml` (comments kept, bad values refused) and the running desktop follows at once. Build it with `cargo build -p fde-settings` (needs `libgtk-4-dev`) |
+| **Music** `fde-music` | background music from your own files (`[music]` in the config, or the Music page in settings): plays a file or a folder in a loop, volume, shuffle; follows the config live. Off by default, nothing is bundled. `fde-music --check FILE` says whether a file plays. Needs a sound card and `libasound2-dev` to build |
+| **Lock screen** `fde-lock` | `Alt+L`: a glass login card; the password is checked by PAM's `unix_chkpwd` |
 | **Tests** | pixel tests of the glass on a software GL, and end-to-end tests with real Wayland clients (including the real panel and lock programs); no display or GPU needed |
 
 **Multi-monitor and HiDPI:** several outputs side by side in one space, each with its own scale
-(`[outputs.NAME]` in `fawc.toml`: scale, mode, position, on/off); windows can be on or across
+(`[outputs.NAME]` in `fde.toml`: scale, mode, position, on/off); windows can be on or across
 any of them, the pointer moves between them, maximize fills the monitor the window is on, the
 lock screen covers every monitor. Tested with virtual outputs (two monitors; a 2x monitor draws
 the frame, title and client at double size). Every monitor gets its own task bar (with the same window list); notifications appear on the first
@@ -53,7 +53,7 @@ event: compiled, not run). The task bar, start menu, lock screen and notificatio
 monitor's scale (whole numbers: a 1.5 monitor gets 2x pictures, scaled down by the compositor), so
 everything is sharp.
 
-![FAWC at scale 2 (nested)](docs/hidpi.png)
+![FDE at scale 2 (nested)](docs/hidpi.png)
 
 **Not verified:** the DRM/KMS backend (real console / GPU) has been written and compiled but never
 run on hardware, so multi-monitor output on real GPUs is untested too. Not done: GTK/Qt apps asking for blur.
@@ -72,44 +72,44 @@ On a console or in a VM (Debian/Ubuntu), one script installs everything and buil
 
 ```sh
 sudo apt install -y git
-git clone https://github.com/L0rdr-ln/FAWC fawc && fawc/tools/vm-setup.sh
-~/start-fawc            # on a console: Ctrl+Alt+F3, log in, then run it
+git clone https://github.com/L0rdr-ln/FDE fde && fde/tools/vm-setup.sh
+~/start-fde            # on a console: Ctrl+Alt+F3, log in, then run it
 ```
 
-On a console FAWC uses the GPU directly (DRM/KMS, libseat, libinput). Please attach
-`~/fawc-last.log` to a report if something is wrong.
+On a console FDE uses the GPU directly (DRM/KMS, libseat, libinput). Please attach
+`~/fde-last.log` to a report if something is wrong.
 
 ## Keys
 
 | | |
 |---|---|
-| **Alt+Return** | terminal (`foot`, or `$FAWC_TERMINAL`) |
+| **Alt+Return** | terminal (`foot`, or `$FDE_TERMINAL`) |
 | **Alt+drag**, title bar | move; borders resize; the three orbs minimize / maximize / close |
 | **Alt+Tab** | cycle windows (**Alt+m** restore a minimized one) |
 | **Alt+f**, **Alt+q** | maximize, close |
 | **Alt+L** | lock the session |
-| **Alt+Esc** | quit FAWC |
+| **Alt+Esc** | quit FDE |
 | **Ctrl+Alt+F1..F12** | switch console (DRM backend) |
 
 ## Wallpapers
 
 Point `wallpaper.path` at any PNG, JPEG or WebP you like, or use the Wallpaper page in settings. To fetch
 one from the web: `tools/get-wallpaper.sh URL [fill|fit|stretch|center|tile]` downloads it to
-`~/.local/share/fawc/wallpapers/` and sets it. FAWC comes with a default wallpaper (`assets/wallpaper.webp`, see
+`~/.local/share/fde/wallpapers/` and sets it. FDE comes with a default wallpaper (`assets/wallpaper.webp`, see
 [assets/README.md](assets/README.md)), which the lock screen shows too.
 
 ## Configuration
 
 ![The settings app](docs/settings.png)
 
-One file, `~/.config/fawc/fawc.toml` (system defaults in `/etc/fawc/fawc.toml`; the user's file
-wins key by key), see [docs/fawc.example.toml](docs/fawc.example.toml). It is applied **while
-FAWC runs**: change the accent colour, glass strength, blur, terminal, keyboard layout or key
+One file, `~/.config/fde/fde.toml` (system defaults in `/etc/fde/fde.toml`; the user's file
+wins key by key), see [docs/fde.example.toml](docs/fde.example.toml). It is applied **while
+FDE runs**: change the accent colour, glass strength, blur, terminal, keyboard layout or key
 repeat and the desktop follows within half a second; a file with an error is reported in the log
 and ignored. A settings app that edits this file is planned ([docs/SETTINGS.md](docs/SETTINGS.md)).
 
-Environment overrides: `FAWC_TERMINAL`, `FAWC_LAUNCHER`, `FAWC_NO_PANEL=1`, `FAWC_NO_NOTIFY=1`, `FAWC_AUTOSTART="cmd"`,
-`FAWC_CONFIG=/path/file.toml` (use only this file), `RUST_LOG=info` (logs).
+Environment overrides: `FDE_TERMINAL`, `FDE_LAUNCHER`, `FDE_NO_PANEL=1`, `FDE_NO_NOTIFY=1`, `FDE_AUTOSTART="cmd"`,
+`FDE_CONFIG=/path/file.toml` (use only this file), `RUST_LOG=info` (logs).
 
 ## Build
 
@@ -131,7 +131,7 @@ cargo run -- glass-demo glass-demo.png    # render the demo scene offscreen
 ## Relation to sfwc
 
 [sfwc](https://github.com/L0rdr-ln/Simple-Floating-Wayland-Compositor) is the small floating
-compositor on wlroots. FAWC is a separate project with a different goal (looks first); it reuses
+compositor on wlroots. FDE is a separate project with a different goal (looks first); it reuses
 ideas (theme format with a `[style]` section, headless pixel tests), not code.
 
 ## Licence

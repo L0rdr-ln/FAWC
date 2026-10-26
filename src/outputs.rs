@@ -5,9 +5,9 @@
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::utils::{Logical, Point, Rectangle, Size, Transform};
 
-use crate::state::Fawc;
+use crate::state::Fde;
 
-impl Fawc {
+impl Fde {
     /// Every monitor, the first one first.
     pub fn all_outputs(&self) -> Vec<Output> {
         std::iter::once(self.output.clone()).chain(self.extra_outputs.iter().cloned()).collect()
@@ -37,7 +37,7 @@ impl Fawc {
     pub fn add_output(&mut self, name: &str, mode_px: (i32, i32), refresh_mhz: i32) -> Output {
         let output = Output::new(
             name.to_string(),
-            PhysicalProperties { size: (0, 0).into(), subpixel: Subpixel::Unknown, make: "FAWC".into(), model: name.to_string() },
+            PhysicalProperties { size: (0, 0).into(), subpixel: Subpixel::Unknown, make: "FDE".into(), model: name.to_string() },
         );
         let mode = Mode { size: mode_px.into(), refresh: refresh_mhz };
         let oc = self.config.outputs.get(name).cloned().unwrap_or_default();
@@ -53,7 +53,7 @@ impl Fawc {
         let loc: Point<i32, Logical> = (oc.x.unwrap_or(to_the_right), oc.y.unwrap_or(0)).into();
         output.change_current_state(Some(mode), Some(Transform::Normal), Some(Scale::Fractional(oc.scale)), Some(loc));
         output.set_preferred(mode);
-        let global = output.create_global::<Fawc>(&self.display_handle);
+        let global = output.create_global::<Fde>(&self.display_handle);
         self.output_globals.push((output.clone(), global));
         self.space.map_output(&output, loc);
         self.extra_outputs.push(output.clone());
@@ -101,7 +101,7 @@ impl Fawc {
         self.space.unmap_output(output);
         if let Some(i) = self.output_globals.iter().position(|(o, _)| o == output) {
             let (_, id) = self.output_globals.remove(i);
-            self.display_handle.remove_global::<Fawc>(id);
+            self.display_handle.remove_global::<Fde>(id);
         }
         self.extra_outputs.retain(|o| o != output);
         self.pointer_location = self.clamp_to_outputs(self.pointer_location);
@@ -155,16 +155,16 @@ mod tests {
     use super::*;
     use smithay::reexports::wayland_server::Display;
 
-    fn state() -> (Display<Fawc>, Fawc) {
-        let display: Display<Fawc> = Display::new().unwrap();
-        let s = Fawc::new(&display.handle(), (800, 600).into());
+    fn state() -> (Display<Fde>, Fde) {
+        let display: Display<Fde> = Display::new().unwrap();
+        let s = Fde::new(&display.handle(), (800, 600).into());
         (display, s)
     }
 
     #[test]
     fn outputs_sit_side_by_side_and_the_pointer_stays_on_them() {
         let (_d, mut s) = state();
-        let second = s.add_output("fawc-1", (640, 480), 60_000);
+        let second = s.add_output("fde-1", (640, 480), 60_000);
         assert_eq!(s.output_rect(&s.output.clone()), Rectangle::new((0, 0).into(), (800, 600).into()));
         assert_eq!(s.output_rect(&second), Rectangle::new((800, 0).into(), (640, 480).into()));
         assert_eq!(s.output_at((100.0, 100.0).into()).unwrap(), s.output);
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn unplugging_a_monitor_brings_its_windows_home_and_the_pointer_back() {
         let (_d, mut s) = state();
-        let second = s.add_output("fawc-1", (640, 480), 60_000);
+        let second = s.add_output("fde-1", (640, 480), 60_000);
         s.pointer_location = (1000.0, 100.0).into();
         s.remove_output(&second);
         assert_eq!(s.all_outputs(), vec![s.output.clone()]);
@@ -191,14 +191,14 @@ mod tests {
         s.remove_output(&first);
         assert_eq!(s.all_outputs().len(), 1);
         // a monitor plugged in again takes the free place on the right
-        let again = s.add_output("fawc-1", (640, 480), 60_000);
+        let again = s.add_output("fde-1", (640, 480), 60_000);
         assert_eq!(s.output_rect(&again).loc, (800, 0).into());
     }
 
     #[test]
     fn scale_makes_the_logical_size_smaller() {
         let (_d, mut s) = state();
-        let o = s.add_output("fawc-1", (3840, 2160), 60_000);
+        let o = s.add_output("fde-1", (3840, 2160), 60_000);
         o.change_current_state(None, None, Some(Scale::Fractional(2.0)), None);
         assert_eq!(s.output_logical_size(&o), (1920, 1080).into());
         o.change_current_state(None, None, Some(Scale::Fractional(1.5)), None);

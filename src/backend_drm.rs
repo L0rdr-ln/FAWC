@@ -34,7 +34,7 @@ use smithay::utils::{DeviceFd, Transform};
 
 use crate::glass::Glass;
 use crate::render::create_scene;
-use crate::state::{ClientState, Fawc};
+use crate::state::{ClientState, Fde};
 
 type Compositor = DrmCompositor<
     GbmAllocator<DrmDeviceFd>,
@@ -60,7 +60,7 @@ struct Gpu {
 }
 
 /// Draw monitor `idx` and hand the frame to the display (unless one is already on its way).
-fn render_and_queue(state: &mut Fawc, gpu: &mut Gpu, idx: usize) {
+fn render_and_queue(state: &mut Fde, gpu: &mut Gpu, idx: usize) {
     let Gpu { renderer, glass, outputs } = gpu;
     let Some(og) = outputs.get_mut(idx) else { return };
     if og.queued {
@@ -203,7 +203,7 @@ fn create_output_gpu(hw: &Hardware, renderer: &mut GlesRenderer, monitor: &Monit
 }
 
 /// A monitor was plugged in or out: look again at what is connected.
-fn rescan(state: &mut Fawc, gpu: &mut Gpu, hw: &Hardware) {
+fn rescan(state: &mut Fde, gpu: &mut Gpu, hw: &Hardware) {
     let config = state.config.clone();
     let candidates = match probe(&hw.drm.borrow(), &config) {
         Ok(c) => c,
@@ -245,8 +245,8 @@ fn rescan(state: &mut Fawc, gpu: &mut Gpu, hw: &Hardware) {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut event_loop: EventLoop<Fawc> = EventLoop::try_new()?;
-    let mut display: Display<Fawc> = Display::new()?;
+    let mut event_loop: EventLoop<Fde> = EventLoop::try_new()?;
+    let mut display: Display<Fde> = Display::new()?;
     let dh = display.handle();
 
     // --- the login session: access to the GPU and the input devices without being root
@@ -271,7 +271,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let first = monitors.first().ok_or("no monitor is connected")?;
     let (w, h) = (first.mode.size().0 as i32, first.mode.size().1 as i32);
 
-    let mut state = Fawc::new_named(&dh, &first.name, (w, h).into());
+    let mut state = Fde::new_named(&dh, &first.name, (w, h).into());
     state.draw_cursor = true;
     state.session = Some(session.clone());
     let outputs: Vec<Output> = std::iter::once(state.output.clone())

@@ -1,14 +1,14 @@
-# Contributing to FAWC
+# Contributing to FDE
 
-Thanks for looking. FAWC is early: the most useful contribution right now is **running it and
+Thanks for looking. FDE is early: the most useful contribution right now is **running it and
 telling us what breaks**, especially on real hardware (the DRM/KMS backend has only run nested).
 
 ## Reporting a problem
 
 Open an issue with the template. Please include:
 
-- how you started it (`~/start-fawc`, `cargo run`, nested or on a console),
-- the log (`~/fawc-last.log`, or `RUST_LOG=info` output),
+- how you started it (`~/start-fde`, `cargo run`, nested or on a console),
+- the log (`~/fde-last.log`, or `RUST_LOG=info` output),
 - your GPU / VM type and the distribution.
 
 ## Building and testing
@@ -21,7 +21,7 @@ LIBGL_ALWAYS_SOFTWARE=1 cargo test     # unit tests, glass pixel tests, end-to-e
 ```
 
 The tests need no display or GPU: they render on a software GL (llvmpipe), and the end-to-end
-tests start real Wayland clients (including the real `fawc-panel` and `fawc-lock` binaries)
+tests start real Wayland clients (including the real `fde-panel` and `fde-lock` binaries)
 against the compositor inside the test process.
 
 ## House rules
@@ -37,5 +37,5 @@ against the compositor inside the test process.
 ## Layout
 
 `music/` the background music player (needs `libasound2-dev`), `settings/` the GTK4 control panel (separate crate, needs `libgtk-4-dev`; `cargo test --workspace` builds it), `src/glass` the renderer, `src/*.rs` the compositor, `src/bin/` the shell programs
-(`fawc-panel`, `fawc-lock`), `tests/e2e.rs` end-to-end tests, `docs/` architecture, roadmap and
+(`fde-panel`, `fde-lock`), `tests/e2e.rs` end-to-end tests, `docs/` architecture, roadmap and
 plans.

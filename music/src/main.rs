@@ -1,4 +1,4 @@
-//! fawc-music: plays the music named in `[music]` of fawc.toml in a loop, quietly, for as long
+//! fde-music: plays the music named in `[music]` of fde.toml in a loop, quietly, for as long
 //! as the session runs. Volume, shuffle, the path and the on/off switch follow the file live.
 //! With no sound card it keeps looking for one.
 
@@ -6,8 +6,8 @@ use std::fs::File;
 use std::io::BufReader;
 use std::time::{Duration, Instant};
 
-use fawc::config::{Config, Watcher};
-use fawc_music::{collect, shuffle};
+use fde::config::{Config, Watcher};
+use fde_music::{collect, shuffle};
 use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink};
 
 fn open_sink() -> Option<(OutputStream, Sink)> {
@@ -17,13 +17,13 @@ fn open_sink() -> Option<(OutputStream, Sink)> {
             Some((stream, sink))
         }
         Err(e) => {
-            eprintln!("fawc-music: no sound output ({e}); trying again in a while");
+            eprintln!("fde-music: no sound output ({e}); trying again in a while");
             None
         }
     }
 }
 
-/// `fawc-music --check FILE...`: decode each file completely and say what is in it, without any
+/// `fde-music --check FILE...`: decode each file completely and say what is in it, without any
 /// sound output. Exit status 1 if one of them cannot be played.
 fn check(files: &[String]) -> i32 {
     use rodio::Source;
@@ -99,7 +99,7 @@ fn main() {
             playlist_for = (m.path.clone(), m.shuffle);
             next = 0;
             sink.stop();
-            eprintln!("fawc-music: {} track(s) in {}", playlist.len(), m.path);
+            eprintln!("fde-music: {} track(s) in {}", playlist.len(), m.path);
         }
         if playlist.is_empty() {
             retry_at = Instant::now() + Duration::from_secs(30);
@@ -115,7 +115,7 @@ fn main() {
                     sink.append(source);
                 }
                 Err(e) => {
-                    eprintln!("fawc-music: cannot play {}: {e}", track.display());
+                    eprintln!("fde-music: cannot play {}: {e}", track.display());
                     failures += 1;
                     if failures as usize >= playlist.len() {
                         // none of them plays: wait before going through them again

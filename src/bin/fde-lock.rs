@@ -4,8 +4,8 @@
 use std::io::{Read, Write};
 use std::os::fd::AsFd;
 
-use fawc::lockscreen;
-use fawc::text::TextRenderer;
+use fde::lockscreen;
+use fde::text::TextRenderer;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{delegate_noop, Connection, Dispatch, QueueHandle, WEnum};
@@ -136,7 +136,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
 
 fn tempfile_in_runtime_dir() -> std::io::Result<std::fs::File> {
     let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
-    let path = format!("{dir}/fawc-lock-{}", std::process::id());
+    let path = format!("{dir}/fde-lock-{}", std::process::id());
     let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(&path)?;
     let _ = std::fs::remove_file(&path);
     Ok(f)
@@ -176,14 +176,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     if app.outputs.is_empty() {
-        eprintln!("fawc-lock: no outputs");
+        eprintln!("fde-lock: no outputs");
         lock.destroy();
         return Ok(());
     }
 
     // the same wallpaper as the desktop
-    let config = fawc::config::Config::load().unwrap_or_default();
-    let (picture, mode) = (fawc::wallpaper::configured(&config.wallpaper.path), config.wallpaper.mode.clone());
+    let config = fde::config::Config::load().unwrap_or_default();
+    let (picture, mode) = (fde::wallpaper::configured(&config.wallpaper.path), config.wallpaper.mode.clone());
     let mut text = TextRenderer::default();
     while !app.finished {
         if app.unlock {
@@ -234,7 +234,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         queue.blocking_dispatch(&mut app)?;
     }
-    eprintln!("fawc-lock: the compositor refused or ended the lock");
+    eprintln!("fde-lock: the compositor refused or ended the lock");
     let _ = &app.outputs[0].lock_surface;
     Ok(())
 }

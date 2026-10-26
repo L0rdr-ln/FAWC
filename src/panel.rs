@@ -1,6 +1,6 @@
 //! The task bar's picture: a glass strip along the bottom with the start orb on the left and
 //! the clock on the right. Pure drawing (premultiplied RGBA, top row first) so it can be tested;
-//! `bin/fawc-panel.rs` puts it on screen as a layer-shell client.
+//! `bin/fde-panel.rs` puts it on screen as a layer-shell client.
 
 use crate::text::TextRenderer;
 

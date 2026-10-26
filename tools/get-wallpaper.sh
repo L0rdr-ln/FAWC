@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Download a wallpaper picture and make it the FAWC wallpaper.
+# Download a wallpaper picture and make it the FDE wallpaper.
 #
 #   tools/get-wallpaper.sh URL [fill|fit|stretch|center|tile]
 #
-# The picture is saved in ~/.local/share/fawc/wallpapers/ and `wallpaper.path` in
-# ~/.config/fawc/fawc.toml is pointed at it (the running desktop follows at once). Nothing is
-# stored in the FAWC repository: the picture stays your own copy of somebody else's work, so
+# The picture is saved in ~/.local/share/fde/wallpapers/ and `wallpaper.path` in
+# ~/.config/fde/fde.toml is pointed at it (the running desktop follows at once). Nothing is
+# stored in the FDE repository: the picture stays your own copy of somebody else's work, so
 # check that the site's terms allow you to use it.
 set -eu
 url="${1:?usage: get-wallpaper.sh URL [fill|fit|stretch|center|tile]}"
 mode="${2:-fill}"
 case "$mode" in fill|fit|stretch|center|tile) ;; *) echo "mode must be fill, fit, stretch, center or tile"; exit 1;; esac
 
-dir="${XDG_DATA_HOME:-$HOME/.local/share}/fawc/wallpapers"
-cfg="${FAWC_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/fawc/fawc.toml}"
+dir="${XDG_DATA_HOME:-$HOME/.local/share}/fde/wallpapers"
+cfg="${FDE_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/fde/fde.toml}"
 mkdir -p "$dir" "$(dirname "$cfg")"
 name="$(basename "${url%%\?*}")"
 [ -n "$name" ] || name="wallpaper.jpg"

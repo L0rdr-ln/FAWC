@@ -1,5 +1,5 @@
 //! Desktop notifications: the picture of the bubbles (pure drawing, for tests) and the state a
-//! `org.freedesktop.Notifications` server keeps. `bin/fawc-notify.rs` is the program.
+//! `org.freedesktop.Notifications` server keeps. `bin/fde-notify.rs` is the program.
 
 use crate::panel::{blend, blit};
 use crate::text::TextRenderer;
