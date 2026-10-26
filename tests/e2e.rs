@@ -2483,3 +2483,59 @@ fn the_start_menu_power_row_asks_twice_before_shutting_down() {
     let _ = panel.wait();
     assert_eq!(std::fs::read_to_string(&log).unwrap_or_default(), "shutdown\n");
 }
+
+#[test]
+fn fde_shot_saves_a_png_of_the_monitor() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): screenshot test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-shot").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    let file = dir.path().join("shot.png");
+    let mut shot = std::process::Command::new(env!("CARGO_BIN_EXE_fde-shot"))
+        .args(["--output", "fde-0"])
+        .arg(&file)
+        .env("WAYLAND_DISPLAY", "fde-e2e-shot")
+        .env_remove("DBUS_SESSION_BUS_ADDRESS")
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let t0 = Instant::now();
+    let status = loop {
+        hn.pump();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        if let Some(s) = shot.try_wait().unwrap() {
+            break s;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(15), "fde-shot never finished");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert!(status.success(), "fde-shot succeeded");
+    let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&file).unwrap()));
+    let mut reader = decoder.read_info().unwrap();
+    let mut buf = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).unwrap();
+    assert_eq!((info.width, info.height), (800, 600));
+    let scene_px = grab_scene(&mut renderer, &mut scene);
+    for (x, y) in [(3, 3), (400, 300), (790, 590)] {
+        let got = pixel(&buf, 800, x, y);
+        let want = pixel(&scene_px, 800, x, y);
+        for c in 0..3 {
+            assert!((got[c] - want[c]).abs() <= 4, "pixel ({x},{y}) channel {c}: {got:?} vs {want:?}");
+        }
+    }
+}

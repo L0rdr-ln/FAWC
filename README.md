@@ -85,6 +85,7 @@ On a console FDE uses the GPU directly (DRM/KMS, libseat, libinput). Please atta
 | **Alt+f**, **Alt+q** | maximize, close |
 | **Alt+L** | lock the session |
 | **Alt+Esc** | quit FDE |
+| **Print** | screenshot of the monitor the pointer is on, saved to `~/Pictures/Screenshot_DATE.png` (`fde-shot`) |
 | **Ctrl+Alt+F1..F12** | switch console (DRM backend) |
 
 ## Wallpapers

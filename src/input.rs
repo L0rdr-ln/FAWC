@@ -25,6 +25,7 @@ enum Action {
     Cycle,
     Restore,
     Lock,
+    Screenshot,
     SwitchVt(i32),
 }
 
@@ -62,6 +63,9 @@ impl Fde {
                         // a locked session has no shortcuts besides the console switch
                         if state.locked {
                             return FilterResult::Forward;
+                        }
+                        if event.state() == KeyState::Pressed && handle.modified_sym().raw() == keysyms::KEY_Print {
+                            return FilterResult::Intercept(Action::Screenshot);
                         }
                         if event.state() == KeyState::Pressed && mods.alt {
                             let action = match handle.modified_sym().raw() {
@@ -147,6 +151,11 @@ impl Fde {
             Action::Cycle => self.cycle_windows(),
             Action::Restore => self.restore_window(),
             Action::Lock => crate::shell::start_sibling("fde-lock"),
+            Action::Screenshot => {
+                // the monitor the pointer is on
+                let output = self.output_at(self.pointer_location).unwrap_or_else(|| self.output.clone());
+                crate::shell::start_sibling_with("fde-shot", &["--output", &output.name()]);
+            }
             Action::SwitchVt(vt) => {
                 if let Some(session) = self.session.as_mut() {
                     use smithay::backend::session::Session;

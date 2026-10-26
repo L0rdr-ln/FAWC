@@ -43,10 +43,15 @@ pub fn start_other_clients(config: &crate::config::Config) {
 
 /// Start a program that lives next to the compositor (`fde-lock`).
 pub fn start_sibling(name: &str) {
+    start_sibling_with(name, &[]);
+}
+
+/// The same with arguments (`fde-shot --output DP-1`).
+pub fn start_sibling_with(name: &str, args: &[&str]) {
     let path = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|d| d.join(name)));
     match path {
         Some(p) if p.exists() => {
-            if let Err(e) = Command::new(&p).spawn() {
+            if let Err(e) = Command::new(&p).args(args).spawn() {
                 tracing::warn!("cannot start {}: {e}", p.display());
             }
         }
