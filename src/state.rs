@@ -55,6 +55,10 @@ pub struct Fawc {
     pub output: Output,
     /// every other monitor, in the order they appeared
     pub extra_outputs: Vec<Output>,
+    /// the Wayland globals of the extra outputs (to remove them when a monitor goes)
+    pub output_globals: Vec<(Output, smithay::reexports::wayland_server::backend::GlobalId)>,
+    /// the session programs (task bars ...) have been started
+    pub session_started: bool,
     pub style: GlassStyle,
 
     pub compositor_state: CompositorState,
@@ -185,6 +189,8 @@ impl Fawc {
             popups: PopupManager::default(),
             output,
             extra_outputs: Vec::new(),
+            output_globals: Vec::new(),
+            session_started: false,
             style,
             compositor_state,
             xdg_shell_state,

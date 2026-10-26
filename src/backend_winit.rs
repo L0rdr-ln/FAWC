@@ -33,7 +33,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let socket_name = socket.socket_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     tracing::info!("listening on WAYLAND_DISPLAY={socket_name}");
     std::env::set_var("WAYLAND_DISPLAY", &socket_name);
-    crate::shell::start_session_clients(&crate::config::Config::load().unwrap_or_default());
+    state.start_session();
     event_loop.handle().insert_source(
         Generic::new(socket, Interest::READ, Mode::Level),
         |_, socket, state| {

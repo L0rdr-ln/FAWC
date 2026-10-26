@@ -1,7 +1,8 @@
 //! Running on the hardware: the login session (libseat), the GPU (DRM/KMS through GBM and EGL),
 //! the monitors and the input devices (libinput). One GPU, every connected monitor is an output
 //! of its own, placed side by side (`[outputs.NAME]` in the configuration sets scale, mode and
-//! position). Monitors plugged in while running are not noticed yet: restart FAWC.
+//! position). Monitors plugged in or out while running are picked up (the kernel's change event
+//! for the GPU triggers a new look at the connectors); the first monitor cannot go away.
 
 use std::cell::RefCell;
 use std::os::fd::AsFd;
@@ -21,7 +22,7 @@ use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::{Event as SessionEvent, Session};
-use smithay::backend::udev::primary_gpu;
+use smithay::backend::udev::{primary_gpu, UdevBackend, UdevEvent};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction};
 use smithay::output::Output;
@@ -100,31 +101,19 @@ struct Monitor {
     name: String,
 }
 
-pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut event_loop: EventLoop<Fawc> = EventLoop::try_new()?;
-    let mut display: Display<Fawc> = Display::new()?;
-    let dh = display.handle();
+/// A connected, enabled monitor that has not been given a CRTC yet.
+struct Candidate {
+    connector: connector::Handle,
+    mode: drm_mode::Mode,
+    name: String,
+    crtcs: Vec<crtc::Handle>,
+}
 
-    // --- the login session: access to the GPU and the input devices without being root
-    let (mut session, session_notifier) = LibSeatSession::new().map_err(|e| format!("libseat: {e:?} (is seatd or logind running, and are you on a console?)"))?;
-    let seat_name = session.seat();
-    tracing::info!("seat {seat_name}");
-
-    // --- the GPU
-    let gpu_path = primary_gpu(&seat_name)?.ok_or("no GPU found for this seat")?;
-    tracing::info!("GPU {}", gpu_path.display());
-    let fd = session.open(&gpu_path, OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK)?;
-    let drm_fd = DrmDeviceFd::new(DeviceFd::from(fd));
-    let (mut drm, drm_notifier) = DrmDevice::new(drm_fd.clone(), true)?;
-    let gbm = GbmDevice::new(drm_fd.clone())?;
-    let egl = unsafe { EGLDisplay::new(gbm.clone())? };
-    let context = EGLContext::new(&egl)?;
-    let mut renderer = unsafe { GlesRenderer::new(context)? };
-
-    // --- every connected monitor, each on a CRTC of its own
-    let config = crate::config::Config::load().unwrap_or_default();
+/// Every connected monitor the configuration does not switch off, with its mode and the CRTCs it
+/// could use.
+fn probe(drm: &DrmDevice, config: &crate::config::Config) -> Result<Vec<Candidate>, Box<dyn std::error::Error>> {
     let res = drm.resource_handles()?;
-    let mut monitors: Vec<Monitor> = Vec::new();
+    let mut found = Vec::new();
     for &handle in res.connectors() {
         let info = drm.get_connector(handle, true)?;
         if info.state() != connector::State::Connected || info.modes().is_empty() {
@@ -156,26 +145,131 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }),
             None => preferred,
         };
-        // a CRTC this connector can use that no other monitor has taken
-        let taken: Vec<crtc::Handle> = monitors.iter().map(|m| m.crtc).collect();
-        let crtc = info
+        let crtcs: Vec<crtc::Handle> = info
             .encoders()
             .iter()
             .filter_map(|&e| drm.get_encoder(e).ok())
             .flat_map(|enc| res.filter_crtcs(enc.possible_crtcs()))
-            .find(|c| !taken.contains(c));
-        match crtc {
+            .collect();
+        found.push(Candidate { connector: handle, mode, name, crtcs });
+    }
+    Ok(found)
+}
+
+/// Give each candidate a CRTC that is not in `taken` (and take it).
+fn assign(candidates: Vec<Candidate>, taken: &mut Vec<crtc::Handle>) -> Vec<Monitor> {
+    let mut monitors = Vec::new();
+    for c in candidates {
+        match c.crtcs.iter().copied().find(|x| !taken.contains(x)) {
             Some(crtc) => {
-                tracing::info!("monitor {name} ({}x{}@{})", mode.size().0, mode.size().1, mode.vrefresh());
-                monitors.push(Monitor { connector: handle, crtc, mode, name });
+                taken.push(crtc);
+                tracing::info!("monitor {} ({}x{}@{})", c.name, c.mode.size().0, c.mode.size().1, c.mode.vrefresh());
+                monitors.push(Monitor { connector: c.connector, crtc, mode: c.mode, name: c.name });
             }
-            None => tracing::warn!("monitor {name}: no free CRTC for it"),
+            None => tracing::warn!("monitor {}: no free CRTC for it", c.name),
         }
     }
+    monitors
+}
+
+/// The GPU pieces a monitor's compositor needs.
+struct Hardware {
+    drm: Rc<RefCell<DrmDevice>>,
+    gbm: GbmDevice<DrmDeviceFd>,
+    drm_fd: DrmDeviceFd,
+    formats: Vec<smithay::backend::allocator::Format>,
+}
+
+/// Start driving `monitor` as `output`: a surface on its CRTC, a compositor, a scene texture.
+fn create_output_gpu(hw: &Hardware, renderer: &mut GlesRenderer, monitor: &Monitor, output: &Output) -> Result<OutputGpu, Box<dyn std::error::Error>> {
+    let mut drm = hw.drm.borrow_mut();
+    let surface = drm.create_surface(monitor.crtc, monitor.mode, &[monitor.connector])?;
+    let allocator = GbmAllocator::new(hw.gbm.clone(), GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT);
+    let exporter = GbmFramebufferExporter::new(hw.gbm.clone(), DrmNode::from_file(hw.drm_fd.as_fd()).ok());
+    let compositor: Compositor = DrmCompositor::new(
+        output,
+        surface,
+        None,
+        allocator,
+        exporter,
+        [Fourcc::Argb8888, Fourcc::Xrgb8888],
+        hw.formats.clone(),
+        drm.cursor_size(),
+        Some(hw.gbm.clone()),
+    )?;
+    let (mw, mh) = (monitor.mode.size().0 as i32, monitor.mode.size().1 as i32);
+    let scene = create_scene(renderer, (mw, mh).into())?;
+    Ok(OutputGpu { output: output.clone(), scene, compositor, crtc: monitor.crtc, queued: false })
+}
+
+/// A monitor was plugged in or out: look again at what is connected.
+fn rescan(state: &mut Fawc, gpu: &mut Gpu, hw: &Hardware) {
+    let config = state.config.clone();
+    let candidates = match probe(&hw.drm.borrow(), &config) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("cannot look at the monitors: {e}");
+            return;
+        }
+    };
+    // monitors that are gone (the first one stays: it carries the panels)
+    let gone: Vec<Output> = gpu
+        .outputs
+        .iter()
+        .map(|o| o.output.clone())
+        .filter(|o| *o != state.output && !candidates.iter().any(|c| c.name == o.name()))
+        .collect();
+    for output in gone {
+        tracing::info!("monitor {} unplugged", output.name());
+        gpu.outputs.retain(|o| o.output != output);
+        state.remove_output(&output);
+    }
+    // monitors that are new
+    let known: Vec<String> = gpu.outputs.iter().map(|o| o.output.name()).collect();
+    let mut taken: Vec<crtc::Handle> = gpu.outputs.iter().map(|o| o.crtc).collect();
+    let fresh: Vec<Candidate> = candidates.into_iter().filter(|c| !known.contains(&c.name)).collect();
+    for monitor in assign(fresh, &mut taken) {
+        let output = state.add_output(&monitor.name, (monitor.mode.size().0 as i32, monitor.mode.size().1 as i32), monitor.mode.vrefresh() as i32 * 1000);
+        match create_output_gpu(hw, &mut gpu.renderer, &monitor, &output) {
+            Ok(og) => {
+                gpu.outputs.push(og);
+                let idx = gpu.outputs.len() - 1;
+                render_and_queue(state, gpu, idx);
+            }
+            Err(e) => {
+                tracing::error!("cannot drive monitor {}: {e}", monitor.name);
+                state.remove_output(&output);
+            }
+        }
+    }
+}
+
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let mut event_loop: EventLoop<Fawc> = EventLoop::try_new()?;
+    let mut display: Display<Fawc> = Display::new()?;
+    let dh = display.handle();
+
+    // --- the login session: access to the GPU and the input devices without being root
+    let (mut session, session_notifier) = LibSeatSession::new().map_err(|e| format!("libseat: {e:?} (is seatd or logind running, and are you on a console?)"))?;
+    let seat_name = session.seat();
+    tracing::info!("seat {seat_name}");
+
+    // --- the GPU
+    let gpu_path = primary_gpu(&seat_name)?.ok_or("no GPU found for this seat")?;
+    tracing::info!("GPU {}", gpu_path.display());
+    let fd = session.open(&gpu_path, OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK)?;
+    let drm_fd = DrmDeviceFd::new(DeviceFd::from(fd));
+    let (drm, drm_notifier) = DrmDevice::new(drm_fd.clone(), true)?;
+    let gbm = GbmDevice::new(drm_fd.clone())?;
+    let egl = unsafe { EGLDisplay::new(gbm.clone())? };
+    let context = EGLContext::new(&egl)?;
+    let mut renderer = unsafe { GlesRenderer::new(context)? };
+
+    // --- every connected monitor, each on a CRTC of its own
+    let config = crate::config::Config::load().unwrap_or_default();
+    let monitors = assign(probe(&drm, &config)?, &mut Vec::new());
     let first = monitors.first().ok_or("no monitor is connected")?;
     let (w, h) = (first.mode.size().0 as i32, first.mode.size().1 as i32);
-    let allocator_for = |gbm: &GbmDevice<DrmDeviceFd>| GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT);
-    let exporter_for = |gbm: &GbmDevice<DrmDeviceFd>| GbmFramebufferExporter::new(gbm.clone(), DrmNode::from_file(drm_fd.as_fd()).ok());
 
     let mut state = Fawc::new_named(&dh, &first.name, (w, h).into());
     state.draw_cursor = true;
@@ -184,25 +278,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .chain(monitors.iter().skip(1).map(|m| state.add_output(&m.name, (m.mode.size().0 as i32, m.mode.size().1 as i32), m.mode.vrefresh() as i32 * 1000)))
         .collect();
 
-    let renderer_formats = renderer.egl_context().dmabuf_render_formats().iter().copied().collect::<Vec<_>>();
+    let formats = renderer.egl_context().dmabuf_render_formats().iter().copied().collect::<Vec<_>>();
     let glass = Glass::new(&mut renderer)?;
+    let hw = Rc::new(Hardware { drm: Rc::new(RefCell::new(drm)), gbm: gbm.clone(), drm_fd: drm_fd.clone(), formats });
     let mut gpu_outputs = Vec::new();
     for (monitor, output) in monitors.iter().zip(outputs.iter()) {
-        let surface = drm.create_surface(monitor.crtc, monitor.mode, &[monitor.connector])?;
-        let compositor: Compositor = DrmCompositor::new(
-            output,
-            surface,
-            None,
-            allocator_for(&gbm),
-            exporter_for(&gbm),
-            [Fourcc::Argb8888, Fourcc::Xrgb8888],
-            renderer_formats.clone(),
-            drm.cursor_size(),
-            Some(gbm.clone()),
-        )?;
-        let (mw, mh) = (monitor.mode.size().0 as i32, monitor.mode.size().1 as i32);
-        let scene = create_scene(&mut renderer, (mw, mh).into())?;
-        gpu_outputs.push(OutputGpu { output: output.clone(), scene, compositor, crtc: monitor.crtc, queued: false });
+        gpu_outputs.push(create_output_gpu(&hw, &mut renderer, monitor, output)?);
     }
     let gpu = Rc::new(RefCell::new(Gpu { renderer, glass, outputs: gpu_outputs }));
 
@@ -211,7 +292,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let socket_name = socket.socket_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     tracing::info!("listening on WAYLAND_DISPLAY={socket_name}");
     std::env::set_var("WAYLAND_DISPLAY", &socket_name);
-    crate::shell::start_session_clients(&crate::config::Config::load().unwrap_or_default());
+    state.start_session();
     event_loop.handle().insert_source(Generic::new(socket, Interest::READ, Mode::Level), |_, socket, state| {
         while let Some(stream) = socket.accept()? {
             let _ = state.display_handle.insert_client(stream, Arc::new(ClientState::default()));
@@ -246,6 +327,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     })?;
 
+    // --- monitors plugged in or out while running: the kernel says the GPU's connectors changed
+    let our_node = DrmNode::from_file(drm_fd.as_fd())?;
+    let udev = UdevBackend::new(&seat_name)?;
+    let (gpu_hotplug, hw_hotplug) = (gpu.clone(), hw.clone());
+    event_loop.handle().insert_source(udev, move |event, _, state| {
+        if let UdevEvent::Changed { device_id } = event {
+            if device_id == our_node.dev_id() {
+                rescan(state, &mut gpu_hotplug.borrow_mut(), &hw_hotplug);
+            }
+        }
+    })?;
+
     // --- vblank: the last frame is on screen, draw the next
     let gpu_vblank = gpu.clone();
     event_loop.handle().insert_source(drm_notifier, move |event, _, state| match event {
@@ -267,13 +360,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     for idx in 0..count {
         render_and_queue(&mut state, &mut gpu.borrow_mut(), idx);
     }
-    let _ = (&mut drm, &mut session);
+    let _ = &mut session;
 
     while state.running {
         event_loop.dispatch(Some(Duration::from_millis(16)), &mut state)?;
         // an idle compositor still needs a frame going: restart the cycle if it stalled
         let mut g = gpu.borrow_mut();
-        for idx in 0..count {
+        for idx in 0..g.outputs.len() {
             if !g.outputs[idx].queued {
                 render_and_queue(&mut state, &mut g, idx);
             }

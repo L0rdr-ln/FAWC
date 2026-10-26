@@ -1010,3 +1010,69 @@ fn the_task_bar_draws_at_the_monitors_scale() {
     let _ = panel.wait();
     assert_eq!(result, Some(2), "the panel's buffer has scale 2 on a scale-2 monitor");
 }
+
+#[test]
+fn every_monitor_gets_its_own_task_bar_and_unplugging_one_closes_its_bar() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display: Display<Fawc> = Display::new().unwrap();
+    let mut state = Fawc::new(&display.handle(), (800, 600).into());
+    let second = state.add_output("fawc-1", (640, 480), 60_000);
+    let socket = ListeningSocket::bind("fawc-e2e-bars").unwrap();
+    let mut hn = Harness { display, state, socket };
+
+    let spawn = |name: &str| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
+            .env("WAYLAND_DISPLAY", "fawc-e2e-bars")
+            .env("FAWC_PANEL_OUTPUT", name)
+            .env_remove("DISPLAY")
+            .spawn()
+            .unwrap()
+    };
+    let mut bar0 = spawn("fawc-0");
+    let mut bar1 = spawn("fawc-1");
+
+    let layers_on = |o: &smithay::output::Output| smithay::desktop::layer_map_for_output(o).layers().count();
+    let t0 = Instant::now();
+    loop {
+        hn.pump();
+        let (a, b) = (layers_on(&hn.state.output.clone()), layers_on(&second));
+        let sized = {
+            let map = smithay::desktop::layer_map_for_output(&second);
+            let width = map.layers().next().and_then(|l| map.layer_geometry(l)).map(|g| g.size.w > 0).unwrap_or(false);
+            width
+        };
+        if a == 1 && b == 1 && sized {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "task bars never appeared: {a} {b}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // each bar is as wide as its own monitor and sits at its bottom
+    {
+        let map = smithay::desktop::layer_map_for_output(&second);
+        let l = map.layers().next().unwrap();
+        let g = map.layer_geometry(l).unwrap();
+        assert_eq!((g.size.w, g.loc.y + g.size.h), (640, 480), "the second bar: {g:?}");
+    }
+    // unplug the second monitor: its bar is told to close and exits
+    hn.state.remove_output(&second);
+    let t0 = Instant::now();
+    let mut exited = false;
+    while t0.elapsed() < Duration::from_secs(10) {
+        hn.pump();
+        if bar1.try_wait().unwrap().is_some() {
+            exited = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let still_running = bar0.try_wait().unwrap().is_none();
+    let _ = bar0.kill();
+    let _ = bar1.kill();
+    let _ = bar0.wait();
+    let _ = bar1.wait();
+    assert!(exited, "the bar of the removed monitor closes");
+    assert!(still_running, "the other bar keeps running");
+}

@@ -44,6 +44,7 @@ struct App {
     close_menu: bool,
     menu_entries: usize,
     scale: fawc::clientscale::ScaleTracker,
+    output_names: std::collections::HashMap<wayland_client::backend::ObjectId, String>,
     // typing in the start menu
     query: String,
     query_changed: bool,
@@ -119,8 +120,12 @@ impl Dispatch<wl_surface::WlSurface, ()> for App {
 
 impl Dispatch<wl_output::WlOutput, ()> for App {
     fn event(app: &mut Self, output: &wl_output::WlOutput, event: wl_output::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
-        if let wl_output::Event::Scale { factor } = event {
-            app.scale.set_output_scale(output.id(), factor);
+        match event {
+            wl_output::Event::Scale { factor } => app.scale.set_output_scale(output.id(), factor),
+            wl_output::Event::Name { name } => {
+                app.output_names.insert(output.id(), name);
+            }
+            _ => {}
         }
     }
 }
@@ -357,11 +362,11 @@ fn open_menu(
     shell: &zwlr_layer_shell_v1::ZwlrLayerShellV1,
     qh: &QueueHandle<App>,
     blur: &Option<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1>,
-    _n: usize,
+    output: Option<&wl_output::WlOutput>,
 ) -> Menu {
     let (w, h) = panel::menu_size();
     let surface = compositor.create_surface(qh, ());
-    let layer = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Overlay, "start-menu".into(), qh, 1u8);
+    let layer = shell.get_layer_surface(&surface, output, zwlr_layer_shell_v1::Layer::Overlay, "start-menu".into(), qh, 1u8);
     layer.set_size(w as u32, h as u32);
     layer.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom | zwlr_layer_surface_v1::Anchor::Left);
     layer.set_margin(0, 0, panel::HEIGHT + 4, 6);
@@ -399,8 +404,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|g| globals.registry().bind(g.name, g.version.min(4), &qh, ()))
         .collect();
     queue.roundtrip(&mut app)?;
+    // the monitor this task bar belongs to (the compositor starts one per monitor)
+    let my_output: Option<wl_output::WlOutput> = std::env::var("FAWC_PANEL_OUTPUT")
+        .ok()
+        .and_then(|name| _outputs.iter().find(|o| app.output_names.get(&o.id()) == Some(&name)).cloned());
     let surface = compositor.create_surface(&qh, ());
-    let ls = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Top, "panel".into(), &qh, 0u8);
+    let ls = shell.get_layer_surface(&surface, my_output.as_ref(), zwlr_layer_shell_v1::Layer::Top, "panel".into(), &qh, 0u8);
     ls.set_size(0, panel::HEIGHT as u32);
     ls.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom | zwlr_layer_surface_v1::Anchor::Left | zwlr_layer_surface_v1::Anchor::Right);
     ls.set_exclusive_zone(panel::HEIGHT);
@@ -478,7 +487,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if menu.is_some() {
                 app.close_menu = true;
             } else if !entries.is_empty() {
-                let m = open_menu(&compositor, &shell, &qh, &blur_manager, entries.len());
+                let m = open_menu(&compositor, &shell, &qh, &blur_manager, my_output.as_ref());
                 app.menu_surface = Some(m.surface.clone());
                 app.query.clear();
                 filtered = fawc::apps::filter(&entries, "");

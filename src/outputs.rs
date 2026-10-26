@@ -53,11 +53,59 @@ impl Fawc {
         let loc: Point<i32, Logical> = (oc.x.unwrap_or(to_the_right), oc.y.unwrap_or(0)).into();
         output.change_current_state(Some(mode), Some(Transform::Normal), Some(Scale::Fractional(oc.scale)), Some(loc));
         output.set_preferred(mode);
-        let _global = output.create_global::<Fawc>(&self.display_handle);
+        let global = output.create_global::<Fawc>(&self.display_handle);
+        self.output_globals.push((output.clone(), global));
         self.space.map_output(&output, loc);
         self.extra_outputs.push(output.clone());
+        if self.session_started {
+            crate::shell::start_panel(&self.config, name);
+        }
         tracing::info!("output {name}: {}x{} at scale {} placed at {},{}", mode_px.0, mode_px.1, oc.scale, loc.x, loc.y);
         output
+    }
+
+    /// The session starts: a task bar on every monitor, then the other programs.
+    pub fn start_session(&mut self) {
+        self.session_started = true;
+        for o in self.all_outputs() {
+            crate::shell::start_panel(&self.config, &o.name());
+        }
+        crate::shell::start_other_clients(&self.config);
+    }
+
+    /// A monitor was unplugged: windows on it move to the first monitor, layer surfaces on it
+    /// (its task bar) are asked to close, its global goes away. The first monitor itself stays.
+    pub fn remove_output(&mut self, output: &Output) {
+        if *output == self.output {
+            tracing::warn!("the first monitor ({}) cannot be removed", output.name());
+            return;
+        }
+        let rect = self.output_rect(output);
+        let home = self.output_rect(&self.output.clone());
+        // windows whose middle is on it come to the first monitor, inside it
+        let windows: Vec<_> = self.space.elements().cloned().collect();
+        for w in windows {
+            let Some(g) = self.space.element_geometry(&w) else { continue };
+            let middle = (g.loc.x + g.size.w / 2, g.loc.y + g.size.h / 2);
+            if middle.0 >= rect.loc.x && middle.0 < rect.loc.x + rect.size.w && middle.1 >= rect.loc.y && middle.1 < rect.loc.y + rect.size.h {
+                let x = (home.loc.x + 60 + (g.loc.x - rect.loc.x).clamp(0, 200)).min(home.loc.x + (home.size.w - g.size.w).max(0));
+                let y = (home.loc.y + 60 + (g.loc.y - rect.loc.y).clamp(0, 100)).min(home.loc.y + (home.size.h - g.size.h).max(0));
+                self.space.map_element(w, (x, y), false);
+            }
+        }
+        // its panels and so on
+        for layer in smithay::desktop::layer_map_for_output(output).layers() {
+            layer.layer_surface().send_close();
+        }
+        self.lock_surfaces.retain(|(o, _)| o != output);
+        self.space.unmap_output(output);
+        if let Some(i) = self.output_globals.iter().position(|(o, _)| o == output) {
+            let (_, id) = self.output_globals.remove(i);
+            self.display_handle.remove_global::<Fawc>(id);
+        }
+        self.extra_outputs.retain(|o| o != output);
+        self.pointer_location = self.clamp_to_outputs(self.pointer_location);
+        tracing::info!("output {} removed", output.name());
     }
 
     /// The monitor under `p`, if any.
@@ -127,6 +175,24 @@ mod tests {
         assert_eq!(s.clamp_to_outputs((1000.0, 590.0).into()), (1000.0, 479.0).into());
         assert_eq!(s.clamp_to_outputs((900.0, 590.0).into()), (799.0, 590.0).into(), "equally near: the closer monitor wins");
         assert_eq!(s.clamp_to_outputs((-5.0, -5.0).into()), (0.0, 0.0).into());
+    }
+
+    #[test]
+    fn unplugging_a_monitor_brings_its_windows_home_and_the_pointer_back() {
+        let (_d, mut s) = state();
+        let second = s.add_output("fawc-1", (640, 480), 60_000);
+        s.pointer_location = (1000.0, 100.0).into();
+        s.remove_output(&second);
+        assert_eq!(s.all_outputs(), vec![s.output.clone()]);
+        assert_eq!(s.pointer_location, (799.0, 100.0).into(), "back on the remaining monitor");
+        assert!(s.output_at((1000.0, 100.0).into()).is_none());
+        // the first monitor cannot be removed
+        let first = s.output.clone();
+        s.remove_output(&first);
+        assert_eq!(s.all_outputs().len(), 1);
+        // a monitor plugged in again takes the free place on the right
+        let again = s.add_output("fawc-1", (640, 480), 60_000);
+        assert_eq!(s.output_rect(&again).loc, (800, 0).into());
     }
 
     #[test]

@@ -39,16 +39,17 @@ the client. Clients can ask for the same blur behind their own translucent areas
 (`[outputs.NAME]` in `fawc.toml`: scale, mode, position, on/off); windows can be on or across
 any of them, the pointer moves between them, maximize fills the monitor the window is on, the
 lock screen covers every monitor. Tested with virtual outputs (two monitors; a 2x monitor draws
-the frame, title and client at double size). The task bar and notifications are on the first
-monitor only. The task bar, start menu, lock screen and notifications draw themselves at the
+the frame, title and client at double size). Every monitor gets its own task bar (with the same window list); notifications appear on the first
+monitor. A monitor unplugged while running has its windows moved to the first monitor and its bar
+closed; one plugged in is set up at once (on the hardware backend, from the kernel's hot-plug
+event: compiled, not run). The task bar, start menu, lock screen and notifications draw themselves at the
 monitor's scale (whole numbers: a 1.5 monitor gets 2x pictures, scaled down by the compositor), so
 everything is sharp.
 
 ![FAWC at scale 2 (nested)](docs/hidpi.png)
 
 **Not verified:** the DRM/KMS backend (real console / GPU) has been written and compiled but never
-run on hardware, so multi-monitor output on real GPUs is untested too. Not done: plugging a monitor
-in or out while running, cursor themes, GTK/Qt apps asking for blur.
+run on hardware, so multi-monitor output on real GPUs is untested too. Not done: cursor themes, GTK/Qt apps asking for blur.
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Try it
