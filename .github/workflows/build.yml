@@ -1,0 +1,31 @@
+name: build
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev libseat-dev libinput-dev libgbm-dev \
+            libegl-dev libgles-dev libxkbcommon-dev libdrm-dev libwayland-dev \
+            libegl1-mesa-dev libgl1-mesa-dri mesa-utils
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked
+      # llvmpipe: the glass shaders are rendered on the CPU and checked pixel by pixel
+      - run: cargo test --locked
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+      - name: Render the demo scene
+        run: |
+          cargo run --locked -- glass-demo glass-demo.png
+          test -s glass-demo.png
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glass-demo
+          path: glass-demo.png

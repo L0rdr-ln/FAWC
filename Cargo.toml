@@ -1,0 +1,26 @@
+[package]
+name = "fawc"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "A Wayland compositor with real glass: blur, gloss and translucency drawn on the GPU"
+
+[dependencies]
+smithay = { version = "0.7", default-features = false, features = [
+    "backend_winit",
+    "backend_egl",
+    "backend_gbm",
+    "backend_drm",
+    "backend_libinput",
+    "backend_session_libseat",
+    "backend_udev",
+    "renderer_gl",
+    "desktop",
+    "wayland_frontend",
+] }
+tracing = "0.1"
+png = "0.17"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = "thin"
