@@ -2206,7 +2206,9 @@ fn clip_client(path: std::path::PathBuf, copy: Option<String>, tx: mpsc::Sender<
     if let Some(text) = &copy {
         app.text = Some(text.clone());
         let s = mgr.create_data_source(&qh, ());
-        s.offer("text/plain;charset=utf-8".into());
+        for m in ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING"] {
+            s.offer(m.into());
+        }
         device.set_selection(Some(&s), 1);
         _source = Some(s);
     }
@@ -2366,24 +2368,33 @@ fn the_clipboard_is_shared_between_x11_and_wayland_programs() {
         step(&mut state, &mut display, &mut ev, &socket);
         std::thread::sleep(Duration::from_millis(3));
     }
-    let mut paste = std::process::Command::new("xclip")
-        .args(["-selection", "clipboard", "-o"])
-        .env("DISPLAY", &xdisplay)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-        .unwrap();
+    // ask until the copy has arrived (the window needs a moment to copy)
     let t0 = Instant::now();
-    let out = loop {
-        step(&mut state, &mut display, &mut ev, &socket);
-        if let Some(status) = paste.try_wait().unwrap() {
-            use std::io::Read;
-            let mut text = String::new();
-            paste.stdout.take().unwrap().read_to_string(&mut text).unwrap();
-            assert!(status.success(), "xclip failed");
-            break text;
+    let out = 'ask: loop {
+        let mut paste = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard", "-o", "-t", "UTF8_STRING"])
+            .env("DISPLAY", &xdisplay)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        loop {
+            step(&mut state, &mut display, &mut ev, &socket);
+            if let Some(status) = paste.try_wait().unwrap() {
+                use std::io::Read;
+                let mut text = String::new();
+                paste.stdout.take().unwrap().read_to_string(&mut text).unwrap();
+                if status.success() {
+                    break 'ask text;
+                }
+                break;
+            }
+            assert!(t0.elapsed() < Duration::from_secs(20), "the X11 program never got the Wayland text");
         }
         assert!(t0.elapsed() < Duration::from_secs(20), "the X11 program never got the Wayland text");
+        for _ in 0..30 {
+            step(&mut state, &mut display, &mut ev, &socket);
+        }
     };
     assert_eq!(out, "hello from Wayland", "an X11 program pastes what a Wayland program copied");
     stop2.store(true, std::sync::atomic::Ordering::SeqCst);
