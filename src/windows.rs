@@ -12,6 +12,17 @@ use crate::state::{Fawc, WinInfo};
 
 /// The opening animation: a short fade and zoom.
 pub const OPEN_SECONDS: f32 = 0.18;
+/// Shrinking into the task bar.
+pub const MINIMIZE_SECONDS: f32 = 0.22;
+
+/// How a window looks `p` (0 .. 1) of the way into the task bar: how see-through, how big
+/// (relative) and where its middle is, on the way from `center` to `target`.
+pub fn minimize_pose(p: f32, center: (f64, f64), target: (f64, f64)) -> (f32, f64, (f64, f64)) {
+    let e = (p.clamp(0.0, 1.0) as f64).powi(2); // slow start, quick end
+    let alpha = (1.0 - e) as f32;
+    let zoom = 1.0 - 0.85 * e;
+    (alpha, zoom, (center.0 + (target.0 - center.0) * e, center.1 + (target.1 - center.1) * e))
+}
 
 /// Ease-out: fast at first, settling at the end.
 pub fn ease_out(t: f32) -> f32 {
@@ -80,7 +91,7 @@ impl Fawc {
     }
 
     pub fn focus_top_window(&mut self) {
-        let top = self.space.elements().last().cloned();
+        let top = self.space.elements().rev().find(|w| self.minimize_progress(w).is_none()).cloned();
         match top {
             Some(w) => self.focus_window(&w),
             None => {
@@ -94,6 +105,9 @@ impl Fawc {
     /// The window under `p`, with its client rectangle and where `p` is on it. Front first.
     pub fn window_under(&self, p: Point<f64, Logical>) -> Option<(Window, Rectangle<i32, Logical>, Hit)> {
         for w in self.space.elements().rev() {
+            if self.minimize_progress(w).is_some() {
+                continue; // on its way into the task bar
+            }
             let Some(g) = self.space.element_geometry(w) else { continue };
             if let Some(h) = hit(g, &self.style, p) {
                 return Some((w.clone(), g, h));
@@ -140,22 +154,73 @@ impl Fawc {
     }
 
     pub fn minimize_window(&mut self, window: &Window) {
-        info(window).lock().unwrap().minimized = true;
-        self.space.unmap_elem(window);
+        let mapped = self.space.elements().any(|w| w == window);
+        {
+            let mut i = info(window).lock().unwrap();
+            i.minimized = true;
+            i.last_loc = self.space.element_location(window).or(i.last_loc);
+        }
         if !self.minimized.contains(window) {
             self.minimized.push(window.clone());
         }
+        if mapped && self.config.appearance.animations {
+            // shrink towards the task bar first; `tick_animations` takes it off the screen
+            info(window).lock().unwrap().minimizing = Some(std::time::Instant::now());
+        } else {
+            self.space.unmap_elem(window);
+        }
         self.focus_top_window();
+    }
+
+    /// How far the window's shrinking into the task bar is (0 .. 1), or None if it is not.
+    pub fn minimize_progress(&self, window: &Window) -> Option<f32> {
+        info(window).lock().unwrap().minimizing.map(|t| (t.elapsed().as_secs_f32() / MINIMIZE_SECONDS).clamp(0.0, 1.0))
+    }
+
+    /// Pretend the shrinking started at `at` (tests: a time in the future holds it at the start).
+    pub fn set_minimize_start(&mut self, window: &Window, at: std::time::Instant) {
+        info(window).lock().unwrap().minimizing = Some(at);
+    }
+
+    /// Where the window's task bar button is, in the shared space (the task bar tells us).
+    pub fn set_minimize_target(&mut self, window: &Window, target: Rectangle<i32, Logical>) {
+        info(window).lock().unwrap().minimize_target = Some(target);
+    }
+
+    pub fn minimize_target(&self, window: &Window) -> Option<Rectangle<i32, Logical>> {
+        info(window).lock().unwrap().minimize_target
+    }
+
+    /// Finish what has run its course: windows that have shrunk into the task bar leave the screen.
+    pub fn tick_animations(&mut self) {
+        let done: Vec<Window> = self
+            .space
+            .elements()
+            .filter(|w| self.minimize_progress(w).map(|p| p >= 1.0).unwrap_or(false))
+            .cloned()
+            .collect();
+        for w in done {
+            info(&w).lock().unwrap().minimizing = None;
+            self.space.unmap_elem(&w);
+        }
     }
 
     /// Bring back the most recently minimized window.
     pub fn restore_window(&mut self) {
         if let Some(w) = self.minimized.pop() {
-            info(&w).lock().unwrap().minimized = false;
-            let loc = self.space.element_location(&w).unwrap_or_else(|| {
+            let (last, was_shrinking) = {
+                let mut i = info(&w).lock().unwrap();
+                i.minimized = false;
+                (i.last_loc, i.minimizing.take().is_some())
+            };
+            let loc = self.space.element_location(&w).or(last).unwrap_or_else(|| {
                 (70 + self.style.border as i32, 70 + (self.style.border + self.style.titlebar) as i32).into()
             });
             self.space.map_element(w.clone(), loc, true);
+            if !was_shrinking {
+                // coming back: the same fade and zoom as a new window
+                self.restart_open_animation(&w);
+            }
             self.focus_window(&w);
         }
     }
@@ -199,5 +264,16 @@ mod tests {
         assert!(ease_out(0.5) > 0.8, "most of the movement is early");
         assert_eq!(ease_out(2.0), 1.0);
         assert_eq!(ease_out(-1.0), 0.0);
+    }
+
+    #[test]
+    fn a_minimizing_window_fades_shrinks_and_moves_to_the_button() {
+        let (a0, z0, c0) = minimize_pose(0.0, (100.0, 100.0), (500.0, 700.0));
+        assert_eq!((a0, z0, c0), (1.0, 1.0, (100.0, 100.0)), "at the start nothing has changed");
+        let (a1, z1, c1) = minimize_pose(1.0, (100.0, 100.0), (500.0, 700.0));
+        assert_eq!((a1, c1), (0.0, (500.0, 700.0)));
+        assert!(z1 < 0.2, "tiny at the end");
+        let (am, zm, cm) = minimize_pose(0.5, (100.0, 100.0), (500.0, 700.0));
+        assert!(am > 0.0 && am < 1.0 && zm < 1.0 && zm > z1 && cm.0 > 100.0 && cm.0 < 500.0);
     }
 }

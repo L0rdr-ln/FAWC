@@ -110,6 +110,22 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, WlSurface> for Fawc {
             R::SetMinimized => state.minimize_window(&window),
             R::UnsetMinimized | R::Activate { .. } => state.activate_window(&window),
             R::Close => state.close_window(&window),
+            R::SetRectangle { surface: panel_surface, x, y, width, height } => {
+                // the task bar says where this window's button is, in its own surface: find that
+                // surface among the layer surfaces to get the place in the shared space
+                for output in state.all_outputs() {
+                    let origin = state.output_rect(&output).loc;
+                    let map = smithay::desktop::layer_map_for_output(&output);
+                    if let Some(layer) = map.layer_for_surface(&panel_surface, smithay::desktop::WindowSurfaceType::TOPLEVEL) {
+                        if let Some(geo) = map.layer_geometry(layer) {
+                            let r = smithay::utils::Rectangle::new((origin.x + geo.loc.x + x, origin.y + geo.loc.y + y).into(), (width, height).into());
+                            drop(map);
+                            state.set_minimize_target(&window, r);
+                            break;
+                        }
+                    }
+                }
+            }
             _ => {}
         }
         state.sync_foreign_toplevels();

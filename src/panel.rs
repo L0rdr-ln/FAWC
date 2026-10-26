@@ -29,7 +29,7 @@ const TASK_MAX_W: i32 = 170;
 const CLOCK_ROOM: i32 = 90;
 
 /// The x range and the y range of task button `i` of `n` in a panel `width` wide.
-fn task_rect(i: usize, n: usize, width: i32, height: i32) -> (i32, i32, i32, i32) {
+pub fn task_rect(i: usize, n: usize, width: i32, height: i32) -> (i32, i32, i32, i32) {
     let avail = (width - TASKS_LEFT - CLOCK_ROOM).max(0);
     let w = ((avail - TASK_GAP * (n as i32 - 1).max(0)) / n.max(1) as i32).clamp(0, TASK_MAX_W);
     let x0 = TASKS_LEFT + i as i32 * (w + TASK_GAP);

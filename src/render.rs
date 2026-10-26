@@ -250,6 +250,7 @@ impl Fawc {
         self.check_config(false);
         self.check_idle();
         self.space.refresh();
+        self.tick_animations();
 
         // wallpaper (one texture per size of monitor)
         let key = (size.w, size.h);
@@ -292,19 +293,34 @@ impl Fawc {
                 // opening: fade in and grow from 92 % around the middle
                 let progress = self.open_progress(window);
                 let e = crate::windows::ease_out(progress);
-                let (alpha, zoom): (f32, f64) = (e, 0.92 + 0.08 * e as f64);
+                let (mut alpha, mut zoom): (f32, f64) = (e, 0.92 + 0.08 * e as f64);
                 let outer_full = outer_rect(client, &self.style);
                 if outer_full.intersection(out_rect).is_none() {
                     continue; // on another monitor
                 }
-                let center = (
+                let mut center = (
                     outer_full.loc.x as f64 + outer_full.size.w as f64 / 2.0,
                     outer_full.loc.y as f64 + outer_full.size.h as f64 / 2.0,
                 );
+                // minimizing: fade and shrink towards the task bar button (or the bottom middle)
+                let mut shift = (0.0f64, 0.0f64);
+                if let Some(p) = self.minimize_progress(window) {
+                    let target = self
+                        .minimize_target(window)
+                        .map(|t| (t.loc.x as f64 + t.size.w as f64 / 2.0, t.loc.y as f64 + t.size.h as f64 / 2.0))
+                        .unwrap_or((out_rect.loc.x as f64 + out_rect.size.w as f64 / 2.0, (out_rect.loc.y + out_rect.size.h) as f64));
+                    let (a, z, c) = crate::windows::minimize_pose(p, center, target);
+                    alpha = a;
+                    zoom = z;
+                    shift = (c.0 - center.0, c.1 - center.1);
+                    center = c;
+                }
                 let zoomed = |r: Rectangle<i32, Logical>| -> Rectangle<i32, Logical> {
                     let (w, h) = ((r.size.w as f64 * zoom).round() as i32, (r.size.h as f64 * zoom).round() as i32);
-                    let x = (center.0 + (r.loc.x as f64 - center.0) * zoom).round() as i32;
-                    let y = (center.1 + (r.loc.y as f64 - center.1) * zoom).round() as i32;
+                    // scale about the old middle, then move by `shift`
+                    let old = (center.0 - shift.0, center.1 - shift.1);
+                    let x = (center.0 + (r.loc.x as f64 - old.0) * zoom).round() as i32;
+                    let y = (center.1 + (r.loc.y as f64 - old.1) * zoom).round() as i32;
                     Rectangle::new((x, y).into(), (w, h).into())
                 };
                 let client = zoomed(client);

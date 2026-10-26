@@ -27,6 +27,12 @@ pub struct WinInfo {
     pub minimized: bool,
     /// when the window appeared, for the opening animation
     pub opened: Option<std::time::Instant>,
+    /// the window is shrinking into the task bar since this moment
+    pub minimizing: Option<std::time::Instant>,
+    /// where its task bar button is (set by the task bar), to shrink towards
+    pub minimize_target: Option<Rectangle<i32, Logical>>,
+    /// where it was when it was minimized
+    pub last_loc: Option<Point<i32, Logical>>,
 }
 
 /// What a drag with the pointer is doing.

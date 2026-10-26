@@ -473,6 +473,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let rgba = panel::draw(&mut text, size.0 * s, size.1 * s, s, app.hover, &current_clock, &tasks);
             attach(&shm, &qh, &surface, &mut file, rgba, (size.0 * s, size.1 * s), s)?;
             shown_scale = s;
+            // tell the compositor where each window's button is: minimizing shrinks towards it
+            for (i, t) in app.toplevels.iter().enumerate() {
+                let (x0, x1, y0, y1) = panel::task_rect(i, tasks.len(), size.0, size.1);
+                t.handle.set_rectangle(&surface, x0, y0, x1 - x0, y1 - y0);
+            }
             shown = current_clock.clone();
             shown_hover = app.hover;
             dirty = false;

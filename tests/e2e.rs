@@ -1152,3 +1152,73 @@ fn the_cursor_comes_from_the_theme_and_turns_into_resize_arrows_on_a_border() {
     let (cx, cy) = (g.loc.x - 2, g.loc.y + 50);
     assert!(blue(cx, cy) && blue(cx + 10, cy - 10) && blue(cx - 10, cy + 10), "the blue double arrow centred on the pointer");
 }
+
+#[test]
+fn minimizing_shrinks_into_the_task_bar_button_and_restoring_brings_it_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): minimize test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let state = Fawc::new(&display.handle(), (w, h).into());
+    let socket = ListeningSocket::bind("fawc-e2e-min").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+
+    // the real task bar, so that the window learns where its button is
+    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
+        .env("WAYLAND_DISPLAY", "fawc-e2e-min")
+        .env_remove("DISPLAY")
+        .spawn()
+        .unwrap();
+    open_window(&mut hn, dir.path(), "fawc-e2e-min", 200, 100);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    hn.state.set_open_start(&win, Instant::now() - Duration::from_secs(10)); // fully open
+    let t0 = Instant::now();
+    while hn.state.minimize_target(&win).is_none() {
+        hn.pump();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        assert!(t0.elapsed() < Duration::from_secs(10), "the task bar never said where the window's button is");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let target = hn.state.minimize_target(&win).unwrap();
+    let _ = panel.kill();
+    let _ = panel.wait();
+    assert!(target.loc.y >= 560 && target.loc.y + target.size.h <= 600 && target.size.w > 50, "the button is in the bar at the bottom: {target:?}");
+
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    let (cx, cy) = (g.loc.x + g.size.w / 2, g.loc.y + g.size.h / 2);
+    let green_at_middle = |hn: &mut Harness, renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture| {
+        hn.state.render_scene(renderer, &glass, scene).unwrap();
+        pixel(&grab_scene(renderer, scene), w, cx, cy)[1]
+    };
+    assert!(green_at_middle(&mut hn, &mut renderer, &mut scene) < 90, "the window is there");
+
+    // minimize: still on screen while it shrinks, but marked as minimized and out of the way
+    hn.state.minimize_window(&win);
+    assert!(hn.state.minimized.contains(&win));
+    assert!(hn.state.space.elements().any(|e| *e == win), "still mapped during the animation");
+    assert!(hn.state.window_under((cx as f64, cy as f64).into()).is_none(), "not clickable any more");
+    hn.state.set_minimize_start(&win, Instant::now() + Duration::from_secs(60)); // held at the start
+    assert!(green_at_middle(&mut hn, &mut renderer, &mut scene) < 90, "at the very start it still looks whole");
+
+    // when the animation has run its course the window leaves the screen
+    hn.state.set_minimize_start(&win, Instant::now() - Duration::from_secs(60));
+    let after = green_at_middle(&mut hn, &mut renderer, &mut scene);
+    assert!(!hn.state.space.elements().any(|e| *e == win), "unmapped at the end");
+    assert!(after > 120, "only the sky where it was: {after}");
+
+    // and back
+    hn.state.restore_window();
+    assert!(hn.state.space.elements().any(|e| *e == win));
+    assert_eq!(hn.state.space.element_geometry(&win).unwrap().loc, g.loc, "where it was");
+    assert!(hn.state.minimize_progress(&win).is_none());
+}
