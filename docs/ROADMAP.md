@@ -23,7 +23,8 @@ possible; hardware and VM runs are noted as such.
 - [ ] S1d launcher with search, tray, notifications
 - [ ] S2 tray (StatusNotifierItem), volume, network, battery, notifications, OSD
 - [x] S3a lock screen `fawc-lock` (Alt+L, password via unix_chkpwd)
-- [ ] S3b power menu, idle lock, greeter (greetd), session entry, autostart, polkit agent
+- [x] S3b idle lock (`session.idle_lock_seconds`)
+- [ ] S3c power menu, greeter (greetd), session entry, autostart, polkit agent
 
 ## Desktop suite
 - [ ] D1 `fawc-settings` (plan in [SETTINGS.md](SETTINGS.md); first step: one config file both the compositor and the app use): appearance, wallpaper, displays, input, sound, network, power

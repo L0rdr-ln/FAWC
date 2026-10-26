@@ -7,6 +7,7 @@ use smithay::reexports::wayland_server::Display;
 #[test]
 fn the_config_file_is_read_reloaded_and_a_bad_edit_is_ignored() {
     let dir = tempfile::tempdir().unwrap();
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let file = dir.path().join("fawc.toml");
     std::fs::write(&file, "[appearance]\naccent = \"#ff0000\"\ntransparency = 0.9\nblur = 2\n[shell]\nterminal = \"xterm\"\n").unwrap();
     std::env::set_var("FAWC_CONFIG", &file);
@@ -45,3 +46,25 @@ fn the_config_file_is_read_reloaded_and_a_bad_edit_is_ignored() {
     assert_eq!(state.style.blur_levels, 1);
     assert_eq!(state.terminal, "foot");
 }
+
+#[test]
+fn the_session_locks_by_itself_when_idle_and_activity_resets_the_timer() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("idle.toml");
+    std::fs::write(&file, "[session]\nidle_lock_seconds = 1\n").unwrap();
+    // the other test in this file uses the same variable: tests of one file share the process
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_CONFIG", &file);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let mut state = Fawc::new(&display.handle(), (800, 600).into());
+    assert!(!state.check_idle(), "not idle yet");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    assert!(state.check_idle(), "idle for a second: the lock starts");
+    assert!(!state.check_idle(), "once");
+    state.note_activity();
+    assert!(!state.check_idle(), "activity resets the timer");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    assert!(state.check_idle(), "and it can lock again after more idleness");
+}
+
+static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

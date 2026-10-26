@@ -20,4 +20,4 @@ panel = true           # start the task bar with the session
 autostart = []         # e.g. ["nm-applet", "foot"]
 
 [session]
-idle_lock_seconds = 0  # (not used yet)
+idle_lock_seconds = 0  # lock after this many idle seconds; 0 = never

@@ -76,6 +76,9 @@ pub struct Fawc {
     pub minimized: Vec<Window>,
     pub cascade: i32,
     pub terminal: String,
+    /// the last key or pointer event, for the idle lock
+    pub last_activity: std::time::Instant,
+    idle_lock_started: bool,
     pub config: crate::config::Config,
     config_watcher: crate::config::Watcher,
     config_checked: std::time::Instant,
@@ -188,6 +191,8 @@ impl Fawc {
             minimized: Vec::new(),
             cascade: 0,
             terminal: std::env::var("FAWC_TERMINAL").unwrap_or_else(|_| config.shell.terminal.clone()),
+            last_activity: std::time::Instant::now(),
+            idle_lock_started: false,
             config,
             config_watcher: crate::config::Watcher::new(),
             config_checked: std::time::Instant::now(),
@@ -235,6 +240,28 @@ impl Fawc {
             }
         }
         self.config = new;
+    }
+
+    /// Something happened on the keyboard or pointer: the user is there.
+    pub fn note_activity(&mut self) {
+        self.last_activity = std::time::Instant::now();
+        self.idle_lock_started = false;
+    }
+
+    /// Lock the session once the user has been idle for `session.idle_lock_seconds` (0 = never).
+    /// Returns true when it started the lock screen just now.
+    pub fn check_idle(&mut self) -> bool {
+        let limit = self.config.session.idle_lock_seconds as u64;
+        if limit == 0 || self.locked || self.idle_lock_started {
+            return false;
+        }
+        if self.last_activity.elapsed() < std::time::Duration::from_secs(limit) {
+            return false;
+        }
+        self.idle_lock_started = true;
+        tracing::info!("idle for {limit} s: locking");
+        crate::shell::start_sibling("fawc-lock");
+        true
     }
 
     pub fn output_size(&self) -> Size<i32, Logical> {

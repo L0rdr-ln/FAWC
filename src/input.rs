@@ -29,6 +29,7 @@ enum Action {
 
 impl Fawc {
     pub fn process_input_event<B: InputBackend>(&mut self, event: InputEvent<B>) {
+        self.note_activity();
         match event {
             InputEvent::Keyboard { event } => {
                 let serial = SERIAL_COUNTER.next_serial();
