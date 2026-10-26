@@ -5,7 +5,9 @@ use crate::panel::{blend, blit};
 use crate::text::TextRenderer;
 
 pub const W: i32 = 340;
-pub const BUBBLE_H: i32 = 76;
+pub const BUBBLE_H: i32 = 92;
+pub const ACTION_W: i32 = 96;
+pub const ACTION_H: i32 = 22;
 pub const GAP: i32 = 8;
 pub const MAX_SHOWN: usize = 5;
 
@@ -18,6 +20,8 @@ pub struct Note {
     /// when it goes away; None = stays until dismissed
     pub expires: Option<std::time::Instant>,
     pub critical: bool,
+    /// (key, label) pairs the program offered; "default" is what clicking the bubble does
+    pub actions: Vec<(String, String)>,
 }
 
 /// What the server knows: the notes in order of arrival and the next id.
@@ -38,6 +42,7 @@ impl Store {
         body: &str,
         timeout_ms: i32,
         critical: bool,
+        actions: &[String],
         now: std::time::Instant,
     ) -> u32 {
         let expires = if critical || timeout_ms == 0 {
@@ -47,7 +52,8 @@ impl Store {
             Some(now + std::time::Duration::from_millis(ms))
         };
         let strip = |s: &str| strip_markup(s);
-        let note = |id| Note { id, app: app.to_string(), summary: strip(summary), body: strip(body), expires, critical };
+        let pairs: Vec<(String, String)> = actions.chunks_exact(2).map(|c| (c[0].clone(), strip(&c[1]))).collect();
+        let note = |id| Note { id, app: app.to_string(), summary: strip(summary), body: strip(body), expires, critical, actions: pairs.clone() };
         if replaces != 0 {
             if let Some(n) = self.notes.iter_mut().find(|n| n.id == replaces) {
                 *n = note(replaces);
@@ -78,6 +84,33 @@ impl Store {
     pub fn shown(&self) -> Vec<&Note> {
         self.notes.iter().rev().take(MAX_SHOWN).collect()
     }
+}
+
+impl Note {
+    /// The buttons drawn on the bubble: the actions except the default one, at most two.
+    pub fn buttons(&self) -> Vec<&(String, String)> {
+        self.actions.iter().filter(|(k, _)| k != "default").take(2).collect()
+    }
+
+    pub fn has_default(&self) -> bool {
+        self.actions.iter().any(|(k, _)| k == "default")
+    }
+}
+
+/// The rectangle (x0, y0, x1, y1), in bubble pixels, of button `i` of a bubble.
+pub fn button_rect(i: usize) -> (i32, i32, i32, i32) {
+    let x1 = W - 16 - i as i32 * (ACTION_W + 8);
+    (x1 - ACTION_W, BUBBLE_H - ACTION_H - 10, x1, BUBBLE_H - 10)
+}
+
+/// Which button of which bubble (counted from the top) is at this point?
+pub fn action_at(x: f64, y: f64, notes: &[&Note]) -> Option<(usize, usize)> {
+    let row = row_at(y, notes.len())?;
+    let local_y = y - (row as i32 * (BUBBLE_H + GAP)) as f64;
+    (0..notes[row].buttons().len()).find_map(|i| {
+        let (x0, y0, x1, y1) = button_rect(i);
+        (x >= x0 as f64 && x < x1 as f64 && local_y >= y0 as f64 && local_y < y1 as f64).then_some((row, i))
+    })
 }
 
 /// Notification bodies may carry a little HTML (`<b>`, `<i>`, `<a>`); show the text only.
@@ -147,6 +180,30 @@ pub fn draw(text: &mut TextRenderer, s: i32, notes: &[&Note]) -> Vec<u8> {
         if let Some(img) = text.line(&note.body, w - 32 * s, 13.0 * sf, [235, 245, 255], pal.glow(0.7), 2 * s) {
             blit(&mut buf, w, h, &img, 16 * s, y0 + 40 * s);
         }
+        // the buttons the program asked for
+        for (bi, (_, label)) in note.buttons().into_iter().enumerate() {
+            let (bx0, by0, bx1, by1) = button_rect(bi);
+            let (bx0, by0, bx1, by1) = (bx0 * s, y0 + by0 * s, bx1 * s, y0 + by1 * s);
+            let brad = 7.0 * sf;
+            for y in by0..by1 {
+                for x in bx0..bx1 {
+                    let dx = (x as f32 + 0.5 - (bx0 + bx1) as f32 / 2.0).abs() - ((bx1 - bx0) as f32 / 2.0 - brad);
+                    let dy = (y as f32 + 0.5 - (by0 + by1) as f32 / 2.0).abs() - ((by1 - by0) as f32 / 2.0 - brad);
+                    let d = dx.max(0.0).hypot(dy.max(0.0)) + dx.max(dy).min(0.0) - brad;
+                    let cover = (0.5 - d).clamp(0.0, 1.0);
+                    if cover > 0.0 {
+                        let idx = ((y * w + x) * 4) as usize;
+                        blend(&mut buf[idx..idx + 4], [1.0, 1.0, 1.0], 0.28 * cover);
+                        if d > -1.2 * sf {
+                            blend(&mut buf[idx..idx + 4], [1.0, 1.0, 1.0], 0.5 * cover);
+                        }
+                    }
+                }
+            }
+            if let Some(img) = text.line(label, bx1 - bx0 - 8 * s, 12.0 * sf, [255, 255, 255], pal.glow(0.8), s) {
+                blit(&mut buf, w, h, &img, bx0 + (bx1 - bx0 - img.width) / 2, by0 + (by1 - by0 - img.height) / 2);
+            }
+        }
     }
     buf
 }
@@ -160,11 +217,11 @@ mod tests {
     fn notes_get_ids_replace_expire_and_close() {
         let t0 = Instant::now();
         let mut s = Store::default();
-        let a = s.notify("app", 0, "Hi", "there", -1, false, t0);
-        let b = s.notify("app", 0, "Second", "", 1000, false, t0);
-        let c = s.notify("app", 0, "Sticky", "", 0, false, t0);
+        let a = s.notify("app", 0, "Hi", "there", -1, false, &[], t0);
+        let b = s.notify("app", 0, "Second", "", 1000, false, &[], t0);
+        let c = s.notify("app", 0, "Sticky", "", 0, false, &[], t0);
         assert_eq!((a, b, c), (1, 2, 3));
-        assert_eq!(s.notify("app", a, "Hi again", "", -1, false, t0), a, "replacing keeps the id");
+        assert_eq!(s.notify("app", a, "Hi again", "", -1, false, &[], t0), a, "replacing keeps the id");
         assert_eq!(s.notes.len(), 3);
         assert!(s.expire(t0 + Duration::from_millis(500)).is_empty());
         assert_eq!(s.expire(t0 + Duration::from_millis(1500)), vec![b]);
@@ -178,7 +235,7 @@ mod tests {
         let t0 = Instant::now();
         let mut s = Store::default();
         for i in 0..7 {
-            s.notify("a", 0, &format!("n{i}"), "", -1, false, t0);
+            s.notify("a", 0, &format!("n{i}"), "", -1, false, &[], t0);
         }
         let shown = s.shown();
         assert_eq!(shown.len(), MAX_SHOWN);
@@ -186,11 +243,37 @@ mod tests {
     }
 
     #[test]
+    fn actions_become_buttons_and_the_default_one_is_the_bubble_itself() {
+        let t0 = Instant::now();
+        let mut s = Store::default();
+        let actions: Vec<String> = ["default", "Open", "reply", "Reply", "mute", "Mute"].iter().map(|x| x.to_string()).collect();
+        s.notify("chat", 0, "Anna", "hello", -1, false, &actions, t0);
+        s.notify("mail", 0, "Plain", "no buttons", -1, false, &[], t0);
+        let shown = s.shown(); // newest first: the plain one, then Anna
+        assert!(shown[1].has_default() && !shown[0].has_default());
+        let labels: Vec<&str> = shown[1].buttons().iter().map(|(_, l)| l.as_str()).collect();
+        assert_eq!(labels, ["Reply", "Mute"], "the default action is not a button; at most two buttons");
+        // a click on a button finds it; a click on the plain bubble's corner or an empty spot finds none
+        let (x0, y0, x1, y1) = button_rect(0);
+        let row_y = (BUBBLE_H + GAP) as f64;
+        assert_eq!(action_at(((x0 + x1) / 2) as f64, row_y + ((y0 + y1) / 2) as f64, &shown), Some((1, 0)));
+        let (x0, y0, x1, y1) = button_rect(1);
+        assert_eq!(action_at(((x0 + x1) / 2) as f64, row_y + ((y0 + y1) / 2) as f64, &shown), Some((1, 1)));
+        assert_eq!(action_at(((x0 + x1) / 2) as f64, ((y0 + y1) / 2) as f64, &shown), None, "the first bubble has no buttons");
+        assert_eq!(action_at(10.0, row_y + 10.0, &shown), None);
+        // the buttons are drawn
+        let mut text = TextRenderer::default();
+        let with = draw(&mut text, 1, &shown);
+        let plain_only = draw(&mut text, 1, &shown[..1]);
+        assert_ne!(&with[(BUBBLE_H + GAP) as usize * W as usize * 4..], &plain_only[..plain_only.len().min(with.len() - (BUBBLE_H + GAP) as usize * W as usize * 4)]);
+    }
+
+    #[test]
     fn bubbles_are_drawn_with_gaps_and_hit_testing_matches() {
         let t0 = Instant::now();
         let mut s = Store::default();
-        s.notify("a", 0, "One", "first", -1, false, t0);
-        s.notify("a", 0, "Two", "second", -1, false, t0);
+        s.notify("a", 0, "One", "first", -1, false, &[], t0);
+        s.notify("a", 0, "Two", "second", -1, false, &[], t0);
         let mut text = TextRenderer::default();
         let shown = s.shown();
         let buf = draw(&mut text, 1, &shown);

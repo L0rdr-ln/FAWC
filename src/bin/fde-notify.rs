@@ -26,6 +26,8 @@ struct Shared {
     store: Store,
     /// (id, reason) of notes that went away and still need the NotificationClosed signal
     closed: Vec<(u32, u32)>,
+    /// (id, key) of buttons that were clicked and still need the ActionInvoked signal
+    invoked: Vec<(u32, String)>,
 }
 
 struct Server {
@@ -35,7 +37,7 @@ struct Server {
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Server {
     fn get_capabilities(&self) -> Vec<String> {
-        vec!["body".into(), "body-markup".into()]
+        vec!["body".into(), "body-markup".into(), "actions".into()]
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -46,12 +48,12 @@ impl Server {
         _app_icon: String,
         summary: String,
         body: String,
-        _actions: Vec<String>,
+        actions: Vec<String>,
         hints: HashMap<String, zbus::zvariant::OwnedValue>,
         expire_timeout: i32,
     ) -> u32 {
         let critical = matches!(hints.get("urgency").map(|v| &**v), Some(zbus::zvariant::Value::U8(2)));
-        self.shared.lock().unwrap().store.notify(&app_name, replaces_id, &summary, &body, expire_timeout, critical, Instant::now())
+        self.shared.lock().unwrap().store.notify(&app_name, replaces_id, &summary, &body, expire_timeout, critical, &actions, Instant::now())
     }
 
     fn close_notification(&self, id: u32) {
@@ -73,7 +75,8 @@ struct App {
     generation: u32,
     configured: bool,
     pointer_y: f64,
-    click: Option<f64>,
+    pointer_x: f64,
+    click: Option<(f64, f64)>,
     scale: fde::clientscale::ScaleTracker,
 }
 
@@ -133,9 +136,12 @@ impl Dispatch<wl_seat::WlSeat, ()> for App {
 impl Dispatch<wl_pointer::WlPointer, ()> for App {
     fn event(app: &mut Self, _: &wl_pointer::WlPointer, event: wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match event {
-            wl_pointer::Event::Enter { surface_y, .. } | wl_pointer::Event::Motion { surface_y, .. } => app.pointer_y = surface_y,
+            wl_pointer::Event::Enter { surface_x, surface_y, .. } | wl_pointer::Event::Motion { surface_x, surface_y, .. } => {
+                app.pointer_x = surface_x;
+                app.pointer_y = surface_y;
+            }
             wl_pointer::Event::Button { button: BTN_LEFT, state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. } => {
-                app.click = Some(app.pointer_y);
+                app.click = Some((app.pointer_x, app.pointer_y));
             }
             _ => {}
         }
@@ -189,22 +195,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         // expire, and tell the bus about everything that went away
-        let (shown, closed) = {
+        let (shown, closed, invoked) = {
             let mut s = shared.lock().unwrap();
             for id in s.store.expire(Instant::now()) {
                 s.closed.push((id, 1));
             }
-            if let Some(y) = app.click.take() {
-                let n = s.store.shown().len();
-                if let Some(row) = notify::row_at(y, n) {
-                    let id = s.store.shown()[row].id;
+            if let Some((x, y)) = app.click.take() {
+                let shown: Vec<notify::Note> = s.store.shown().into_iter().cloned().collect();
+                let refs: Vec<&notify::Note> = shown.iter().collect();
+                if let Some((row, button)) = notify::action_at(x, y, &refs) {
+                    // a button: tell the program which one
+                    let id = shown[row].id;
+                    if let Some((key, _)) = shown[row].buttons().get(button) {
+                        s.invoked.push((id, key.clone()));
+                    }
+                    s.store.close(id);
+                    s.closed.push((id, 2));
+                } else if let Some(row) = notify::row_at(y, shown.len()) {
+                    let id = shown[row].id;
+                    if shown[row].has_default() {
+                        s.invoked.push((id, "default".to_string()));
+                    }
                     s.store.close(id);
                     s.closed.push((id, 2));
                 }
             }
             let shown: Vec<notify::Note> = s.store.shown().into_iter().cloned().collect();
-            (shown, std::mem::take(&mut s.closed))
+            (shown, std::mem::take(&mut s.closed), std::mem::take(&mut s.invoked))
         };
+        for (id, key) in invoked {
+            let _ = bus.emit_signal(None::<&str>, PATH, IFACE, "ActionInvoked", &(id, key));
+        }
         for (id, reason) in closed {
             let _ = bus.emit_signal(None::<&str>, PATH, IFACE, "NotificationClosed", &(id, reason));
         }
