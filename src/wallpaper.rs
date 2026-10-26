@@ -14,13 +14,13 @@ pub fn procedural(w: i32, h: i32, stripes: bool) -> Vec<u8> {
             let mut c = [0.10 + 0.50 * fy, 0.45 + 0.35 * fy, 0.85 + 0.10 * fy];
             // sun with glow
             let aspect = W as f32 / H as f32;
-            let (dx, dy) = ((fx - 0.78) * aspect / 1.78, fy - 0.22);
+            let (dx, dy) = ((fx - 0.78) * aspect, fy - 0.22); // round in pixels, sized by the height
             let d = (dx * dx + dy * dy).sqrt();
-            let glow = (1.0 - d * 6.0).clamp(0.0, 1.0);
+            let glow = (1.0 - d * 2.6).clamp(0.0, 1.0);
             for k in 0..3 {
                 c[k] = c[k] + (1.0 - c[k]) * glow * glow;
             }
-            if d < 0.045 {
+            if d < 0.075 {
                 c = [1.0, 0.98, 0.85];
             }
             // grass hills
