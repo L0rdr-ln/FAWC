@@ -35,6 +35,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("listening on WAYLAND_DISPLAY={socket_name}");
     std::env::set_var("WAYLAND_DISPLAY", &socket_name);
     state.start_session();
+    crate::shell::watch_signals();
     crate::xwayland::start(event_loop.handle(), &dh);
     event_loop.handle().insert_source(
         Generic::new(socket, Interest::READ, Mode::Level),
@@ -72,6 +73,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     while state.running {
         event_loop.dispatch(Some(Duration::from_millis(16)), &mut state)?;
+        if crate::shell::termination_requested() {
+            tracing::info!("asked to terminate: ending the session");
+            state.running = false;
+        }
 
         let size = backend.window_size();
         if scene.size().w != size.w || scene.size().h != size.h {

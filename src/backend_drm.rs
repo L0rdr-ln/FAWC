@@ -294,6 +294,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("listening on WAYLAND_DISPLAY={socket_name}");
     std::env::set_var("WAYLAND_DISPLAY", &socket_name);
     state.start_session();
+    crate::shell::watch_signals();
     crate::xwayland::start(event_loop.handle(), &dh);
     event_loop.handle().insert_source(Generic::new(socket, Interest::READ, Mode::Level), |_, socket, state| {
         while let Some(stream) = socket.accept()? {
@@ -366,6 +367,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     while state.running {
         event_loop.dispatch(Some(Duration::from_millis(16)), &mut state)?;
+        if crate::shell::termination_requested() {
+            tracing::info!("asked to terminate: ending the session");
+            state.running = false;
+        }
         // an idle compositor still needs a frame going: restart the cycle if it stalled
         let mut g = gpu.borrow_mut();
         for idx in 0..g.outputs.len() {

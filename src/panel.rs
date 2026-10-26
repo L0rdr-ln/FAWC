@@ -180,15 +180,42 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, s: i32, hover: boo
     buf
 }
 
-pub const MENU_W: i32 = 280;
+pub const MENU_W: i32 = 320;
 pub const MENU_ROW: i32 = 28;
 const MENU_PAD: i32 = 8;
 pub const MENU_MAX_ROWS: usize = 16;
 const SEARCH_H: i32 = 38;
+/// the power row at the bottom of the menu
+pub const POWER_H: i32 = 40;
 
 /// Size of the start menu: a search field and room for `MENU_MAX_ROWS` entries, always.
 pub fn menu_size() -> (i32, i32) {
-    (MENU_W, SEARCH_H + MENU_MAX_ROWS as i32 * MENU_ROW + 2 * MENU_PAD)
+    (MENU_W, SEARCH_H + MENU_MAX_ROWS as i32 * MENU_ROW + 2 * MENU_PAD + POWER_H)
+}
+
+/// The rectangle of power button `i` (x0, y0, x1, y1), in menu pixels.
+pub fn power_rect(i: usize) -> (i32, i32, i32, i32) {
+    let n = crate::power::ACTIONS.len() as i32;
+    let gap = 4;
+    let w = (MENU_W - 2 * MENU_PAD - (n - 1) * gap) / n;
+    let (_, h) = menu_size();
+    let x0 = MENU_PAD + i as i32 * (w + gap);
+    (x0, h - POWER_H + 4, x0 + w, h - MENU_PAD)
+}
+
+/// Which power button is at this point of the menu?
+pub fn power_at(x: f64, y: f64) -> Option<usize> {
+    (0..crate::power::ACTIONS.len()).find(|&i| {
+        let (x0, y0, x1, y1) = power_rect(i);
+        x >= x0 as f64 && x < x1 as f64 && y >= y0 as f64 && y < y1 as f64
+    })
+}
+
+/// What the power row looks like: the button under the pointer and the one waiting for a second click.
+#[derive(Default, Clone, Copy)]
+pub struct PowerView {
+    pub hover: Option<usize>,
+    pub armed: Option<usize>,
 }
 
 /// Which menu row (of `n` shown) is at height `y`?
@@ -199,7 +226,7 @@ pub fn menu_row_at(y: f64, n: usize) -> Option<usize> {
 
 /// The start menu at `s` pixels per logical pixel: a glass sheet with rounded corners and one
 /// row per entry. The picture is `menu_size()` times `s`.
-pub fn draw_menu(text: &mut TextRenderer, s: i32, query: &str, names: &[String], hover: Option<usize>) -> Vec<u8> {
+pub fn draw_menu(text: &mut TextRenderer, s: i32, query: &str, names: &[String], hover: Option<usize>, power: &PowerView) -> Vec<u8> {
     let (lw, lh) = menu_size();
     let (w, h) = (lw * s, lh * s);
     let sf = s as f32;
@@ -265,6 +292,55 @@ pub fn draw_menu(text: &mut TextRenderer, s: i32, query: &str, names: &[String],
             blit(&mut buf, w, h, &img, (MENU_PAD + 10) * s, y0 + (MENU_ROW * s - img.height) / 2);
         }
     }
+    // the power row: a thin line and five small glass buttons
+    {
+        let (_, mh) = menu_size();
+        let ly = (mh - POWER_H) * s;
+        for x in MENU_PAD * s..w - MENU_PAD * s {
+            let idx = ((ly * w + x) * 4) as usize;
+            blend(&mut buf[idx..idx + 4], [1.0, 1.0, 1.0], 0.35);
+        }
+        for (i, action) in crate::power::ACTIONS.iter().enumerate() {
+            let (x0, y0, x1, y1) = power_rect(i);
+            let (x0, y0, x1, y1) = (x0 * s, y0 * s, x1 * s, y1 * s);
+            let rad = 7.0f32 * sf;
+            let armed = power.armed == Some(i);
+            let hot = power.hover == Some(i);
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let dx = (x as f32 + 0.5 - (x0 + x1) as f32 / 2.0).abs() - ((x1 - x0) as f32 / 2.0 - rad);
+                    let dy = (y as f32 + 0.5 - (y0 + y1) as f32 / 2.0).abs() - ((y1 - y0) as f32 / 2.0 - rad);
+                    let d = dx.max(0.0).hypot(dy.max(0.0)) - rad;
+                    let cover = (0.5 - d).clamp(0.0, 1.0);
+                    if cover <= 0.0 {
+                        continue;
+                    }
+                    let t = (y - y0) as f32 / (y1 - y0) as f32;
+                    let idx = ((y * w + x) * 4) as usize;
+                    let (base, a) = if armed {
+                        ([0.85, 0.22, 0.18], 0.85 - 0.15 * t)
+                    } else if hot {
+                        (pal.light(0.6), 0.6 - 0.2 * t)
+                    } else {
+                        (pal.light(0.2), 0.3 - 0.1 * t)
+                    };
+                    blend(&mut buf[idx..idx + 4], base, a * cover);
+                    if t < 0.45 {
+                        blend(&mut buf[idx..idx + 4], [1.0, 1.0, 1.0], 0.12 * cover * pal.shine);
+                    }
+                    if d > -1.2 * sf {
+                        blend(&mut buf[idx..idx + 4], [1.0, 1.0, 1.0], 0.4 * cover);
+                    }
+                }
+            }
+            let label = if armed { "Sure?" } else { action.label };
+            let color = if hot && !armed { [10, 50, 100] } else { [255, 255, 255] };
+            let glow = if hot && !armed { None } else { pal.glow(0.7) };
+            if let Some(img) = text.line(label, x1 - x0 - 4 * s, 11.0 * sf, color, glow, s) {
+                blit(&mut buf, w, h, &img, x0 + (x1 - x0 - img.width) / 2, y0 + (y1 - y0 - img.height) / 2);
+            }
+        }
+    }
     buf
 }
 
@@ -309,7 +385,7 @@ mod tests {
         let mut text = TextRenderer::default();
         let names: Vec<String> = ["Files", "Terminal", "Settings"].iter().map(|s| s.to_string()).collect();
         let (w, h) = menu_size();
-        let buf = draw_menu(&mut text, 1, "", &names, Some(1));
+        let buf = draw_menu(&mut text, 1, "", &names, Some(1), &PowerView::default());
         let at = |x: i32, y: i32| {
             let i = ((y * w + x) * 4) as usize;
             [buf[i] as i32, buf[i + 1] as i32, buf[i + 2] as i32, buf[i + 3] as i32]
@@ -321,6 +397,24 @@ mod tests {
         assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + MENU_ROW + 3) as f64, 3), Some(1));
         assert_eq!(menu_row_at(2.0, 3), None, "the search field is not a row");
         assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + 3 * MENU_ROW + 3) as f64, 3), None, "below the last row");
+    }
+
+    #[test]
+    fn the_power_row_has_five_buttons_that_can_be_hit_and_do_not_overlap_the_rows() {
+        let (w, h) = menu_size();
+        assert_eq!(w, MENU_W);
+        let mut seen = Vec::new();
+        for i in 0..crate::power::ACTIONS.len() {
+            let (x0, y0, x1, y1) = power_rect(i);
+            assert!(x1 > x0 + 40 && y1 > y0 + 20 && x1 <= w && y1 <= h, "button {i} fits: {:?}", (x0, y0, x1, y1));
+            assert_eq!(power_at((x0 + x1) as f64 / 2.0, (y0 + y1) as f64 / 2.0), Some(i));
+            seen.push(x0);
+        }
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), 5);
+        assert_eq!(power_at(5.0, 5.0), None);
+        assert_eq!(menu_row_at((h - 20) as f64, MENU_MAX_ROWS), None, "the power row is not a program row");
     }
 
     #[test]
@@ -341,6 +435,6 @@ mod tests {
         let (one, two) = (orb_width(1), orb_width(2));
         assert!((one - ORB_SIZE).abs() <= 4 && (two - 2 * ORB_SIZE).abs() <= 6, "the orb is about 32 px wide at 1x and 64 px at 2x: {one} {two}");
         let (mw, mh) = menu_size();
-        assert_eq!(draw_menu(&mut text, 2, "", &[], None).len() as i32, mw * 2 * mh * 2 * 4);
+        assert_eq!(draw_menu(&mut text, 2, "", &[], None, &PowerView::default()).len() as i32, mw * 2 * mh * 2 * 4);
     }
 }

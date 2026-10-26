@@ -53,3 +53,39 @@ pub fn start_sibling(name: &str) {
         _ => tracing::warn!("{name} is not installed next to the compositor"),
     }
 }
+
+static TERMINATE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+extern "C" fn on_terminate(_: libc::c_int) {
+    TERMINATE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// End the session cleanly when the compositor is asked to terminate (the "Log out" button, a
+/// `kill`, the console closing): the main loops look at `termination_requested` every frame, stop,
+/// and give the graphics session back. Also tells the programs it starts which process to ask
+/// (`FDE_PID`).
+pub fn watch_signals() {
+    std::env::set_var("FDE_PID", std::process::id().to_string());
+    unsafe {
+        for sig in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+            libc::signal(sig, on_terminate as extern "C" fn(libc::c_int) as libc::sighandler_t);
+        }
+    }
+}
+
+/// Has the compositor been asked to terminate?
+pub fn termination_requested() -> bool {
+    TERMINATE.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_terminate_signal_asks_the_session_to_end_instead_of_killing_it() {
+        super::watch_signals();
+        assert!(!super::termination_requested());
+        unsafe { libc::raise(libc::SIGTERM) };
+        assert!(super::termination_requested(), "the handler noted the request");
+        assert_eq!(std::env::var("FDE_PID").unwrap(), std::process::id().to_string());
+    }
+}

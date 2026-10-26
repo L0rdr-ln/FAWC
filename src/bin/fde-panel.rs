@@ -38,6 +38,9 @@ struct App {
     pointer_on_menu: bool,
     menu_hover: Option<usize>,
     menu_click: Option<usize>,
+    power_hover: Option<usize>,
+    power_armed: Option<usize>,
+    power_click: Option<usize>,
     menu_configured: bool,
     menu_dirty: bool,
     toggle_menu: bool,
@@ -239,7 +242,8 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
             }
             wl_pointer::Event::Button { button, state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. } if button == BTN_LEFT => {
                 if app.pointer_on_menu {
-                    app.menu_click = panel::menu_row_at(app.pointer.1, n_menu);
+                    app.power_click = panel::power_at(app.pointer.0, app.pointer.1);
+                    app.menu_click = if app.power_click.is_some() { None } else { panel::menu_row_at(app.pointer.1, n_menu) };
                 } else if panel::on_orb(app.pointer.0, app.pointer.1, app.size.1) {
                     app.clicked_orb = true;
                 } else {
@@ -253,9 +257,15 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
 
 fn pointer_moved(app: &mut App, n_menu: usize) {
     if app.pointer_on_menu {
-        let row = panel::menu_row_at(app.pointer.1, n_menu);
-        if row != app.menu_hover {
+        let power = panel::power_at(app.pointer.0, app.pointer.1);
+        let row = if power.is_some() { None } else { panel::menu_row_at(app.pointer.1, n_menu) };
+        if row != app.menu_hover || power != app.power_hover {
             app.menu_hover = row;
+            app.power_hover = power;
+            // moving away from a button that waited for its second click cancels it
+            if app.power_armed.is_some() && app.power_armed != power {
+                app.power_armed = None;
+            }
             app.menu_dirty = true;
         }
     } else {
@@ -529,6 +539,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        if let Some(i) = app.power_click.take() {
+            let action = &fde::power::ACTIONS[i];
+            if action.confirm && app.power_armed != Some(i) {
+                app.power_armed = Some(i);
+                app.menu_dirty = true;
+            } else {
+                app.power_armed = None;
+                if let Err(e) = fde::power::run(action.id) {
+                    eprintln!("fde-panel: {}: {e}", action.id);
+                }
+                app.close_menu = true;
+            }
+        }
         if let Some(row) = app.menu_click.take() {
             if let Some(e) = filtered.get(row).and_then(|&i| entries.get(i)) {
                 launch_exec(&e.exec);
@@ -544,13 +567,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             app.menu_surface = None;
             app.pointer_on_menu = false;
             app.menu_hover = None;
+            app.power_hover = None;
+            app.power_armed = None;
         }
         if let Some(m) = &mut menu {
             if app.menu_configured && app.menu_dirty {
                 app.menu_dirty = false;
                 let names: Vec<String> = filtered.iter().take(panel::MENU_MAX_ROWS).filter_map(|&i| entries.get(i)).map(|e| e.name.clone()).collect();
                 let s = app.scale.current();
-                let px = panel::draw_menu(&mut text, s, &app.query, &names, app.menu_hover);
+                let px = panel::draw_menu(&mut text, s, &app.query, &names, app.menu_hover, &panel::PowerView { hover: app.power_hover, armed: app.power_armed });
                 let (mw, mh) = panel::menu_size();
                 attach(&shm, &qh, &m.surface, &mut m.file, px, (mw * s, mh * s), s)?;
             }

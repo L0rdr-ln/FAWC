@@ -2400,3 +2400,86 @@ fn the_clipboard_is_shared_between_x11_and_wayland_programs() {
     stop2.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = owner.join();
 }
+
+#[test]
+fn the_start_menu_power_row_asks_twice_before_shutting_down() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): power menu test skipped");
+            return;
+        }
+    };
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let log = dir.path().join("power.log");
+    let (w, h) = (800, 600);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-power").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fde-panel"))
+        .env("WAYLAND_DISPLAY", "fde-e2e-power")
+        .env("HOME", &home)
+        .env("FDE_PANEL_OPEN_MENU", "1")
+        .env("FDE_POWER_LOG", &log)
+        .env_remove("DISPLAY")
+        .spawn()
+        .unwrap();
+    let t0 = Instant::now();
+    let origin = loop {
+        hn.pump();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        let found = {
+            let map = smithay::desktop::layer_map_for_output(&hn.state.output);
+            let g = map.layers().find(|l| l.namespace() == "start-menu").and_then(|l| map.layer_geometry(l));
+            g
+        };
+        if let Some(g) = found {
+            if g.size.h > 100 && hn.state.seat.get_keyboard().and_then(|k| k.current_focus()).is_some() {
+                break g.loc;
+            }
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "the start menu never opened");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    hn.pump_for(300);
+    let center = |i: usize| -> smithay::utils::Point<f64, smithay::utils::Logical> {
+        let (x0, y0, x1, y1) = fde::panel::power_rect(i);
+        ((origin.x + (x0 + x1) / 2) as f64, (origin.y + (y0 + y1) / 2) as f64).into()
+    };
+    let click = |hn: &mut Harness, p: smithay::utils::Point<f64, smithay::utils::Logical>| {
+        hn.state.pointer_moved(p, 1);
+        hn.pump_for(150);
+        hn.state.pointer_button(0x110, true, 2);
+        hn.state.pointer_button(0x110, false, 3);
+        hn.pump_for(250);
+    };
+    let shutdown = fde::power::ACTIONS.iter().position(|a| a.id == "shutdown").unwrap();
+    let sleep = fde::power::ACTIONS.iter().position(|a| a.id == "sleep").unwrap();
+    // one click only arms the button
+    click(&mut hn, center(shutdown));
+    assert!(!log.exists(), "the first click on Shut down only asks");
+    // pointing at another button cancels it, so one more click on Shut down asks again
+    hn.state.pointer_moved(center(sleep), 4);
+    hn.pump_for(200);
+    click(&mut hn, center(shutdown));
+    assert!(!log.exists(), "after pointing elsewhere the question starts again");
+    // the second click in a row does it
+    click(&mut hn, center(shutdown));
+    let t0 = Instant::now();
+    while !log.exists() && t0.elapsed() < Duration::from_secs(5) {
+        hn.pump();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = panel.kill();
+    let _ = panel.wait();
+    assert_eq!(std::fs::read_to_string(&log).unwrap_or_default(), "shutdown\n");
+}

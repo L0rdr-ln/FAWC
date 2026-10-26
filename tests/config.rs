@@ -164,7 +164,7 @@ fn shell_preview() {
     let (bw, bh) = (600, 40);
     let bar = fde::panel::draw(&mut text, bw, bh, 1, false, "12:34", &tasks);
     let names: Vec<String> = ["Terminal", "Files", "Settings", "Music"].iter().map(|s| s.to_string()).collect();
-    let menu = fde::panel::draw_menu(&mut text, 1, "", &names, Some(1));
+    let menu = fde::panel::draw_menu(&mut text, 1, "", &names, Some(1), &fde::panel::PowerView { hover: Some(2), armed: Some(4) });
     let (mw, mh) = fde::panel::menu_size();
     let (w, h) = (600usize, 40 + 10 + mh as usize);
     let mut img = vec![0u8; w * h * 4];
