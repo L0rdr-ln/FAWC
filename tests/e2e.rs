@@ -1371,3 +1371,136 @@ fn a_fullscreen_window_fills_the_monitor_without_a_frame_and_hides_the_panels() 
     assert_eq!(hn.state.space.element_geometry(&win).unwrap().loc, before.loc);
     assert!(!hn.state.fullscreen_on(&hn.state.output.clone()));
 }
+
+// ------------------------------------------------------------------ mouse grab
+
+use wayland_client::protocol::{wl_pointer, wl_seat};
+use wayland_protocols::wp::pointer_constraints::zv1::client::{zwp_locked_pointer_v1, zwp_pointer_constraints_v1};
+use wayland_protocols::wp::relative_pointer::zv1::client::{zwp_relative_pointer_manager_v1, zwp_relative_pointer_v1};
+
+#[derive(Default)]
+struct GrabApp {
+    configured: bool,
+    locked: bool,
+    relative: Vec<(f64, f64)>,
+}
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for GrabApp {
+    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+}
+delegate_noop!(GrabApp: ignore wl_compositor::WlCompositor);
+delegate_noop!(GrabApp: ignore wl_surface::WlSurface);
+delegate_noop!(GrabApp: ignore wl_shm::WlShm);
+delegate_noop!(GrabApp: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(GrabApp: ignore wl_buffer::WlBuffer);
+delegate_noop!(GrabApp: ignore wl_seat::WlSeat);
+delegate_noop!(GrabApp: ignore wl_pointer::WlPointer);
+delegate_noop!(GrabApp: ignore xdg_toplevel::XdgToplevel);
+delegate_noop!(GrabApp: ignore zwp_pointer_constraints_v1::ZwpPointerConstraintsV1);
+delegate_noop!(GrabApp: ignore zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1);
+impl Dispatch<xdg_wm_base::XdgWmBase, ()> for GrabApp {
+    fn event(_: &mut Self, _: &xdg_wm_base::XdgWmBase, _: xdg_wm_base::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+impl Dispatch<xdg_surface::XdgSurface, ()> for GrabApp {
+    fn event(app: &mut Self, s: &xdg_surface::XdgSurface, event: xdg_surface::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let xdg_surface::Event::Configure { serial } = event {
+            s.ack_configure(serial);
+            app.configured = true;
+        }
+    }
+}
+impl Dispatch<zwp_locked_pointer_v1::ZwpLockedPointerV1, ()> for GrabApp {
+    fn event(app: &mut Self, _: &zwp_locked_pointer_v1::ZwpLockedPointerV1, event: zwp_locked_pointer_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        match event {
+            zwp_locked_pointer_v1::Event::Locked => app.locked = true,
+            zwp_locked_pointer_v1::Event::Unlocked => app.locked = false,
+            _ => {}
+        }
+    }
+}
+impl Dispatch<zwp_relative_pointer_v1::ZwpRelativePointerV1, ()> for GrabApp {
+    fn event(app: &mut Self, _: &zwp_relative_pointer_v1::ZwpRelativePointerV1, event: zwp_relative_pointer_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let zwp_relative_pointer_v1::Event::RelativeMotion { dx, dy, .. } = event {
+            app.relative.push((dx, dy));
+        }
+    }
+}
+
+/// A window that locks the pointer and reports locked/relative motion through `tx`.
+fn grab_client(path: std::path::PathBuf, tx: mpsc::Sender<(bool, Vec<(f64, f64)>)>, stop: Arc<std::sync::atomic::AtomicBool>) {
+    let conn = Connection::from_socket(UnixStream::connect(path).unwrap()).unwrap();
+    let (globals, mut queue) = registry_queue_init::<GrabApp>(&conn).unwrap();
+    let qh = queue.handle();
+    let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 4..=4, ()).unwrap();
+    let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).unwrap();
+    let wm: xdg_wm_base::XdgWmBase = globals.bind(&qh, 1..=1, ()).unwrap();
+    let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=1, ()).unwrap();
+    let constraints: zwp_pointer_constraints_v1::ZwpPointerConstraintsV1 = globals.bind(&qh, 1..=1, ()).unwrap();
+    let rel_mgr: zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1 = globals.bind(&qh, 1..=1, ()).unwrap();
+    let mut app = GrabApp::default();
+    let surface = compositor.create_surface(&qh, ());
+    let xs = wm.get_xdg_surface(&surface, &qh, ());
+    let _top = xs.get_toplevel(&qh, ());
+    surface.commit();
+    while !app.configured {
+        queue.blocking_dispatch(&mut app).unwrap();
+    }
+    let (w, h) = (300, 200);
+    let mut file = tempfile::tempfile_in(std::env::var("XDG_RUNTIME_DIR").unwrap()).unwrap();
+    file.write_all(&vec![0x80u8; (w * h * 4) as usize]).unwrap();
+    use std::os::fd::AsFd;
+    let pool = shm.create_pool(file.as_fd(), w * h * 4, &qh, ());
+    let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, &qh, ());
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    let pointer = seat.get_pointer(&qh, ());
+    let _rel = rel_mgr.get_relative_pointer(&pointer, &qh, ());
+    let _lock = constraints.lock_pointer(&surface, &pointer, None, zwp_pointer_constraints_v1::Lifetime::Persistent, &qh, ());
+    queue.roundtrip(&mut app).unwrap();
+    while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+        queue.blocking_dispatch(&mut app).ok();
+        let _ = tx.send((app.locked, app.relative.clone()));
+    }
+}
+
+#[test]
+fn a_program_can_lock_the_pointer_and_read_relative_motion() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display: Display<Fawc> = Display::new().unwrap();
+    let mut state = Fawc::new(&display.handle(), (800, 600).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fawc-e2e-grab").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let (tx, rx) = mpsc::channel();
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (path, s2) = (dir.path().join("fawc-e2e-grab"), stop.clone());
+    let th = std::thread::spawn(move || grab_client(path, tx, s2));
+    let t0 = Instant::now();
+    while hn.state.space.elements().next().is_none() {
+        hn.pump();
+        assert!(t0.elapsed() < Duration::from_secs(10), "no window");
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    hn.pump_for(100);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    let inside = (g.loc.x as f64 + 100.0, g.loc.y as f64 + 100.0);
+    hn.state.pointer_moved(inside.into(), 1);
+    hn.pump_for(100);
+    // the grab starts once the pointer is over the window
+    hn.state.pointer_moved((inside.0 + 10.0, inside.1).into(), 2);
+    hn.pump_for(100);
+    hn.state.pointer_moved((inside.0 + 30.0, inside.1 + 5.0).into(), 3);
+    hn.pump_for(100);
+    assert_eq!(hn.state.pointer_location.x, inside.0, "a locked pointer stays where it is");
+    let mut last = (false, vec![]);
+    while let Ok(m) = rx.try_recv() {
+        last = m;
+    }
+    assert!(last.0, "the program was told the pointer is locked");
+    assert!(last.1.iter().any(|d| (d.0 - 30.0).abs() < 0.01 && (d.1 - 5.0).abs() < 0.01), "relative motion arrived: {:?}", last.1);
+    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    hn.state.pointer_moved((inside.0, inside.1).into(), 4);
+    drop(th);
+}

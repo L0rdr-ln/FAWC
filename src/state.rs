@@ -84,6 +84,10 @@ pub struct Fawc {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Fawc>,
     pub data_device_state: DataDeviceState,
+    pub pointer_constraints_state: smithay::wayland::pointer_constraints::PointerConstraintsState,
+    pub relative_pointer_state: smithay::wayland::relative_pointer::RelativePointerManagerState,
+    /// where the surface that has the pointer starts (for pointer constraint regions)
+    pub pointer_focus_origin: Point<f64, Logical>,
     pub seat: Seat<Fawc>,
 
     pub pointer_location: Point<f64, Logical>,
@@ -166,6 +170,8 @@ impl Fawc {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Fawc>(dh);
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Fawc>(dh);
+        let pointer_constraints_state = smithay::wayland::pointer_constraints::PointerConstraintsState::new::<Fawc>(dh);
+        let relative_pointer_state = smithay::wayland::relative_pointer::RelativePointerManagerState::new::<Fawc>(dh);
         let mut seat = seat_state.new_wl_seat(dh, "seat0");
         let config = match crate::config::Config::load() {
             Ok(c) => c,
@@ -228,6 +234,9 @@ impl Fawc {
             output_manager_state,
             seat_state,
             data_device_state,
+            pointer_constraints_state,
+            relative_pointer_state,
+            pointer_focus_origin: (0.0, 0.0).into(),
             seat,
             pointer_location: (size.w as f64 / 2.0, size.h as f64 / 2.0).into(),
             cursor_status: CursorImageStatus::default_named(),

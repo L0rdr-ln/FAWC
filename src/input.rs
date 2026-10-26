@@ -163,6 +163,14 @@ impl Fawc {
 
     pub fn pointer_moved(&mut self, pos: Point<f64, Logical>, time: u32) {
         let pos = self.clamp_to_outputs(pos);
+        if !self.locked && self.drag.is_none() {
+            // programs that read the mouse directly (games) get the movement, and a grab keeps
+            // the pointer where it is
+            self.send_relative_motion(pos - self.pointer_location, time);
+            if !self.motion_allowed(pos) {
+                return;
+            }
+        }
         self.pointer_location = pos;
 
         // the lock screen has the pointer to itself
@@ -225,8 +233,10 @@ impl Fawc {
                 _ => "default",
             };
         }
+        self.pointer_focus_origin = focus.as_ref().map(|(_, o)| *o).unwrap_or_default();
         ptr.motion(self, focus, &MotionEvent { location: pos, serial, time });
         ptr.frame(self);
+        self.refresh_constraint();
     }
 
     pub fn pointer_button(&mut self, button: u32, pressed: bool, time: u32) {

@@ -29,7 +29,7 @@ image-webp = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 cosmic-text = "0.19.0"
 wayland-client = "0.31"
-wayland-protocols = { version = "0.32", features = ["client", "server", "staging"] }
+wayland-protocols = { version = "0.32", features = ["client", "server", "staging", "unstable"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client", "server"] }
 libc = "0.2"
 xcursor = "0.3"

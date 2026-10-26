@@ -19,6 +19,7 @@ pub mod notify;
 pub mod outputs;
 pub mod layout;
 pub mod panel;
+pub mod pointer_constraints;
 pub mod render;
 pub mod shell;
 pub mod state;
