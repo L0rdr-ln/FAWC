@@ -1,0 +1,34 @@
+name = "Aqua"
+description = "Light grey brushed title bars, glossy traffic-light buttons on the left, centred titles, deep shadows."
+accent = "#dcdfe5"
+transparency = 1.0
+blur = 1
+gloss = 0.45
+radius = 6
+border = 1
+titlebar = 24
+client_tint = [0.0, 0.0, 0.0, 0.0]
+highlight = 0.8
+reflections = 0.0
+glow = 0.0
+shadow = 1.6
+rim = 1.0
+title_ink = "#2a2a2a"
+title_ink_dim = "#9a9a9a"
+title_glow = 0.0
+title_align = "center"
+
+[buttons]
+style = "orb"
+side = "left"
+size = 12
+gap = 8
+margin = 8
+close = "#ff5f57"
+maximize = "#28c840"
+minimize = "#febc2e"
+
+[wallpaper]
+kind = "gradient"
+color = "#241a6b"
+color2 = "#4aa8ff"

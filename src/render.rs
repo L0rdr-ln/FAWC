@@ -72,8 +72,12 @@ impl Fde {
             .unwrap_or_default(),
         };
         let pad = sc(4, scale).max(1);
-        let buttons = 3.0 * (style.orb_size + style.orb_gap) + style.orb_margin;
-        let max_width = outer.size.w - 2 * style.border as i32 - sc(12, scale) - buttons as i32;
+        let buttons = crate::layout::buttons_width(style) as i32;
+        let max_width = if style.title_center > 0.5 {
+            outer.size.w - 2 * (style.border as i32 + buttons) - sc(12, scale)
+        } else {
+            outer.size.w - 2 * style.border as i32 - sc(12, scale) - buttons
+        };
         let key = (surface.id(), (scale * 1000.0) as i32);
         let stale = match self.titles.get(&key) {
             Some(t) => t.title != title || t.max_width != max_width || t.focused != focused,
@@ -98,7 +102,11 @@ impl Fde {
             }
         }
         Ok(self.titles.get(&key).map(|t| {
-            let x = outer.loc.x + style.border as i32 + sc(10, scale) - t.pad;
+            let x = if style.title_center > 0.5 {
+                outer.loc.x + (outer.size.w - t.size.0) / 2
+            } else {
+                outer.loc.x + style.border as i32 + sc(10, scale) - t.pad
+            };
             let y = outer.loc.y + style.border as i32 + (style.titlebar as i32 - t.size.1) / 2;
             (t.texture.clone(), Rectangle::new((x, y).into(), (t.size.0, t.size.1).into()))
         }))

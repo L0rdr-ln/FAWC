@@ -10,8 +10,11 @@ use serde::Deserialize;
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Buttons {
-    /// "orb" (round glass) or "flat" (square glyphs)
+    /// "orb" (round glass), "flat" (glyphs only), "square" (rounded square gel) or "capsule"
+    /// (one glass pill with three segments, hung from the top edge)
     pub style: String,
+    /// "right" (close at the far right) or "left" (close at the far left, like Aqua)
+    pub side: String,
     pub size: f32,
     pub gap: f32,
     pub margin: f32,
@@ -22,7 +25,7 @@ pub struct Buttons {
 
 impl Default for Buttons {
     fn default() -> Self {
-        Buttons { style: "orb".into(), size: 17.0, gap: 7.0, margin: 8.0, close: "#e64f2e".into(), maximize: "#54ba4a".into(), minimize: "#3d9be0".into() }
+        Buttons { style: "orb".into(), side: "right".into(), size: 17.0, gap: 7.0, margin: 8.0, close: "#e64f2e".into(), maximize: "#54ba4a".into(), minimize: "#3d9be0".into() }
     }
 }
 
@@ -51,6 +54,8 @@ pub struct Theme {
     pub blur: u32,
     pub gloss: f32,
     pub radius: f32,
+    /// radius of the two bottom corners; negative = the same as `radius`
+    pub radius_bottom: f32,
     pub border: f32,
     pub titlebar: f32,
     pub client_tint: [f32; 4],
@@ -62,6 +67,8 @@ pub struct Theme {
     pub title_ink: String,
     pub title_ink_dim: String,
     pub title_glow: f32,
+    /// "left" or "center"
+    pub title_align: String,
     pub buttons: Buttons,
     pub wallpaper: ThemeWallpaper,
 }
@@ -77,6 +84,7 @@ impl Default for Theme {
             blur: 3,
             gloss: 0.8,
             radius: 12.0,
+            radius_bottom: -1.0,
             border: 5.0,
             titlebar: 32.0,
             client_tint: [0.85, 0.93, 1.0, 0.10],
@@ -88,6 +96,7 @@ impl Default for Theme {
             title_ink: "#06233d".into(),
             title_ink_dim: "#465868".into(),
             title_glow: 0.95,
+            title_align: "left".into(),
             buttons: Buttons::default(),
             wallpaper: ThemeWallpaper::default(),
         }
@@ -101,6 +110,11 @@ pub const BUILTIN: &[(&str, &str)] = &[
     ("nordic", include_str!("../themes/nordic.toml")),
     ("sakura", include_str!("../themes/sakura.toml")),
     ("midnight", include_str!("../themes/midnight.toml")),
+    ("vista", include_str!("../themes/vista.toml")),
+    ("seven", include_str!("../themes/seven.toml")),
+    ("aqua", include_str!("../themes/aqua.toml")),
+    ("luna", include_str!("../themes/luna.toml")),
+    ("nature", include_str!("../themes/nature.toml")),
 ];
 
 fn dirs() -> Vec<PathBuf> {
@@ -129,8 +143,14 @@ impl Theme {
         for (what, c) in [("buttons.close", &t.buttons.close), ("buttons.maximize", &t.buttons.maximize), ("buttons.minimize", &t.buttons.minimize)] {
             crate::config::parse_color(c).ok_or_else(|| format!("{what}: \"{c}\" is not #rrggbb"))?;
         }
-        if !matches!(t.buttons.style.as_str(), "orb" | "flat") {
-            return Err("buttons.style must be \"orb\" or \"flat\"".into());
+        if !matches!(t.buttons.style.as_str(), "orb" | "flat" | "square" | "capsule") {
+            return Err("buttons.style must be \"orb\", \"flat\", \"square\" or \"capsule\"".into());
+        }
+        if !matches!(t.buttons.side.as_str(), "left" | "right") {
+            return Err("buttons.side must be \"left\" or \"right\"".into());
+        }
+        if !matches!(t.title_align.as_str(), "left" | "center") {
+            return Err("title_align must be \"left\" or \"center\"".into());
         }
         if !matches!(t.wallpaper.kind.as_str(), "photo" | "solid" | "gradient") {
             return Err("wallpaper.kind must be \"photo\", \"solid\" or \"gradient\"".into());
@@ -196,7 +216,7 @@ mod tests {
         let aero = Theme::find("aero").unwrap();
         let d = Theme::default();
         assert_eq!((aero.accent.as_str(), aero.radius, aero.border, aero.titlebar), (d.accent.as_str(), d.radius, d.border, d.titlebar));
-        assert_eq!(Theme::list().len() >= 5, true);
+        assert!(Theme::list().len() >= 10);
     }
 
     #[test]
@@ -238,7 +258,7 @@ impl Palette {
         let t = c.theme();
         let (accent, _, _, gloss) = c.look();
         let a = crate::config::parse_color(&accent).unwrap_or([0.29, 0.66, 0.93]);
-        let flat = t.buttons.style == "flat";
+        let flat = matches!(t.buttons.style.as_str(), "flat" | "capsule");
         let orb = if flat { mix(a, [1.0; 3], 0.55) } else { crate::config::parse_color(&t.buttons.maximize).unwrap_or([0.33, 0.73, 0.29]) };
         let dark = mix(a, [0.0; 3], 0.62);
         Palette {

@@ -297,7 +297,15 @@ impl Config {
         style.glow = t.glow;
         style.shadow = t.shadow;
         style.rim = t.rim;
-        style.flat_buttons = if t.buttons.style == "flat" { 1.0 } else { 0.0 };
+        style.button_style = match t.buttons.style.as_str() {
+            "flat" => 1.0,
+            "capsule" => 2.0,
+            "square" => 3.0,
+            _ => 0.0,
+        };
+        style.button_left = if t.buttons.side == "left" { 1.0 } else { 0.0 };
+        style.title_center = if t.title_align == "center" { 1.0 } else { 0.0 };
+        style.radius_bottom = if t.radius_bottom < 0.0 { t.radius } else { t.radius_bottom };
         style.orb_size = t.buttons.size;
         style.orb_gap = t.buttons.gap;
         style.orb_margin = t.buttons.margin;

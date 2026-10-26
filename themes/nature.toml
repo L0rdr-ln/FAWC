@@ -1,0 +1,32 @@
+name = "Aero Nature"
+description = "Fresh green glass, leaf-coloured orbs, a sky fading into grass."
+accent = "#5db84a"
+transparency = 0.34
+blur = 4
+gloss = 0.85
+radius = 14
+border = 6
+titlebar = 32
+client_tint = [0.90, 1.0, 0.88, 0.10]
+highlight = 0.9
+reflections = 1.0
+glow = 1.0
+shadow = 1.0
+rim = 0.8
+title_ink = "#0f3a12"
+title_ink_dim = "#52725a"
+title_glow = 0.95
+
+[buttons]
+style = "orb"
+size = 18
+gap = 7
+margin = 9
+close = "#e4572e"
+maximize = "#79c43a"
+minimize = "#f4b43a"
+
+[wallpaper]
+kind = "gradient"
+color = "#bfe8ff"
+color2 = "#4fae3d"

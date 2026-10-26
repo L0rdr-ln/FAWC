@@ -1,0 +1,32 @@
+name = "Seven Glass"
+description = "Lighter, clearer glass with bright reflections and a white inner glow; capsule buttons."
+accent = "#9cc0e8"
+transparency = 0.30
+blur = 4
+gloss = 1.0
+radius = 7
+border = 6
+titlebar = 24
+client_tint = [0.85, 0.92, 1.0, 0.0]
+highlight = 1.0
+reflections = 1.0
+glow = 1.0
+shadow = 1.1
+rim = 1.0
+title_ink = "#000000"
+title_ink_dim = "#4a5a70"
+title_glow = 1.0
+
+[buttons]
+style = "capsule"
+size = 17
+gap = 1
+margin = 6
+close = "#c2241a"
+maximize = "#9fb6d6"
+minimize = "#9fb6d6"
+
+[wallpaper]
+kind = "gradient"
+color = "#08327a"
+color2 = "#46a8ff"

@@ -42,18 +42,57 @@ pub fn client_rect(outer: Rectangle<i32, Logical>, style: &GlassStyle) -> Rectan
     )
 }
 
+/// Where a button is, in the same coordinates as `outer`: its centre and half the width and height.
+/// The shader (`glass/shaders.rs`) draws the buttons from the same numbers.
+pub fn button_geom(outer: Rectangle<i32, Logical>, style: &GlassStyle, b: Button) -> (Point<f64, Logical>, f64, f64) {
+    let s = style.orb_size as f64;
+    let (left, top) = (outer.loc.x as f64, outer.loc.y as f64);
+    let right = left + outer.size.w as f64;
+    if style.button_style > 1.5 && style.button_style < 2.5 {
+        // capsule: three segments side by side, hung from the top edge, close at the far right
+        let (w_close, w_other, h) = (s * 2.6, s * 1.6, s + 1.0);
+        let gap = style.orb_gap as f64;
+        let (w, cx) = match b {
+            Button::Close => (w_close, right - style.orb_margin as f64 - w_close * 0.5),
+            Button::Maximize => (w_other, right - style.orb_margin as f64 - w_close - gap - w_other * 0.5),
+            Button::Minimize => (w_other, right - style.orb_margin as f64 - w_close - gap * 2.0 - w_other * 1.5),
+        };
+        return ((cx, top + 1.0 + h * 0.5).into(), w * 0.5, h * 0.5);
+    }
+    let y = top + style.border as f64 + style.titlebar as f64 * 0.5;
+    let step = s + style.orb_gap as f64;
+    let x = if style.button_left > 0.5 {
+        // close, minimize, maximize from the left
+        let slot = match b {
+            Button::Close => 0.0,
+            Button::Minimize => 1.0,
+            Button::Maximize => 2.0,
+        };
+        left + style.border as f64 + style.orb_margin as f64 + s * 0.5 + slot * step
+    } else {
+        let slot = match b {
+            Button::Close => 0.0,
+            Button::Maximize => 1.0,
+            Button::Minimize => 2.0,
+        };
+        right - style.border as f64 - style.orb_margin as f64 - s * 0.5 - slot * step
+    };
+    ((x, y).into(), s * 0.5, s * 0.5)
+}
+
 /// Centre of a button in the same coordinates as `outer`.
 pub fn button_center(outer: Rectangle<i32, Logical>, style: &GlassStyle, b: Button) -> Point<f64, Logical> {
-    let slot = match b {
-        Button::Close => 0.0,
-        Button::Maximize => 1.0,
-        Button::Minimize => 2.0,
-    };
-    let x = outer.loc.x as f64 + outer.size.w as f64 - style.border as f64 - style.orb_margin as f64
-        - style.orb_size as f64 * 0.5
-        - slot * (style.orb_size + style.orb_gap) as f64;
-    let y = outer.loc.y as f64 + style.border as f64 + style.titlebar as f64 * 0.5;
-    (x, y).into()
+    button_geom(outer, style, b).0
+}
+
+/// How much of the title bar the buttons take (logical pixels from their side's edge).
+pub fn buttons_width(style: &GlassStyle) -> f64 {
+    let s = style.orb_size as f64;
+    if style.button_style > 1.5 && style.button_style < 2.5 {
+        s * 2.6 + s * 3.2 + style.orb_gap as f64 * 2.0 + style.orb_margin as f64
+    } else {
+        3.0 * (s + style.orb_gap as f64) + style.orb_margin as f64
+    }
 }
 
 pub fn hit(client: Rectangle<i32, Logical>, style: &GlassStyle, p: Point<f64, Logical>) -> Option<Hit> {
@@ -73,9 +112,8 @@ pub fn hit(client: Rectangle<i32, Logical>, style: &GlassStyle, p: Point<f64, Lo
         return Some(Hit::Client);
     }
     for b in [Button::Close, Button::Maximize, Button::Minimize] {
-        let ctr = button_center(outer, style, b);
-        let r = style.orb_size as f64 * 0.5 + 2.0;
-        if (p.x - ctr.x).powi(2) + (p.y - ctr.y).powi(2) <= r * r {
+        let (ctr, hw, hh) = button_geom(outer, style, b);
+        if (p.x - ctr.x).abs() <= hw + 2.0 && (p.y - ctr.y).abs() <= hh + 2.0 {
             return Some(Hit::Button(b));
         }
     }

@@ -125,7 +125,7 @@ fn a_theme_sets_the_look_unless_the_user_set_it_by_hand() {
     let metro = Config::parse("[appearance]\ntheme = \"metro\"\n").unwrap();
     let mut s = GlassStyle::default();
     metro.apply_style(&mut s);
-    assert_eq!((s.radius, s.border, s.flat_buttons), (0.0, 1.0, 1.0));
+    assert_eq!((s.radius, s.border, s.button_style), (0.0, 1.0, 1.0));
     assert_eq!(s.tint_frame[3], 1.0, "metro's title bar is solid");
     // a hand-set accent still wins
     let own = Config::parse("[appearance]\ntheme = \"metro\"\naccent = \"#ff0000\"\n").unwrap();
@@ -192,4 +192,29 @@ fn shell_preview() {
     enc.set_color(png::ColorType::Rgba);
     enc.set_depth(png::BitDepth::Eight);
     enc.write_header().unwrap().write_image_data(&img).unwrap();
+}
+
+#[test]
+fn the_window_buttons_can_be_clicked_in_every_theme() {
+    use fde::config::Config;
+    use fde::glass::GlassStyle;
+    use fde::layout::{button_center, hit, outer_rect, Button, Hit};
+    use smithay::utils::{Logical, Rectangle};
+    for (id, _) in fde::theme::Theme::list() {
+        let cfg = Config::parse(&format!("[appearance]\ntheme = \"{id}\"\n")).unwrap();
+        let mut style = GlassStyle::default();
+        cfg.apply_style(&mut style);
+        let client = Rectangle::<i32, Logical>::new((200, 200).into(), (400, 300).into());
+        let outer = outer_rect(client, &style);
+        let mut seen = Vec::new();
+        for b in [Button::Close, Button::Maximize, Button::Minimize] {
+            let c = button_center(outer, &style, b);
+            assert_eq!(hit(client, &style, c), Some(Hit::Button(b)), "{id}: {b:?} at {c:?}");
+            assert!(c.x > outer.loc.x as f64 && c.x < (outer.loc.x + outer.size.w) as f64, "{id}: inside the window");
+            seen.push(c.x as i32);
+        }
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), 3, "{id}: three different places");
+    }
 }

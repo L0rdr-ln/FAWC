@@ -1,0 +1,33 @@
+name = "Vista Glass"
+description = "Translucent blue glass with diagonal reflections, black glowing titles and a capsule of buttons hanging from the top edge."
+accent = "#5a86c0"
+transparency = 0.5
+blur = 4
+gloss = 0.9
+radius = 8
+radius_bottom = 6
+border = 7
+titlebar = 24
+client_tint = [0.10, 0.20, 0.40, 0.0]
+highlight = 0.8
+reflections = 1.0
+glow = 0.55
+shadow = 1.4
+rim = 1.0
+title_ink = "#000000"
+title_ink_dim = "#3d4c66"
+title_glow = 0.95
+
+[buttons]
+style = "capsule"
+size = 17
+gap = 1
+margin = 6
+close = "#c2241a"
+maximize = "#9fb6d6"
+minimize = "#9fb6d6"
+
+[wallpaper]
+kind = "gradient"
+color = "#031a33"
+color2 = "#1b7f8f"

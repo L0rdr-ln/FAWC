@@ -1,6 +1,6 @@
 # Themes
 
-A theme is one small TOML file. FDE comes with five (`themes/` in the source):
+A theme is one small TOML file. FDE comes with ten (`themes/` in the source):
 
 | id | look |
 |---|---|
@@ -9,6 +9,11 @@ A theme is one small TOML file. FDE comes with five (`themes/` in the source):
 | `nordic` | dark, matte, cool greys with muted round buttons |
 | `sakura` | pastel pink glass with big round buttons |
 | `midnight` | Frutiger Aero after dark |
+| `vista` | Vista Glass: translucent blue glass with diagonal reflections, black titles with a white glow, a capsule of three buttons hanging from the top edge (red close) |
+| `seven` | Seven Glass: lighter, clearer glass, bright inner glow, capsule buttons |
+| `aqua` | Aqua: light grey title bars, glossy red/yellow/green buttons on the left, centred titles, deep shadows |
+| `luna` | Luna: bold blue title bars with rounded tops and square bottoms, square gel buttons, the sky-and-hill wallpaper |
+| `nature` | Aero Nature: fresh green glass, leaf-coloured orbs, sky fading into grass |
 
 Choose one in the settings (Appearance > Theme) or in `fde.toml`:
 
@@ -33,6 +38,8 @@ transparency = 0.38            # 0 clear .. 1 solid
 blur = 3                       # 1..6
 gloss = 0.8                    # the shine on the title bar, 0 .. 1
 radius = 12                    # corner radius of windows (0 = square)
+radius_bottom = -1             # the two bottom corners; -1 = the same as radius
+title_align = "left"          # or "center"
 border = 5                     # frame width
 titlebar = 32
 client_tint = [0.85, 0.93, 1.0, 0.10]   # r, g, b, strength over the window's content area
@@ -46,7 +53,8 @@ title_ink_dim = "#465868"      # (other windows)
 title_glow = 0.95              # white glow behind the title text, 0 = none
 
 [buttons]
-style = "orb"                  # "orb" (round glass) or "flat" (square glyphs)
+style = "orb"                  # "orb" (round glass), "flat" (glyphs only), "square" (gel squares) or "capsule" (one pill of three, hung from the top edge)
+side = "right"                 # or "left": close first, like Aqua
 size = 17
 gap = 7
 margin = 8

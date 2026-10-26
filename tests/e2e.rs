@@ -1935,7 +1935,7 @@ fn every_theme_changes_how_a_window_is_drawn() {
     hn.state.space.map_element(win.clone(), (120, 80), false);
 
     let mut shots: Vec<(String, Vec<u8>)> = Vec::new();
-    for id in ["aero", "metro", "nordic", "sakura", "midnight"] {
+    for id in ["aero", "metro", "nordic", "sakura", "midnight", "vista", "seven", "aqua", "luna", "nature"] {
         let cfg = fde::config::Config::parse(&format!("[appearance]\ntheme = \"{id}\"\n")).unwrap();
         cfg.apply_style(&mut hn.state.style);
         hn.state.wallpaper_image = fde::state::load_wallpaper(&cfg);
@@ -1947,10 +1947,10 @@ fn every_theme_changes_how_a_window_is_drawn() {
     }
     if let Ok(path) = std::env::var("FDE_DUMP_THEMES") {
         // one picture with the five side by side
-        let (tw, th) = (w as u32 * 3, h as u32 * 2);
+        let (tw, th) = (w as u32 * 4, h as u32 * 3);
         let mut all = vec![0u8; (tw * th * 4) as usize];
         for (k, (_, px)) in shots.iter().enumerate() {
-            let (ox, oy) = ((k as u32 % 3) * w as u32, (k as u32 / 3) * h as u32);
+            let (ox, oy) = ((k as u32 % 4) * w as u32, (k as u32 / 4) * h as u32);
             for y in 0..h as u32 {
                 let src = (y * w as u32 * 4) as usize;
                 let dst = (((oy + y) * tw + ox) * 4) as usize;
