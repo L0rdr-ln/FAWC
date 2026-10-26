@@ -547,40 +547,79 @@ fn the_lock_screen_locks_the_session_and_unlocks_with_the_right_password() {
         }
     };
     wait(&mut hn, &mut renderer, &mut scene, "the session locks", &|hn| hn.state.locked && !hn.state.lock_surfaces.is_empty() && hn.state.lock_confirmation.is_none());
-    // let the card be drawn and shown
-    for _ in 0..60 {
-        step(&mut hn, &mut renderer, &mut scene);
-    }
-    let bytes = {
-        let size = scene.size();
-        let target = renderer.bind(&mut scene).unwrap();
-        let m = renderer.copy_framebuffer(&target, Rectangle::from_size(size), Fourcc::Abgr8888).unwrap();
-        renderer.map_texture(&m).unwrap().to_vec()
+    // Everything below watches the picture instead of waiting a fixed time: the lock program
+    // draws one dot per typed character, so a dot proves that the keyboard path works.
+    let (card_x0, card_y0) = ((w - fawc::lockscreen::CARD_W) / 2, (h - fawc::lockscreen::CARD_H) / 2);
+    let dots = |hn: &mut Harness, renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture| -> (bool, usize) {
+        hn.pump();
+        hn.state.render_scene(renderer, &glass, scene).unwrap();
+        let bytes = {
+            let size = scene.size();
+            let target = renderer.bind(scene).unwrap();
+            let m = renderer.copy_framebuffer(&target, Rectangle::from_size(size), Fourcc::Abgr8888).unwrap();
+            renderer.map_texture(&m).unwrap().to_vec()
+        };
+        // the login card is a lighter, bluer sheet in the middle than the wallpaper around it
+        let card_up = pixel(&bytes, w, card_x0 + 190, card_y0 + 10) != pixel(&bytes, w, 40, card_y0 + 10);
+        // a dot is dark inside the pale password field
+        let field_y = card_y0 + 90 + 18;
+        let n = (0..10).filter(|k| pixel(&bytes, w, card_x0 + 30 + 18 + 16 * k, field_y)[0] < 110).count();
+        (card_up, n)
     };
-    // the login card is a lighter, bluer sheet in the middle than the wallpaper around it
-    let middle = pixel(&bytes, w, 400, 300 - 90);
-    let around = pixel(&bytes, w, 40, 300 - 90);
-    assert!(middle != around, "the card is on screen: {middle:?} {around:?}");
-
-    let mut type_keys = |hn: &mut Harness, codes: &[u32]| {
-        for &c in codes {
-            let kb = hn.state.seat.get_keyboard().unwrap();
-            for st in [KeyState::Pressed, KeyState::Released] {
-                kb.input::<(), _>(&mut hn.state, Keycode::new(c + 8), st, SERIAL_COUNTER.next_serial(), 0, |_, _, _| FilterResult::Forward);
+    let until = |hn: &mut Harness, renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture, what: &str, ok: &dyn Fn((bool, usize)) -> bool| {
+        let t0 = Instant::now();
+        loop {
+            let seen = dots(hn, renderer, scene);
+            if ok(seen) {
+                return;
             }
-            hn.pump();
-            std::thread::sleep(Duration::from_millis(10));
+            assert!(t0.elapsed() < Duration::from_secs(40), "timeout: {what} (saw card={} dots={})", seen.0, seen.1);
+            std::thread::sleep(Duration::from_millis(20));
         }
     };
-    // evdev: x = 45, Enter = 28
-    type_keys(&mut hn, &[45, 28]);
-    for _ in 0..60 {
-        step(&mut hn, &mut renderer, &mut scene);
+    until(&mut hn, &mut renderer, &mut scene, "the login card is on screen", &|(card, _)| card);
+
+    let type_key = |hn: &mut Harness, code: u32| {
+        let kb = hn.state.seat.get_keyboard().unwrap();
+        for st in [KeyState::Pressed, KeyState::Released] {
+            kb.input::<(), _>(&mut hn.state, Keycode::new(code + 8), st, SERIAL_COUNTER.next_serial(), 0, |_, _, _| FilterResult::Forward);
+        }
+        hn.pump();
+    };
+    // a wrong password: x (evdev 45), Enter (28): the dot appears, then the field is cleared
+    // (a key typed before the lock program has its keyboard is lost, as it would be for anyone:
+    // type again until a dot shows up)
+    let t0 = Instant::now();
+    loop {
+        type_key(&mut hn, 45);
+        let t1 = Instant::now();
+        let mut seen = 0;
+        while t1.elapsed() < Duration::from_millis(1500) && seen == 0 {
+            seen = dots(&mut hn, &mut renderer, &mut scene).1;
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if seen > 0 {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(40), "timeout: no dot ever showed up after typing x");
     }
+    // however many x arrived, the next Enter clears them
+    type_key(&mut hn, 28);
+    until(&mut hn, &mut renderer, &mut scene, "the field is cleared after a wrong password", &|(_, n)| n == 0);
     assert!(hn.state.locked, "a wrong password does not unlock");
-    // s e c r e t Enter
-    type_keys(&mut hn, &[31, 18, 46, 19, 18, 20, 28]);
-    wait(&mut hn, &mut renderer, &mut scene, "the right password unlocks", &|hn| !hn.state.locked);
+    // the right one: s e c r e t, one dot each, then Enter
+    for (i, code) in [31u32, 18, 46, 19, 18, 20].into_iter().enumerate() {
+        type_key(&mut hn, code);
+        until(&mut hn, &mut renderer, &mut scene, "a dot for each letter", &|(_, n)| n == i + 1);
+    }
+    type_key(&mut hn, 28);
+    let t0 = Instant::now();
+    while hn.state.locked {
+        hn.pump();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        assert!(t0.elapsed() < Duration::from_secs(40), "timeout: the right password unlocks");
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let _ = lock.wait();
 }
 
