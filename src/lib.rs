@@ -8,5 +8,6 @@ pub mod input;
 pub mod layout;
 pub mod render;
 pub mod state;
+pub mod text;
 pub mod wallpaper;
 pub mod windows;

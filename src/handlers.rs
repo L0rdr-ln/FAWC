@@ -147,6 +147,7 @@ impl XdgShellHandler for Fawc {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        self.titles.remove(&smithay::reexports::wayland_server::Resource::id(surface.wl_surface()));
         if let Some(w) = self.window_for_surface(surface.wl_surface()) {
             self.space.unmap_elem(&w);
         }

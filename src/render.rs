@@ -8,11 +8,14 @@ use smithay::backend::renderer::gles::{GlesError, GlesRenderer, GlesTexture};
 use smithay::backend::renderer::utils::draw_render_elements;
 use smithay::backend::renderer::{Bind, Color32F, Frame, ImportMem, Offscreen, Renderer, Texture};
 use smithay::desktop::{PopupManager, Window, WindowSurfaceType};
+use smithay::reexports::wayland_server::Resource;
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::shell::xdg::XdgToplevelSurfaceData;
 use smithay::utils::{Buffer as BufferCoord, Logical, Physical, Rectangle, Size, Transform};
 
 use crate::glass::{Glass, GlassStyle};
 use crate::layout::outer_rect;
-use crate::state::Fawc;
+use crate::state::{Fawc, TitleTex};
 
 /// The scene texture of an output of `size`.
 pub fn create_scene(renderer: &mut GlesRenderer, size: Size<i32, Physical>) -> Result<GlesTexture, GlesError> {
@@ -24,6 +27,55 @@ fn phys(r: Rectangle<i32, Logical>) -> Rectangle<i32, Physical> {
 }
 
 impl Fawc {
+    /// The window's title as a texture and where to draw it, or None if there is no title.
+    fn title_texture(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        window: &Window,
+        style: &GlassStyle,
+        outer: Rectangle<i32, Logical>,
+        focused: bool,
+    ) -> Result<Option<(GlesTexture, Rectangle<i32, Physical>)>, GlesError> {
+        let Some(top) = window.toplevel() else { return Ok(None) };
+        let surface = top.wl_surface();
+        let title = with_states(surface, |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .and_then(|d| d.lock().ok().and_then(|d| d.title.clone()))
+        })
+        .unwrap_or_default();
+        let pad = 4;
+        let buttons = 3.0 * (style.orb_size + style.orb_gap) + style.orb_margin;
+        let max_width = outer.size.w - 2 * style.border as i32 - 12 - buttons as i32;
+        let id = surface.id();
+        let stale = match self.titles.get(&id) {
+            Some(t) => t.title != title || t.max_width != max_width || t.focused != focused,
+            None => true,
+        };
+        if stale {
+            self.titles.remove(&id);
+            let (color, glow) = if focused { ([6, 35, 61], 0.95) } else { ([70, 88, 104], 0.7) };
+            if let Some(img) = self.text.line(&title, max_width + 2 * pad, 13.0, color, Some(([255, 255, 255], glow)), pad) {
+                let tex = renderer.import_memory(
+                    &img.rgba,
+                    Fourcc::Abgr8888,
+                    Size::<i32, BufferCoord>::from((img.width, img.height)),
+                    false,
+                )?;
+                self.titles.insert(
+                    id.clone(),
+                    TitleTex { title: title.clone(), max_width, focused, texture: tex, size: (img.width, img.height), pad },
+                );
+            }
+        }
+        Ok(self.titles.get(&id).map(|t| {
+            let x = outer.loc.x + style.border as i32 + 10 - t.pad;
+            let y = outer.loc.y + style.border as i32 + (style.titlebar as i32 - t.size.1) / 2;
+            (t.texture.clone(), Rectangle::new((x, y).into(), (t.size.0, t.size.1).into()))
+        }))
+    }
+
     /// Draw everything into `scene` (the output's size). `glass` is the shader set.
     pub fn render_scene(
         &mut self,
@@ -132,9 +184,16 @@ impl Fawc {
                 1.0,
             ));
 
+            // the title (re-rendered only when it, its room or the focus change)
+            let title_draw = self.title_texture(renderer, window, &style, outer, focused)?;
+
             let mut target = renderer.bind(scene)?;
             let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
             glass.draw_panel_part(&mut frame, &blurred, src, outer_p, &style)?;
+            if let Some((tex, dest)) = &title_draw {
+                let src_full = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());
+                frame.render_texture_from_to(tex, src_full, *dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, 1.0, None, &[])?;
+            }
             draw_render_elements(&mut frame, 1.0, &elements, &[full])?;
             let _ = frame.finish()?;
         }

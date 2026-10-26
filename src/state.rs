@@ -69,6 +69,20 @@ pub struct Fawc {
     pub terminal: String,
     /// the wallpaper as a texture of the output size, made when needed
     pub wallpaper: Option<smithay::backend::renderer::gles::GlesTexture>,
+    pub text: crate::text::TextRenderer,
+    /// rendered window titles, by surface
+    pub titles: std::collections::HashMap<smithay::reexports::wayland_server::backend::ObjectId, TitleTex>,
+}
+
+/// A window title as a texture, and what it was made from.
+pub struct TitleTex {
+    pub title: String,
+    pub max_width: i32,
+    pub focused: bool,
+    pub texture: smithay::backend::renderer::gles::GlesTexture,
+    pub size: (i32, i32),
+    /// how far the glow reaches around the text (the texture is this much bigger on every side)
+    pub pad: i32,
 }
 
 #[derive(Default)]
@@ -137,6 +151,8 @@ impl Fawc {
             cascade: 0,
             terminal: std::env::var("FAWC_TERMINAL").unwrap_or_else(|_| "foot".into()),
             wallpaper: None,
+            text: crate::text::TextRenderer::default(),
+            titles: std::collections::HashMap::new(),
         }
     }
 

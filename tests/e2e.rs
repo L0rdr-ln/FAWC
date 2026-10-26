@@ -223,6 +223,19 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     let o = pixel(&bytes, w, orb.x as i32, orb.y as i32 + 3);
     assert!(o[0] > o[2] + 30, "the close orb is red: {o:?}");
 
+    // the title ("e2e") is drawn in dark ink at the left of the title bar (when fonts exist)
+    if fawc::text::TextRenderer::default().line("e2e", 100, 13.0, [0, 0, 0], None, 0).is_some() {
+        let mut ink = 0;
+        for y in (outer.loc.y + 5)..(outer.loc.y + 5 + 32) {
+            for x in (outer.loc.x + 12)..(outer.loc.x + 12 + 40) {
+                if (pixel(&bytes, w, x, y)).iter().sum::<i32>() < 3 * 110 {
+                    ink += 1;
+                }
+            }
+        }
+        assert!(ink > 15, "the window title should be drawn in the title bar (ink pixels: {ink})");
+    }
+
     // 3. the window has the keyboard focus
     assert!(hn.state.seat.get_keyboard().unwrap().current_focus().is_some());
 
