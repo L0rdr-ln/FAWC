@@ -85,6 +85,10 @@ pub struct Fde {
     pub seat_state: SeatState<Fde>,
     pub data_device_state: DataDeviceState,
     /// windows that are bending on their springs
+    /// the X11 window manager, once XWayland is up
+    pub xwm: Option<smithay::xwayland::X11Wm>,
+    pub x11_display: Option<u32>,
+    pub xwayland_shell_state: smithay::wayland::xwayland_shell::XWaylandShellState,
     pub screencopy: crate::screencopy::Screencopy,
     pub wobbles: Vec<(Window, crate::wobble::Wobble)>,
     pub wobble_time: Instant,
@@ -162,7 +166,11 @@ impl ClientData for ClientState {
 }
 
 pub fn client_state(client: &Client) -> &CompositorClientState {
-    &client.get_data::<ClientState>().expect("client data").compositor_state
+    if let Some(c) = client.get_data::<ClientState>() {
+        return &c.compositor_state;
+    }
+    // the X server is a client of its own kind
+    &client.get_data::<smithay::xwayland::XWaylandClientData>().expect("client data").compositor_state
 }
 
 impl Fde {
@@ -184,6 +192,7 @@ impl Fde {
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Fde>(dh);
         crate::screencopy::create_global(dh);
+        let xwayland_shell_state = smithay::wayland::xwayland_shell::XWaylandShellState::new::<Fde>(dh);
         let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Fde>(dh);
         let fractional_scale_state = smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Fde>(dh);
         let idle_inhibit_state = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Fde>(dh);
@@ -254,6 +263,9 @@ impl Fde {
             output_manager_state,
             seat_state,
             data_device_state,
+            xwm: None,
+            x11_display: None,
+            xwayland_shell_state,
             screencopy: Default::default(),
             wobbles: Vec::new(),
             wobble_time: Instant::now(),

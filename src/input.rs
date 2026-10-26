@@ -1,5 +1,6 @@
 //! Keyboard and pointer: compositor shortcuts, focus, moving and resizing windows.
 
+use smithay::wayland::seat::WaylandFocus;
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
     KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
@@ -196,7 +197,8 @@ impl Fde {
                         (pos.x - grab_offset.x).round() as i32,
                         (pos.y - grab_offset.y).round() as i32,
                     );
-                    self.space.map_element(window, client_loc, false);
+                    self.space.map_element(window.clone(), client_loc, false);
+                    self.sync_x11_position(&window);
                 }
                 Drag::Resize { window, edges, start, pointer_start } => {
                     self.resize_to(&window, edges, start, pos - pointer_start);
@@ -354,5 +356,8 @@ impl Fde {
             top.send_pending_configure();
         }
         self.space.map_element(window.clone(), r.loc, false);
+        if let Some(x) = window.x11_surface() {
+            let _ = x.configure(Some(r));
+        }
     }
 }

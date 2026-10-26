@@ -1,6 +1,7 @@
 //! Drawing a frame: wallpaper, then every window bottom to top (blur what is behind it, glass
 //! panel, the client), all into an offscreen scene texture.
 
+use smithay::wayland::seat::WaylandFocus;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement};
 use smithay::backend::renderer::element::{AsRenderElements, Kind};
@@ -58,15 +59,18 @@ impl Fde {
         focused: bool,
         scale: f64,
     ) -> Result<Option<(GlesTexture, Rectangle<i32, Physical>)>, GlesError> {
-        let Some(top) = window.toplevel() else { return Ok(None) };
-        let surface = top.wl_surface();
-        let title = with_states(surface, |states| {
-            states
-                .data_map
-                .get::<XdgToplevelSurfaceData>()
-                .and_then(|d| d.lock().ok().and_then(|d| d.title.clone()))
-        })
-        .unwrap_or_default();
+        let Some(surface) = window.wl_surface().map(|s| s.into_owned()) else { return Ok(None) };
+        let surface = &surface;
+        let title = match window.x11_surface() {
+            Some(x) => x.title(),
+            None => with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok().and_then(|d| d.title.clone()))
+            })
+            .unwrap_or_default(),
+        };
         let pad = sc(4, scale).max(1);
         let buttons = 3.0 * (style.orb_size + style.orb_gap) + style.orb_margin;
         let max_width = outer.size.w - 2 * style.border as i32 - sc(12, scale) - buttons as i32;
@@ -293,6 +297,26 @@ impl Fde {
             let focus = self.seat.get_keyboard().and_then(|k| k.current_focus());
             for window in &windows {
                 let Some(client) = self.space.element_geometry(window) else { continue };
+                if self.is_override_redirect(window) {
+                    let outer_full = Rectangle::<i32, Logical>::new(client.loc, client.size);
+                    if outer_full.intersection(out_rect).is_none() {
+                        continue; // on another monitor
+                    }
+                    let k = view.scale;
+                    let loc = view.rect(client).loc;
+                    let g = window.geometry().loc;
+                    let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window.render_elements(
+                        renderer,
+                        loc - smithay::utils::Point::<i32, Physical>::from((sc(g.x, k), sc(g.y, k))),
+                        smithay::utils::Scale::from(k),
+                        1.0,
+                    );
+                    let mut target = renderer.bind(scene)?;
+                    let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                    draw_render_elements(&mut frame, k, &elements, &[full])?;
+                    let _ = frame.finish()?;
+                    continue;
+                }
                 if self.is_fullscreen(window) && self.minimize_progress(window).is_none() {
                     if !self.fullscreen_on(output) || client.loc != out_rect.loc {
                         continue; // on another monitor (or minimized)
@@ -370,7 +394,7 @@ impl Fde {
                 let clip = Rectangle::<i32, Physical>::from_size(tsize);
                 let focused = focus
                     .as_ref()
-                    .and_then(|f| window.toplevel().map(|t| t.wl_surface() == f))
+                    .and_then(|f| window.wl_surface().map(|s| &*s == f))
                     .unwrap_or(false);
                 let style = GlassStyle { focus: if focused { 1.0 } else { 0.0 }, ..self.style }.scaled(view.scale as f32);
 
@@ -402,8 +426,8 @@ impl Fde {
                 let k = view.scale * zoom;
                 let loc = view.rect(client).loc + shift;
                 let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
-                if let Some(top) = window.toplevel() {
-                    for (popup, offset) in PopupManager::popups_for_surface(top.wl_surface()) {
+                if let Some(top_surface) = window.wl_surface().map(|s| s.into_owned()) {
+                    for (popup, offset) in PopupManager::popups_for_surface(&top_surface) {
                         let d = offset - popup.geometry().loc;
                         let popup_loc = loc + smithay::utils::Point::<i32, Physical>::from((sc(d.x, k), sc(d.y, k)));
                         elements.extend(render_elements_from_surface_tree(

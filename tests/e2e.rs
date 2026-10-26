@@ -1823,3 +1823,88 @@ fn a_program_can_take_a_screenshot_of_a_monitor_region() {
         }
     }
 }
+
+// ------------------------------------------------------------------ XWayland
+
+#[test]
+fn an_x11_program_gets_a_managed_window_that_can_be_closed() {
+    use smithay::reexports::calloop::EventLoop;
+    use smithay::wayland::seat::WaylandFocus;
+    if std::process::Command::new("Xwayland").arg("-version").output().is_err() || std::process::Command::new("xterm").arg("-version").output().is_err() {
+        eprintln!("no Xwayland or xterm here: x11 test skipped");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    state.config.appearance.animations = false;
+    let mut ev: EventLoop<Fde> = EventLoop::try_new().unwrap();
+    fde::xwayland::start(ev.handle(), &display.handle());
+    let mut step = |state: &mut Fde, display: &mut Display<Fde>, ev: &mut EventLoop<Fde>| {
+        ev.dispatch(Duration::from_millis(5), state).unwrap();
+        display.dispatch_clients(state).unwrap();
+        display.flush_clients().unwrap();
+    };
+    let t0 = Instant::now();
+    while state.xwm.is_none() {
+        step(&mut state, &mut display, &mut ev);
+        assert!(t0.elapsed() < Duration::from_secs(20), "XWayland never became ready");
+    }
+    let n = state.x11_display.unwrap();
+    let mut child = std::process::Command::new("xterm")
+        .args(["-T", "x11-e2e", "-e", "sleep", "30"])
+        .env("DISPLAY", format!(":{n}"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let t0 = Instant::now();
+    let win = loop {
+        step(&mut state, &mut display, &mut ev);
+        if let Some(w) = state.space.elements().find(|w| w.x11_surface().is_some() && !state.is_override_redirect(w)).cloned() {
+            if w.wl_surface().is_some() {
+                break w;
+            }
+        }
+        assert!(t0.elapsed() < Duration::from_secs(20), "the X11 window never appeared");
+    };
+    for _ in 0..40 {
+        step(&mut state, &mut display, &mut ev);
+    }
+    assert_eq!(win.x11_surface().unwrap().title(), "x11-e2e");
+    let g = state.space.element_geometry(&win).unwrap();
+    assert!(g.size.w > 50 && g.size.h > 30, "the window has a size: {g:?}");
+    assert!(state.outer_of(&win).unwrap().loc.y < g.loc.y, "it has a frame above the client area");
+    let surface = win.wl_surface().unwrap().into_owned();
+    assert_eq!(state.seat.get_keyboard().unwrap().current_focus(), Some(surface), "it has the keyboard");
+
+    // it is drawn with the glass frame
+    if let Ok(mut renderer) = offscreen_renderer() {
+        let glass = Glass::new(&mut renderer).unwrap();
+        let mut scene: GlesTexture = create_scene(&mut renderer, (800, 600).into()).unwrap();
+        state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        let bytes = grab_scene(&mut renderer, &mut scene);
+        if let Ok(path) = std::env::var("FDE_DUMP_X11") {
+            let file = std::fs::File::create(path).unwrap();
+            let mut enc = png::Encoder::new(file, 800, 600);
+            enc.set_color(png::ColorType::Rgba);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.write_header().unwrap().write_image_data(&bytes).unwrap();
+        }
+        let o = state.outer_of(&win).unwrap();
+        let title_bar = pixel(&bytes, 800, o.loc.x + o.size.w / 2, o.loc.y + 6);
+        assert!(title_bar[2] > title_bar[0], "the frame is bluish glass: {title_bar:?}");
+    }
+
+    // the close button asks the program to quit
+    state.close_window(&win);
+    let t0 = Instant::now();
+    while state.space.elements().any(|w| w == &win) {
+        step(&mut state, &mut display, &mut ev);
+        assert!(t0.elapsed() < Duration::from_secs(10), "the window did not go away");
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}

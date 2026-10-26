@@ -1,5 +1,6 @@
 //! Window management: placing, focusing, maximizing, minimizing, closing, hit testing.
 
+use smithay::wayland::seat::WaylandFocus;
 use std::sync::Mutex;
 
 use smithay::desktop::Window;
@@ -38,8 +39,13 @@ impl Fde {
         self.space
             .elements()
             .chain(self.minimized.iter())
-            .find(|w| w.toplevel().map(|t| t.wl_surface() == surface).unwrap_or(false))
+            .find(|w| w.wl_surface().map(|s| &*s == surface).unwrap_or(false))
             .cloned()
+    }
+
+    /// A menu, tooltip or other pop-up of an X11 program: placed by the program, no frame.
+    pub fn is_override_redirect(&self, window: &Window) -> bool {
+        window.x11_surface().map(|x| x.is_override_redirect()).unwrap_or(false)
     }
 
     /// Open a new window: cascaded position, focused, on top.
@@ -81,11 +87,24 @@ impl Fde {
         if self.locked {
             return;
         }
+        if self.is_override_redirect(window) {
+            return;
+        }
         self.space.raise_element(window, true);
-        if let Some(top) = window.toplevel() {
+        // an X11 program knows it is the active one through its own window manager hints
+        let others: Vec<Window> = self.space.elements().filter(|w| *w != window).cloned().collect();
+        for w in others {
+            if let Some(x) = w.x11_surface() {
+                let _ = x.set_activated(false);
+            }
+        }
+        if let Some(x) = window.x11_surface() {
+            let _ = x.set_activated(true);
+        }
+        if let Some(surface) = window.wl_surface().map(|s| s.into_owned()) {
             let serial = SERIAL_COUNTER.next_serial();
             if let Some(kb) = self.seat.get_keyboard() {
-                kb.set_focus(self, Some(top.wl_surface().clone()), serial);
+                kb.set_focus(self, Some(surface), serial);
             }
         }
     }
@@ -109,7 +128,7 @@ impl Fde {
                 continue; // on its way into the task bar
             }
             let Some(g) = self.space.element_geometry(w) else { continue };
-            if self.is_fullscreen(w) {
+            if self.is_fullscreen(w) || self.is_override_redirect(w) {
                 if g.to_f64().contains(p) {
                     return Some((w.clone(), g, Hit::Client));
                 }
@@ -139,11 +158,17 @@ impl Fde {
     /// Fill `output` (or the monitor the window is on) with the window, no frame, over the
     /// panels; or put it back where it was.
     pub fn set_fullscreen(&mut self, window: &Window, on: bool, output: Option<smithay::output::Output>) {
-        let Some(top) = window.toplevel().cloned() else { return };
+        let top = window.toplevel().cloned();
+        let x11 = window.x11_surface().cloned();
+        if top.is_none() && x11.is_none() {
+            return;
+        }
         let Some(geo) = self.space.element_geometry(window) else { return };
         if on == self.is_fullscreen(window) {
             if on {
-                top.send_configure();
+                if let Some(top) = &top {
+                    top.send_configure();
+                }
             }
             return;
         }
@@ -151,22 +176,38 @@ impl Fde {
             let out = output.unwrap_or_else(|| self.output_for_window(window));
             let rect = self.output_rect(&out);
             info(window).lock().unwrap().fullscreen = Some(geo);
-            top.with_pending_state(|s| {
-                s.states.set(xdg_toplevel::State::Fullscreen);
-                s.size = Some(rect.size);
-            });
+            if let Some(top) = &top {
+                top.with_pending_state(|s| {
+                    s.states.set(xdg_toplevel::State::Fullscreen);
+                    s.size = Some(rect.size);
+                });
+            }
+            if let Some(x) = &x11 {
+                let _ = x.set_fullscreen(true);
+                let _ = x.configure(Some(rect));
+            }
             self.space.map_element(window.clone(), rect.loc, false);
         } else {
             let prev = info(window).lock().unwrap().fullscreen.take();
-            top.with_pending_state(|s| {
-                s.states.unset(xdg_toplevel::State::Fullscreen);
-                s.size = prev.map(|r| r.size);
-            });
+            if let Some(top) = &top {
+                top.with_pending_state(|s| {
+                    s.states.unset(xdg_toplevel::State::Fullscreen);
+                    s.size = prev.map(|r| r.size);
+                });
+            }
+            if let Some(x) = &x11 {
+                let _ = x.set_fullscreen(false);
+                if let Some(r) = prev {
+                    let _ = x.configure(Some(r));
+                }
+            }
             if let Some(r) = prev {
                 self.space.map_element(window.clone(), r.loc, false);
             }
         }
-        top.send_configure();
+        if let Some(top) = &top {
+            top.send_configure();
+        }
     }
 
     pub fn is_maximized(&self, window: &Window) -> bool {
@@ -174,7 +215,11 @@ impl Fde {
     }
 
     pub fn set_maximized(&mut self, window: &Window, on: bool) {
-        let Some(top) = window.toplevel().cloned() else { return };
+        let top = window.toplevel().cloned();
+        let x11 = window.x11_surface().cloned();
+        if top.is_none() && x11.is_none() {
+            return;
+        }
         let Some(geo) = self.space.element_geometry(window) else { return };
         if on == self.is_maximized(window) || self.is_fullscreen(window) {
             return;
@@ -183,22 +228,38 @@ impl Fde {
             let screen = self.usable_area(&self.output_for_window(window));
             let target = client_rect(screen, &self.style);
             info(window).lock().unwrap().restore = Some(geo);
-            top.with_pending_state(|s| {
-                s.states.set(xdg_toplevel::State::Maximized);
-                s.size = Some(target.size);
-            });
+            if let Some(top) = &top {
+                top.with_pending_state(|s| {
+                    s.states.set(xdg_toplevel::State::Maximized);
+                    s.size = Some(target.size);
+                });
+            }
+            if let Some(x) = &x11 {
+                let _ = x.set_maximized(true);
+                let _ = x.configure(Some(target));
+            }
             self.space.map_element(window.clone(), target.loc, false);
         } else {
             let restore = info(window).lock().unwrap().restore.take();
-            top.with_pending_state(|s| {
-                s.states.unset(xdg_toplevel::State::Maximized);
-                s.size = restore.map(|r| r.size);
-            });
+            if let Some(top) = &top {
+                top.with_pending_state(|s| {
+                    s.states.unset(xdg_toplevel::State::Maximized);
+                    s.size = restore.map(|r| r.size);
+                });
+            }
+            if let Some(x) = &x11 {
+                let _ = x.set_maximized(false);
+                if let Some(r) = restore {
+                    let _ = x.configure(Some(r));
+                }
+            }
             if let Some(r) = restore {
                 self.space.map_element(window.clone(), r.loc, false);
             }
         }
-        top.send_configure();
+        if let Some(top) = &top {
+            top.send_configure();
+        }
     }
 
     pub fn toggle_maximized(&mut self, window: &Window) {
@@ -336,6 +397,9 @@ impl Fde {
     pub fn close_window(&mut self, window: &Window) {
         if let Some(top) = window.toplevel() {
             top.send_close();
+        }
+        if let Some(x) = window.x11_surface() {
+            let _ = x.close();
         }
     }
 

@@ -1,5 +1,6 @@
 //! Small Wayland protocols that mostly need a global and a little policy.
 
+use smithay::wayland::seat::WaylandFocus;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::wayland::tablet_manager::TabletSeatHandler;
 use smithay::wayland::xdg_activation::{XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData};
@@ -119,9 +120,9 @@ impl Fde {
         let windows: Vec<_> = self.space.elements().cloned().collect();
         for w in windows {
             let scale = self.output_scale(&self.output_for_window(&w));
-            if let Some(top) = w.toplevel() {
-                set_preferred(top.wl_surface(), scale);
-                for (popup, _) in smithay::desktop::PopupManager::popups_for_surface(top.wl_surface()) {
+            if let Some(surface) = w.wl_surface().map(|s| s.into_owned()) {
+                set_preferred(&surface, scale);
+                for (popup, _) in smithay::desktop::PopupManager::popups_for_surface(&surface) {
                     set_preferred(popup.wl_surface(), scale);
                 }
             }

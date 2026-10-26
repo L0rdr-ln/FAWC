@@ -29,3 +29,4 @@ pub mod text;
 pub mod wallpaper;
 pub mod windows;
 pub mod wobble;
+pub mod xwayland;

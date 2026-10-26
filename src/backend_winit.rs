@@ -35,6 +35,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("listening on WAYLAND_DISPLAY={socket_name}");
     std::env::set_var("WAYLAND_DISPLAY", &socket_name);
     state.start_session();
+    crate::xwayland::start(event_loop.handle(), &dh);
     event_loop.handle().insert_source(
         Generic::new(socket, Interest::READ, Mode::Level),
         |_, socket, state| {

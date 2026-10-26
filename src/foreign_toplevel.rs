@@ -5,6 +5,7 @@
 //! sends the difference; it runs on commits and once per frame.
 
 
+use smithay::wayland::seat::WaylandFocus;
 use smithay::desktop::Window;
 use smithay::reexports::wayland_server::backend::ObjectId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -139,18 +140,23 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, WlSurface> for Fde {
 }
 
 fn snapshot(state: &Fde, window: &Window) -> Option<(WlSurface, Snapshot)> {
-    let top = window.toplevel()?;
-    let surface = top.wl_surface().clone();
-    let (title, app_id) = with_states(&surface, |states| {
-        states
-            .data_map
-            .get::<XdgToplevelSurfaceData>()
-            .map(|d| {
-                let d = d.lock().unwrap();
-                (d.title.clone().unwrap_or_default(), d.app_id.clone().unwrap_or_default())
-            })
-            .unwrap_or_default()
-    });
+    if state.is_override_redirect(window) {
+        return None; // menus and tooltips are not in the task bar
+    }
+    let surface = window.wl_surface()?.into_owned();
+    let (title, app_id) = match window.x11_surface() {
+        Some(x) => (x.title(), x.class()),
+        None => with_states(&surface, |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .map(|d| {
+                    let d = d.lock().unwrap();
+                    (d.title.clone().unwrap_or_default(), d.app_id.clone().unwrap_or_default())
+                })
+                .unwrap_or_default()
+        }),
+    };
     let activated = state
         .seat
         .get_keyboard()

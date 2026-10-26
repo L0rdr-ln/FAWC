@@ -21,6 +21,7 @@ smithay = { version = "0.7", default-features = false, features = [
     "renderer_gl",
     "desktop",
     "wayland_frontend",
+    "xwayland",
 ] }
 tracing = "0.1"
 png = "0.17"
