@@ -22,7 +22,8 @@ enum Action {
     Quit,
     Close,
     Maximize,
-    Cycle,
+    Cycle(i32),
+    CancelSwitcher,
     Restore,
     Lock,
     Snap(crate::windows::Snap),
@@ -66,6 +67,13 @@ impl Fde {
                         {
                             return FilterResult::Intercept(Action::SwitchVt((sym - keysyms::KEY_XF86Switch_VT_1 + 1) as i32));
                         }
+                        // letting go of Alt picks the window the switcher shows
+                        if event.state() == KeyState::Released
+                            && state.switcher.is_some()
+                            && matches!(handle.modified_sym().raw(), keysyms::KEY_Alt_L | keysyms::KEY_Alt_R)
+                        {
+                            state.switcher_commit = true;
+                        }
                         // a locked session has no shortcuts besides the console switch
                         if state.locked {
                             return FilterResult::Forward;
@@ -88,10 +96,12 @@ impl Fde {
                             }
                             let action = match handle.modified_sym().raw() {
                                 keysyms::KEY_Return | keysyms::KEY_KP_Enter => Some(Action::Terminal),
+                                keysyms::KEY_Escape if state.switcher.is_some() => Some(Action::CancelSwitcher),
                                 keysyms::KEY_Escape => Some(Action::Quit),
                                 keysyms::KEY_q | keysyms::KEY_Q | keysyms::KEY_F4 => Some(Action::Close),
                                 keysyms::KEY_f | keysyms::KEY_F => Some(Action::Maximize),
-                                keysyms::KEY_Tab | keysyms::KEY_ISO_Left_Tab => Some(Action::Cycle),
+                                keysyms::KEY_Tab => Some(Action::Cycle(1)),
+                                keysyms::KEY_ISO_Left_Tab => Some(Action::Cycle(-1)),
                                 keysyms::KEY_m | keysyms::KEY_M => Some(Action::Restore),
                                 keysyms::KEY_l | keysyms::KEY_L => Some(Action::Lock),
                                 keysyms::KEY_Left => Some(Action::Snap(crate::windows::Snap::Left)),
@@ -109,6 +119,9 @@ impl Fde {
                 );
                 if let Some(a) = action {
                     self.run_action(a);
+                }
+                if std::mem::take(&mut self.switcher_commit) {
+                    self.switcher_commit();
                 }
             }
             InputEvent::PointerMotionAbsolute { event } => {
@@ -170,7 +183,8 @@ impl Fde {
                     self.toggle_maximized(&w);
                 }
             }
-            Action::Cycle => self.cycle_windows(),
+            Action::Cycle(d) => self.switcher_step(d),
+            Action::CancelSwitcher => self.switcher_cancel(),
             Action::Restore => self.restore_window(),
             Action::Lock => crate::shell::start_sibling("fde-lock"),
             Action::Workspace(n) => self.switch_workspace(n),

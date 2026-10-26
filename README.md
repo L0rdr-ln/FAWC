@@ -82,7 +82,7 @@ On a console FDE uses the GPU directly (DRM/KMS, libseat, libinput). Please atta
 |---|---|
 | **Alt+Return** | terminal (`foot`, or `$FDE_TERMINAL`) |
 | **Alt+drag**, title bar | move; borders resize; the three orbs minimize / maximize / close |
-| **Alt+Tab** | cycle windows (**Alt+m** restore a minimized one) |
+| **Alt+Tab** | the window switcher: hold Alt, press Tab to walk through the windows (most recent first, minimized ones too) as small pictures; Shift+Tab goes back; letting go of Alt picks one; Esc cancels |
 | **Alt+f**, **Alt+q** | maximize, close |
 | **Alt+L** | lock the session |
 | **Alt+Left / Alt+Right** | snap the window to the left or right half of the monitor (dragging a window to the left or right edge does the same, dragging it to the top edge maximizes it) |

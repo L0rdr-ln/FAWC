@@ -117,6 +117,9 @@ pub struct Fde {
     pub xwayland_shell_state: smithay::wayland::xwayland_shell::XWaylandShellState,
     pub screencopy: crate::screencopy::Screencopy,
     pub wobbles: Vec<(Window, crate::wobble::Wobble)>,
+    pub switcher: Option<crate::switcher::Switcher>,
+    /// Alt was let go while the switcher was open: commit after the key event is handled
+    pub switcher_commit: bool,
     /// the last picture of windows that were asked to close, by their surface
     pub snapshots: std::collections::HashMap<smithay::reexports::wayland_server::backend::ObjectId, Snapshot>,
     /// windows that are gone and fade out
@@ -307,6 +310,8 @@ impl Fde {
             xwayland_shell_state,
             screencopy: Default::default(),
             wobbles: Vec::new(),
+            switcher: None,
+            switcher_commit: false,
             snapshots: Default::default(),
             ghosts: Vec::new(),
             workspace: 0,

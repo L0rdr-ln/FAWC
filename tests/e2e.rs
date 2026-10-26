@@ -2706,3 +2706,66 @@ fn a_closed_window_fades_out_instead_of_vanishing() {
     let dist = |a: [i32; 3], b: [i32; 3]| (0..3).map(|c| (a[c] - b[c]).abs()).sum::<i32>();
     assert!(dist(fading_px, open_px) < dist(gone, open_px), "while fading it is still closer to the window than to the desktop: {fading_px:?}");
 }
+
+#[test]
+fn the_switcher_walks_through_windows_most_recent_first_and_picks_on_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): switcher test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-switch").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    for _ in 0..3 {
+        open_window(&mut hn, dir.path(), "fde-e2e-switch", 200, 120);
+    }
+    let order = |hn: &Harness| -> Vec<smithay::desktop::Window> { hn.state.space.elements().cloned().collect() };
+    let (back, middle, front) = {
+        let o = order(&hn);
+        (o[0].clone(), o[1].clone(), o[2].clone())
+    };
+    // with one window there is nothing to choose
+    // Alt+Tab once: the window used before this one
+    hn.state.switcher_step(1);
+    assert!(hn.state.switcher.is_some());
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    if let Ok(path) = std::env::var("FDE_DUMP_SWITCHER") {
+        let bytes = grab_scene(&mut renderer, &mut scene);
+        let file = std::fs::File::create(path).unwrap();
+        let mut enc = png::Encoder::new(file, w as u32, h as u32);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&bytes).unwrap();
+    }
+    hn.state.switcher_commit();
+    assert!(hn.state.switcher.is_none());
+    let o = order(&hn);
+    assert_eq!(o[2], middle, "the second most recent window is in front now");
+
+    // twice: the one before that; Alt+Shift+Tab goes back
+    hn.state.switcher_step(1);
+    hn.state.switcher_step(1);
+    hn.state.switcher_step(-1);
+    hn.state.switcher_commit();
+    assert_eq!(order(&hn)[2], front, "forward, forward, back: ends on the window that was just used before");
+
+    // Esc leaves everything as it was
+    let before = order(&hn);
+    hn.state.switcher_step(1);
+    hn.state.switcher_step(1);
+    hn.state.switcher_cancel();
+    assert_eq!(order(&hn), before);
+    let _ = back;
+}

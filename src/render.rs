@@ -554,6 +554,12 @@ impl Fde {
             }
         }
 
+        // the window switcher: the windows as small pictures, the chosen one lit
+        let pointer_here = self.output_at(self.pointer_location).map(|o| &o == output).unwrap_or(false);
+        if self.switcher.is_some() && pointer_here {
+            self.draw_switcher(renderer, scene, size, view)?;
+        }
+
         // "Workspace 2" for a moment after switching
         if let Some((since, text)) = self.hud.clone() {
             let age = since.elapsed().as_secs_f32();
@@ -584,6 +590,75 @@ impl Fde {
             self.draw_cursor_on(renderer, scene, size, view)?;
         }
         self.fulfill_screencopy(renderer, output, scene, true);
+        Ok(())
+    }
+
+    /// The switcher over the whole monitor: a dimmed backdrop and a row of window pictures with titles.
+    fn draw_switcher(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        scene: &mut GlesTexture,
+        size: Size<i32, Physical>,
+        view: View,
+    ) -> Result<(), GlesError> {
+        let Some(sw) = &self.switcher else { return Ok(()) };
+        let (windows, index) = (sw.windows.clone(), sw.index);
+        let full = Rectangle::<i32, Physical>::from_size(size);
+        let (slot_w, slot_h, gap, pad) = (sc(210, view.scale), sc(150, view.scale), sc(14, view.scale), sc(18, view.scale));
+        let per_row = (((size.w - 2 * pad - sc(60, view.scale)) / (slot_w + gap)).max(1) as usize).min(windows.len());
+        // a window of the row that always contains the selection
+        let first = if index < per_row { 0 } else { index + 1 - per_row };
+        let shown: Vec<(usize, Window)> = windows.iter().cloned().enumerate().skip(first).take(per_row).collect();
+        let row_w = shown.len() as i32 * slot_w + (shown.len() as i32 - 1) * gap;
+        let (bg_w, bg_h) = (row_w + 2 * pad, slot_h + 2 * pad);
+        let bg = Rectangle::<i32, Physical>::new(((size.w - bg_w) / 2, (size.h - bg_h) / 2).into(), (bg_w, bg_h).into());
+        let x0 = bg.loc.x + pad;
+        let y0 = bg.loc.y + pad;
+
+        // what to draw, collected first (the text renderer needs `self`)
+        let mut thumbs: Vec<(Vec<WaylandSurfaceRenderElement<GlesRenderer>>, f64)> = Vec::new();
+        let mut titles: Vec<(GlesTexture, Rectangle<i32, Physical>)> = Vec::new();
+        for (slot, (_, w)) in shown.iter().enumerate() {
+            let sx = x0 + slot as i32 * (slot_w + gap);
+            let g = w.geometry();
+            let (gw, gh) = (g.size.w.max(1) as f64, g.size.h.max(1) as f64);
+            let room_w = (slot_w - sc(16, view.scale)) as f64;
+            let room_h = (slot_h - sc(36, view.scale)) as f64;
+            let k = (room_w / gw).min(room_h / gh).min(view.scale); // never bigger than it is
+            let (tw, th) = ((gw * k).round() as i32, (gh * k).round() as i32);
+            let origin = smithay::utils::Point::<i32, Physical>::from((sx + (slot_w - tw) / 2, y0 + sc(8, view.scale) + (room_h as i32 - th) / 2));
+            let at = origin - smithay::utils::Point::<i32, Physical>::from(((g.loc.x as f64 * k).round() as i32, (g.loc.y as f64 * k).round() as i32));
+            let elements = w.render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(renderer, at, smithay::utils::Scale::from(k), 1.0);
+            thumbs.push((elements, k));
+            let title = self.window_title(w);
+            if let Some(img) = self.text.line(&title, slot_w - sc(10, view.scale), 12.0 * view.scale as f32, [255, 255, 255], Some(([8, 40, 90], 0.9)), sc(3, view.scale)) {
+                let tex = renderer.import_memory(&img.rgba, Fourcc::Abgr8888, Size::<i32, BufferCoord>::from((img.width, img.height)), false)?;
+                let dest = Rectangle::<i32, Physical>::new((sx + (slot_w - img.width) / 2, y0 + slot_h - sc(24, view.scale)).into(), (img.width, img.height).into());
+                titles.push((tex, dest));
+            }
+        }
+
+        let mut target = renderer.bind(scene)?;
+        let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+        frame.draw_solid(full, &[full], Color32F::new(0.0, 0.0, 0.0, 0.35))?;
+        frame.draw_solid(bg, &[Rectangle::from_size(bg.size)], Color32F::new(0.05, 0.16, 0.32, 0.72))?;
+        for (slot, (i, _)) in shown.iter().enumerate() {
+            let sx = x0 + slot as i32 * (slot_w + gap);
+            if *i == index {
+                let lit = Rectangle::<i32, Physical>::new((sx - sc(6, view.scale), y0 - sc(6, view.scale)).into(), (slot_w + sc(12, view.scale), slot_h + sc(12, view.scale)).into());
+                frame.draw_solid(lit, &[Rectangle::from_size(lit.size)], Color32F::new(0.45, 0.75, 1.0, 0.55))?;
+            }
+            let inner = Rectangle::<i32, Physical>::new((sx, y0).into(), (slot_w, slot_h).into());
+            frame.draw_solid(inner, &[Rectangle::from_size(inner.size)], Color32F::new(0.0, 0.0, 0.0, 0.25))?;
+        }
+        for (elements, k) in &thumbs {
+            draw_render_elements(&mut frame, *k, elements, &[full])?;
+        }
+        for (tex, dest) in &titles {
+            let src = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());
+            frame.render_texture_from_to(tex, src, *dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, 1.0, None, &[])?;
+        }
+        let _ = frame.finish()?;
         Ok(())
     }
 
