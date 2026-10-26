@@ -291,6 +291,7 @@ impl Fde {
 
     pub fn tick_animations(&mut self) {
         self.step_wobbles();
+        self.update_fractional_scales();
         let done: Vec<Window> = self
             .space
             .elements()

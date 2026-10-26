@@ -87,6 +87,8 @@ pub struct Fde {
     /// windows that are bending on their springs
     pub wobbles: Vec<(Window, crate::wobble::Wobble)>,
     pub wobble_time: Instant,
+    pub viewporter_state: smithay::wayland::viewporter::ViewporterState,
+    pub fractional_scale_state: smithay::wayland::fractional_scale::FractionalScaleManagerState,
     pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
     /// surfaces whose program asked the screen not to lock (a video, a game)
     pub idle_inhibitors: Vec<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
@@ -180,6 +182,8 @@ impl Fde {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Fde>(dh);
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Fde>(dh);
+        let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Fde>(dh);
+        let fractional_scale_state = smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Fde>(dh);
         let idle_inhibit_state = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Fde>(dh);
         let dmabuf_state = smithay::wayland::dmabuf::DmabufState::new();
         let xdg_activation_state = smithay::wayland::xdg_activation::XdgActivationState::new::<Fde>(dh);
@@ -250,6 +254,8 @@ impl Fde {
             data_device_state,
             wobbles: Vec::new(),
             wobble_time: Instant::now(),
+            viewporter_state,
+            fractional_scale_state,
             idle_inhibit_state,
             idle_inhibitors: Vec::new(),
             dmabuf_state,

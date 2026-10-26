@@ -86,3 +86,54 @@ impl Fde {
         })
     }
 }
+
+// viewporter: a program may crop and stretch its picture (video players, fractional scaling);
+// the renderer already honours it. fractional-scale-v1: tell programs the exact scale of the
+// monitor they are on, so they draw in whole device pixels at e.g. 1.5.
+smithay::delegate_viewporter!(Fde);
+
+impl smithay::wayland::fractional_scale::FractionalScaleHandler for Fde {
+    fn new_fractional_scale(&mut self, surface: WlSurface) {
+        let scale = self.output_scale(&self.output.clone());
+        set_preferred(&surface, scale);
+    }
+}
+smithay::delegate_fractional_scale!(Fde);
+
+fn set_preferred(surface: &WlSurface, scale: f64) {
+    use smithay::wayland::compositor::{with_surface_tree_downward, TraversalAction};
+    with_surface_tree_downward(
+        surface,
+        (),
+        |_, _, _| TraversalAction::DoChildren(()),
+        |_, states, _| {
+            smithay::wayland::fractional_scale::with_fractional_scale(states, |fs| fs.set_preferred_scale(scale));
+        },
+        |_, _, _| true,
+    );
+}
+
+impl Fde {
+    /// Tell every window, popup and panel the exact scale of the monitor it is on.
+    pub fn update_fractional_scales(&mut self) {
+        let windows: Vec<_> = self.space.elements().cloned().collect();
+        for w in windows {
+            let scale = self.output_scale(&self.output_for_window(&w));
+            if let Some(top) = w.toplevel() {
+                set_preferred(top.wl_surface(), scale);
+                for (popup, _) in smithay::desktop::PopupManager::popups_for_surface(top.wl_surface()) {
+                    set_preferred(popup.wl_surface(), scale);
+                }
+            }
+        }
+        for output in self.all_outputs() {
+            let scale = self.output_scale(&output);
+            for layer in smithay::desktop::layer_map_for_output(&output).layers() {
+                set_preferred(layer.wl_surface(), scale);
+            }
+        }
+        for (output, lock) in &self.lock_surfaces {
+            set_preferred(lock.wl_surface(), self.output_scale(output));
+        }
+    }
+}

@@ -1655,3 +1655,62 @@ fn a_dragged_window_bends_on_its_springs_and_settles_flat() {
     let c = pixel(&bytes, w, g2.loc.x + g2.size.w / 2, g2.loc.y + g2.size.h / 2);
     assert!(c[2] > 150 && c[0] < 100, "the client's blue at the middle of the settled window: {c:?}");
 }
+
+use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_manager_v1, wp_fractional_scale_v1};
+use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
+
+#[derive(Default)]
+struct FracApp {
+    preferred: Option<u32>,
+}
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for FracApp {
+    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+}
+delegate_noop!(FracApp: ignore wl_compositor::WlCompositor);
+delegate_noop!(FracApp: ignore wl_surface::WlSurface);
+delegate_noop!(FracApp: ignore wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
+delegate_noop!(FracApp: ignore wp_viewporter::WpViewporter);
+delegate_noop!(FracApp: ignore wp_viewport::WpViewport);
+impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for FracApp {
+    fn event(app: &mut Self, _: &wp_fractional_scale_v1::WpFractionalScaleV1, event: wp_fractional_scale_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event {
+            app.preferred = Some(scale);
+        }
+    }
+}
+
+#[test]
+fn a_program_learns_the_exact_scale_and_may_use_a_viewport() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    state.output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(1.5)), None);
+    let socket = ListeningSocket::bind("fde-e2e-frac").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let path = dir.path().join("fde-e2e-frac");
+    let th = std::thread::spawn(move || {
+        let conn = Connection::from_socket(UnixStream::connect(path).unwrap()).unwrap();
+        let (globals, mut queue) = registry_queue_init::<FracApp>(&conn).unwrap();
+        let qh = queue.handle();
+        let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 4..=4, ()).unwrap();
+        let frac: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1 = globals.bind(&qh, 1..=1, ()).unwrap();
+        let vp: wp_viewporter::WpViewporter = globals.bind(&qh, 1..=1, ()).unwrap();
+        let surface = compositor.create_surface(&qh, ());
+        let _f = frac.get_fractional_scale(&surface, &qh, ());
+        let v = vp.get_viewport(&surface, &qh, ());
+        v.set_destination(100, 50);
+        let mut app = FracApp::default();
+        queue.roundtrip(&mut app).unwrap();
+        queue.roundtrip(&mut app).unwrap();
+        app.preferred
+    });
+    let t0 = Instant::now();
+    while !th.is_finished() {
+        hn.pump();
+        assert!(t0.elapsed() < Duration::from_secs(10));
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    assert_eq!(th.join().unwrap(), Some(180), "1.5 is sent as 180/120");
+}
