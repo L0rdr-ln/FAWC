@@ -24,6 +24,7 @@ enum Action {
     Maximize,
     Cycle(i32),
     CancelSwitcher,
+    ToggleDnd,
     Restore,
     Lock,
     Snap(crate::windows::Snap),
@@ -104,6 +105,7 @@ impl Fde {
                                 keysyms::KEY_ISO_Left_Tab => Some(Action::Cycle(-1)),
                                 keysyms::KEY_m | keysyms::KEY_M => Some(Action::Restore),
                                 keysyms::KEY_l | keysyms::KEY_L => Some(Action::Lock),
+                                keysyms::KEY_n | keysyms::KEY_N => Some(Action::ToggleDnd),
                                 keysyms::KEY_Left => Some(Action::Snap(crate::windows::Snap::Left)),
                                 keysyms::KEY_Right => Some(Action::Snap(crate::windows::Snap::Right)),
                                 keysyms::KEY_Up => Some(Action::Up),
@@ -185,6 +187,7 @@ impl Fde {
             }
             Action::Cycle(d) => self.switcher_step(d),
             Action::CancelSwitcher => self.switcher_cancel(),
+            Action::ToggleDnd => self.toggle_do_not_disturb(),
             Action::Restore => self.restore_window(),
             Action::Lock => crate::shell::start_sibling("fde-lock"),
             Action::Workspace(n) => self.switch_workspace(n),

@@ -221,6 +221,7 @@ pub fn draw_workspaces(buf: &mut [u8], width: i32, height: i32, s: i32, current:
 pub enum StatusKind {
     Volume,
     Battery,
+    DoNotDisturb,
 }
 
 /// Width of the workspace dots (logical pixels), 0 with a single workspace.

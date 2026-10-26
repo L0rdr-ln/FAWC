@@ -92,6 +92,13 @@ impl Fde {
         self.set_window_workspace(window, self.workspace);
     }
 
+    /// Alt+N: notifications on or off; the screen says which.
+    pub fn toggle_do_not_disturb(&mut self) {
+        let on = !crate::notify::dnd_on();
+        crate::notify::set_dnd(on);
+        self.hud = Some((std::time::Instant::now(), if on { "Do not disturb: on".to_string() } else { "Do not disturb: off".to_string() }));
+    }
+
     /// Tell the task bar which workspace is shown: `$XDG_RUNTIME_DIR/fde/workspace` ("2 4").
     pub fn write_workspace_state(&self) {
         let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").map(|d| std::path::PathBuf::from(d).join("fde")) else { return };

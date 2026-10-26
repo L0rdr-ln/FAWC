@@ -494,8 +494,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut status_now = shown_status.clone();
         let acted = app.click_status.is_some() || app.scroll_status.is_some();
         if let Some(kind) = app.click_status.take() {
-            if kind == panel::StatusKind::Volume {
-                fde::status::toggle_mute();
+            match kind {
+                panel::StatusKind::Volume => fde::status::toggle_mute(),
+                panel::StatusKind::DoNotDisturb => fde::notify::set_dnd(false),
+                panel::StatusKind::Battery => {}
             }
         }
         if let Some((kind, delta)) = app.scroll_status.take() {
@@ -506,6 +508,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if acted || status_checked.elapsed() >= Duration::from_secs(2) {
             status_checked = std::time::Instant::now();
             status_now.clear();
+            if fde::notify::dnd_on() {
+                status_now.push((panel::StatusKind::DoNotDisturb, "DND".to_string()));
+            }
             if let Some(v) = fde::status::volume() {
                 status_now.push((panel::StatusKind::Volume, fde::status::volume_label(v)));
             }

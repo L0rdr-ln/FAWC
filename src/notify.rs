@@ -113,6 +113,34 @@ pub fn action_at(x: f64, y: f64, notes: &[&Note]) -> Option<(usize, usize)> {
     })
 }
 
+/// Where "do not disturb" is kept: `$XDG_RUNTIME_DIR/fde/dnd` ("1" when on).
+pub fn dnd_path() -> Option<std::path::PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR").map(|d| std::path::PathBuf::from(d).join("fde/dnd"))
+}
+
+pub fn dnd_on() -> bool {
+    dnd_path().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| t.trim() == "1").unwrap_or(false)
+}
+
+pub fn set_dnd(on: bool) {
+    if let Some(p) = dnd_path() {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, if on { "1\n" } else { "0\n" });
+    }
+}
+
+/// With do-not-disturb on only critical notes are shown; the others wait quietly until it is
+/// off (or their time runs out).
+pub fn visible<'a>(notes: Vec<&'a Note>, dnd: bool) -> Vec<&'a Note> {
+    if dnd {
+        notes.into_iter().filter(|n| n.critical).collect()
+    } else {
+        notes
+    }
+}
+
 /// Notification bodies may carry a little HTML (`<b>`, `<i>`, `<a>`); show the text only.
 pub fn strip_markup(s: &str) -> String {
     let mut out = String::new();
@@ -266,6 +294,26 @@ mod tests {
         let with = draw(&mut text, 1, &shown);
         let plain_only = draw(&mut text, 1, &shown[..1]);
         assert_ne!(&with[(BUBBLE_H + GAP) as usize * W as usize * 4..], &plain_only[..plain_only.len().min(with.len() - (BUBBLE_H + GAP) as usize * W as usize * 4)]);
+    }
+
+    #[test]
+    fn do_not_disturb_hides_everything_but_critical_notes_and_is_remembered_in_a_file() {
+        let t0 = Instant::now();
+        let mut s = Store::default();
+        s.notify("a", 0, "Chat", "hi", -1, false, &[], t0);
+        s.notify("a", 0, "Disk full", "!", -1, true, &[], t0);
+        let all = s.shown();
+        assert_eq!(visible(all.clone(), false).len(), 2);
+        let quiet = visible(all, true);
+        assert_eq!(quiet.len(), 1);
+        assert_eq!(quiet[0].summary, "Disk full");
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+        assert!(!dnd_on());
+        set_dnd(true);
+        assert!(dnd_on());
+        set_dnd(false);
+        assert!(!dnd_on());
     }
 
     #[test]

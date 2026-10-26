@@ -201,7 +201,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 s.closed.push((id, 1));
             }
             if let Some((x, y)) = app.click.take() {
-                let shown: Vec<notify::Note> = s.store.shown().into_iter().cloned().collect();
+                let shown: Vec<notify::Note> = notify::visible(s.store.shown(), notify::dnd_on()).into_iter().cloned().collect();
                 let refs: Vec<&notify::Note> = shown.iter().collect();
                 if let Some((row, button)) = notify::action_at(x, y, &refs) {
                     // a button: tell the program which one
@@ -220,7 +220,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     s.closed.push((id, 2));
                 }
             }
-            let shown: Vec<notify::Note> = s.store.shown().into_iter().cloned().collect();
+            let dnd = notify::dnd_on();
+            let shown: Vec<notify::Note> = notify::visible(s.store.shown(), dnd).into_iter().cloned().collect();
             (shown, std::mem::take(&mut s.closed), std::mem::take(&mut s.invoked))
         };
         for (id, key) in invoked {

@@ -320,3 +320,19 @@ fn night_light_settings_are_checked() {
     assert!(Config::parse("[display]\nnight_light_from = \"8pm\"\n").is_err());
     assert!(Config::parse("[display]\nnight_light_from = \"\"\nnight_light_to = \"\"\n").is_ok(), "empty means always");
 }
+
+#[test]
+fn alt_n_toggles_do_not_disturb_and_says_so_on_screen() {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display = smithay::reexports::wayland_server::Display::<Fde>::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    assert!(!fde::notify::dnd_on());
+    state.toggle_do_not_disturb();
+    assert!(fde::notify::dnd_on());
+    assert_eq!(state.hud.as_ref().map(|h| h.1.as_str()), Some("Do not disturb: on"));
+    state.toggle_do_not_disturb();
+    assert!(!fde::notify::dnd_on());
+    assert_eq!(state.hud.as_ref().map(|h| h.1.as_str()), Some("Do not disturb: off"));
+}

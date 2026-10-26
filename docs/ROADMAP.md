@@ -35,7 +35,8 @@ is the first thing to do (see "Next").
 - [x] `fde-music`: background music from your own files
 - [x] session: environment for programs and portals, polkit agent if installed, portal config for
       screen sharing, a session entry for display managers (docs/SESSION.md)
-- [ ] notification history, do-not-disturb
+- [x] do-not-disturb (Alt+N, shown in the task bar)
+- [ ] notification history
 - [ ] system tray (StatusNotifierItem), network and Bluetooth status, an on-screen display
 - [ ] a greeter (greetd); today a display manager starts `start-fde`
 
