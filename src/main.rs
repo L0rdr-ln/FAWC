@@ -1,4 +1,4 @@
-use fawc::{backend_winit, demo, glass};
+use fawc::{backend_drm, backend_winit, demo, glass};
 
 use smithay::utils::Rectangle;
 
@@ -27,9 +27,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("wrote {out}");
             Ok(())
         }
-        Some("winit") | None => backend_winit::run(),
+        Some("winit") => backend_winit::run(),
+        Some("drm") => backend_drm::run(),
+        // no argument: nested if there is a desktop to open a window in, else on the hardware
+        None => {
+            if std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some() {
+                backend_winit::run()
+            } else {
+                backend_drm::run()
+            }
+        }
         _ => {
-            eprintln!("usage: fawc [winit]            run nested in a window\n       fawc glass-demo [out.png]");
+            eprintln!("usage: fawc [winit|drm]        run nested in a window (winit) or on the hardware (drm); default: by environment\n       fawc glass-demo [out.png]");
             std::process::exit(2);
         }
     }

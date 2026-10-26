@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
-use smithay::backend::renderer::{Bind, Frame, Renderer, Texture};
+use smithay::backend::renderer::{Frame, Renderer, Texture};
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};

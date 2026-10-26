@@ -70,6 +70,11 @@ pub struct Fawc {
     /// the wallpaper as a texture of the output size, made when needed
     pub wallpaper: Option<smithay::backend::renderer::gles::GlesTexture>,
     pub text: crate::text::TextRenderer,
+    /// draw our own mouse cursor (backends without a host cursor)
+    pub draw_cursor: bool,
+    pub cursor_texture: Option<smithay::backend::renderer::gles::GlesTexture>,
+    /// the login session, on the DRM backend (virtual terminal switching)
+    pub session: Option<smithay::backend::session::libseat::LibSeatSession>,
     /// rendered window titles, by surface
     pub titles: std::collections::HashMap<smithay::reexports::wayland_server::backend::ObjectId, TitleTex>,
 }
@@ -152,6 +157,9 @@ impl Fawc {
             terminal: std::env::var("FAWC_TERMINAL").unwrap_or_else(|_| "foot".into()),
             wallpaper: None,
             text: crate::text::TextRenderer::default(),
+            draw_cursor: false,
+            cursor_texture: None,
+            session: None,
             titles: std::collections::HashMap::new(),
         }
     }

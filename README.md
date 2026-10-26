@@ -31,6 +31,19 @@ minimized window, **Alt+f** maximize, **Alt+q** close, **Alt+Esc** quit.
 
 ![FAWC running nested](docs/nested.png)
 
+## Run it on a console or in a VM
+
+```sh
+sudo apt install -y git
+git clone https://github.com/L0rdr-ln/fawc && fawc/tools/vm-setup.sh   # packages, Rust, build, launcher
+~/start-fawc                                                              # on a console: Ctrl+Alt+F3
+```
+
+On a console FAWC uses the GPU directly (DRM/KMS, libseat, libinput); inside a desktop it opens as
+a window. **The hardware backend is written but has only been compiled, never run on a real
+machine yet** (the development environment has no GPU): expect to find problems; please attach
+`~/fawc-last.log` to a report. First monitor only, no hot-plug, no cursor themes (a built-in arrow).
+
 ## Status
 
 Early. What exists:

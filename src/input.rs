@@ -22,6 +22,7 @@ enum Action {
     Maximize,
     Cycle,
     Restore,
+    SwitchVt(i32),
 }
 
 impl Fawc {
@@ -38,6 +39,12 @@ impl Fawc {
                     serial,
                     time,
                     |_state, mods, handle| {
+                        let sym = handle.modified_sym().raw();
+                        if event.state() == KeyState::Pressed
+                            && (keysyms::KEY_XF86Switch_VT_1..=keysyms::KEY_XF86Switch_VT_12).contains(&sym)
+                        {
+                            return FilterResult::Intercept(Action::SwitchVt((sym - keysyms::KEY_XF86Switch_VT_1 + 1) as i32));
+                        }
                         if event.state() == KeyState::Pressed && mods.alt {
                             let action = match handle.modified_sym().raw() {
                                 keysyms::KEY_Return | keysyms::KEY_KP_Enter => Some(Action::Terminal),
@@ -62,6 +69,12 @@ impl Fawc {
             InputEvent::PointerMotionAbsolute { event } => {
                 let size = self.output_size();
                 let pos: Point<f64, Logical> = event.position_transformed(size);
+                self.pointer_moved(pos, Event::time_msec(&event));
+            }
+            InputEvent::PointerMotion { event } => {
+                use smithay::backend::input::PointerMotionEvent;
+                let delta = event.delta();
+                let pos = self.pointer_location + delta;
                 self.pointer_moved(pos, Event::time_msec(&event));
             }
             InputEvent::PointerButton { event } => {
@@ -114,6 +127,14 @@ impl Fawc {
             }
             Action::Cycle => self.cycle_windows(),
             Action::Restore => self.restore_window(),
+            Action::SwitchVt(vt) => {
+                if let Some(session) = self.session.as_mut() {
+                    use smithay::backend::session::Session;
+                    if let Err(e) = session.change_vt(vt) {
+                        tracing::warn!("cannot switch to VT {vt}: {e}");
+                    }
+                }
+            }
         }
     }
 

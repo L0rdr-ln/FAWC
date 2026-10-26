@@ -198,6 +198,34 @@ impl Fawc {
             let _ = frame.finish()?;
         }
         let _ = WindowSurfaceType::ALL;
+
+        if self.draw_cursor {
+            if self.cursor_texture.is_none() {
+                self.cursor_texture = Some(renderer.import_memory(
+                    &crate::cursor::arrow(),
+                    Fourcc::Abgr8888,
+                    Size::<i32, BufferCoord>::from((crate::cursor::SIZE, crate::cursor::SIZE)),
+                    false,
+                )?);
+            }
+            let tex = self.cursor_texture.as_ref().expect("cursor texture");
+            let loc = (self.pointer_location.x as i32 - 1, self.pointer_location.y as i32 - 1);
+            let dest = Rectangle::<i32, Physical>::new(loc.into(), (crate::cursor::SIZE, crate::cursor::SIZE).into());
+            let mut target = renderer.bind(scene)?;
+            let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+            frame.render_texture_from_to(
+                tex,
+                Rectangle::from_size((crate::cursor::SIZE as f64, crate::cursor::SIZE as f64).into()),
+                dest,
+                &[Rectangle::from_size(dest.size)],
+                &[],
+                Transform::Normal,
+                1.0,
+                None,
+                &[],
+            )?;
+            let _ = frame.finish()?;
+        }
         Ok(())
     }
 }
