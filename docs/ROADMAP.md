@@ -20,7 +20,8 @@ possible; hardware and VM runs are noted as such.
 - [x] S1a `fawc-panel`: glass task bar with start orb and clock (layer-shell client, started by the compositor)
 - [x] S1b task list (wlr-foreign-toplevel-management: list, activate, minimize by click)
 - [x] S1c start menu (installed apps from .desktop files, glass, closes on Esc or leaving it)
-- [ ] S1d launcher with search, tray, notifications
+- [x] S1d notifications (`fawc-notify`: org.freedesktop.Notifications, bubbles, expiry, dismiss)
+- [ ] S1e launcher with search, notification history and actions, tray
 - [ ] S2 tray (StatusNotifierItem), volume, network, battery, notifications, OSD
 - [x] S3a lock screen `fawc-lock` (Alt+L, password via unix_chkpwd)
 - [x] S3b idle lock (`session.idle_lock_seconds`)

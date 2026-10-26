@@ -573,3 +573,127 @@ fn the_lock_screen_locks_the_session_and_unlocks_with_the_right_password() {
     wait(&mut hn, &mut renderer, &mut scene, "the right password unlocks", &|hn| !hn.state.locked);
     let _ = lock.wait();
 }
+
+#[test]
+fn a_notification_sent_over_dbus_appears_as_a_bubble_and_goes_away() {
+    use std::io::BufRead;
+    use std::process::{Command, Stdio};
+
+    if ["dbus-daemon", "dbus-send", "gdbus"].iter().any(|c| Command::new(c).arg("--version").output().is_err()) {
+        eprintln!("no dbus-daemon / dbus-send / gdbus here: notification test skipped");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): notification test skipped");
+            return;
+        }
+    };
+    // a private session bus
+    let mut bus = Command::new("dbus-daemon")
+        .args(["--session", "--nofork", "--print-address=1"])
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut address = String::new();
+    std::io::BufReader::new(bus.stdout.take().unwrap()).read_line(&mut address).unwrap();
+    let address = address.trim().to_string();
+
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let state = Fawc::new(&display.handle(), (w, h).into());
+    let socket = ListeningSocket::bind("fawc-e2e-notify").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    let grab = |renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture| -> Vec<u8> {
+        let size = scene.size();
+        let target = renderer.bind(scene).unwrap();
+        let m = renderer.copy_framebuffer(&target, Rectangle::from_size(size), Fourcc::Abgr8888).unwrap();
+        renderer.map_texture(&m).unwrap().to_vec()
+    };
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let before = pixel(&grab(&mut renderer, &mut scene), w, w - 12 - 170, 12 + 70);
+
+    struct Kill(Vec<std::process::Child>);
+    impl Drop for Kill {
+        fn drop(&mut self) {
+            for c in &mut self.0 {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
+    }
+    let daemon = Command::new(env!("CARGO_BIN_EXE_fawc-notify"))
+        .env("DBUS_SESSION_BUS_ADDRESS", &address)
+        .env("WAYLAND_DISPLAY", "fawc-e2e-notify")
+        .env_remove("DISPLAY")
+        .spawn()
+        .unwrap();
+    let _kill = Kill(vec![bus, daemon]);
+
+    // wait until the daemon owns its name on the bus
+    let t0 = Instant::now();
+    loop {
+        hn.pump();
+        let out = Command::new("dbus-send")
+            .args(["--session", "--dest=org.freedesktop.DBus", "--print-reply", "/org/freedesktop/DBus", "org.freedesktop.DBus.NameHasOwner", "string:org.freedesktop.Notifications"])
+            .env("DBUS_SESSION_BUS_ADDRESS", &address)
+            .output()
+            .unwrap();
+        if String::from_utf8_lossy(&out.stdout).contains("true") {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "the daemon never took its name on the bus");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    hn.pump_for(300);
+
+    let sent = Command::new("gdbus")
+        .args([
+            "call", "--session", "--dest", "org.freedesktop.Notifications", "--object-path", PATH_N,
+            "--method", "org.freedesktop.Notifications.Notify",
+            "test", "0", "", "Hello there", "The body of it", "[]", "{}", "2500",
+        ])
+        .env("DBUS_SESSION_BUS_ADDRESS", &address)
+        .output()
+        .unwrap();
+    let reply = String::from_utf8_lossy(&sent.stdout).to_string();
+    assert!(reply.contains("uint32 1"), "Notify returns the id: {reply} {}", String::from_utf8_lossy(&sent.stderr));
+
+    // the bubble shows up at the top right
+    let t0 = Instant::now();
+    let mut shown = false;
+    while t0.elapsed() < Duration::from_secs(10) {
+        hn.pump();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        let now = pixel(&grab(&mut renderer, &mut scene), w, w - 12 - 170, 12 + 70);
+        if (now[0] - before[0]).abs() + (now[1] - before[1]).abs() > 30 {
+            shown = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(shown, "no bubble appeared at the top right");
+
+    // and after its lifetime it is gone again
+    let t0 = Instant::now();
+    let mut gone = false;
+    while t0.elapsed() < Duration::from_secs(10) {
+        hn.pump();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        let now = pixel(&grab(&mut renderer, &mut scene), w, w - 12 - 170, 12 + 70);
+        if (now[0] - before[0]).abs() + (now[1] - before[1]).abs() < 6 {
+            gone = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(30));
+    }
+    assert!(gone, "the bubble did not go away after its timeout");
+}
+
+const PATH_N: &str = "/org/freedesktop/Notifications";

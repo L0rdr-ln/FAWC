@@ -13,6 +13,7 @@ pub mod handlers;
 pub mod input;
 pub mod layers;
 pub mod lockscreen;
+pub mod notify;
 pub mod layout;
 pub mod panel;
 pub mod render;

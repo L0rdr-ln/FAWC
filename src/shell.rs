@@ -19,6 +19,10 @@ pub fn start_session_clients(config: &crate::config::Config) {
             None => tracing::info!("no fawc-panel next to the compositor: starting without a task bar"),
         }
     }
+    // the notification daemon needs the session bus
+    if std::env::var_os("FAWC_NO_NOTIFY").is_none() && std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some() {
+        start_sibling("fawc-notify");
+    }
     let extra = std::env::var("FAWC_AUTOSTART").ok();
     for cmd in config.shell.autostart.iter().chain(extra.iter()) {
         if let Err(e) = Command::new("sh").arg("-c").arg(cmd).spawn() {

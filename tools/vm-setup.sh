@@ -17,7 +17,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential pkg-config curl git \
     libudev-dev libseat-dev libinput-dev libgbm-dev libegl-dev libgles-dev \
     libxkbcommon-dev libxkbcommon-x11-0 libdrm-dev libwayland-dev \
-    libgl1-mesa-dri libegl1-mesa-dev mesa-utils seatd foot adwaita-icon-theme fonts-dejavu-core
+    libgl1-mesa-dri libegl1-mesa-dev mesa-utils seatd foot adwaita-icon-theme fonts-dejavu-core dbus dbus-user-session libglib2.0-bin
 
 if ! command -v cargo >/dev/null; then
     say "installing Rust"

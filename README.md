@@ -19,9 +19,9 @@ the client. Clients can ask for the same blur behind their own translucent areas
 
 ![FAWC with two windows, the task bar and its window list](docs/shell.png)
 
-| start menu | lock screen |
-|---|---|
-| ![start menu](docs/menu.png) | ![lock screen](docs/lock.png) |
+| start menu | lock screen | notifications |
+|---|---|---|
+| ![start menu](docs/menu.png) | ![lock screen](docs/lock.png) | ![notifications](docs/notify.png) |
 
 ## What works
 
@@ -30,6 +30,7 @@ the client. Clients can ask for the same blur behind their own translucent areas
 | **Compositor** | xdg-shell windows with server-side glass frames, move / resize / maximize / minimize, focus, popups, keyboard and pointer; layer-shell (panels, launchers, wallpapers) with exclusive zones; `ext-background-effect-v1`; `ext-session-lock-v1`; `wlr-foreign-toplevel-management`; nested (winit) backend and a DRM/KMS backend |
 | **Task bar** `fawc-panel` | glass strip with the start orb, a button per open window (click to raise or minimize), clock; blurred behind |
 | **Start menu** | the installed applications from `.desktop` files, glass sheet, closes on Esc or when the pointer leaves |
+| **Notifications** `fawc-notify` | the `org.freedesktop.Notifications` service on the session bus (what `notify-send` and every app talks to); glass bubbles at the top right, newest on top, expire on their timeout, critical ones stay, click to dismiss; started with the session when a D-Bus session bus exists |
 | **Lock screen** `fawc-lock` | `Alt+L`: a glass login card; the password is checked by PAM's `unix_chkpwd` |
 | **Tests** | pixel tests of the glass on a software GL, and end-to-end tests with real Wayland clients (including the real panel and lock programs); no display or GPU needed |
 
@@ -77,7 +78,7 @@ FAWC runs**: change the accent colour, glass strength, blur, terminal, keyboard 
 repeat and the desktop follows within half a second; a file with an error is reported in the log
 and ignored. A settings app that edits this file is planned ([docs/SETTINGS.md](docs/SETTINGS.md)).
 
-Environment overrides: `FAWC_TERMINAL`, `FAWC_LAUNCHER`, `FAWC_NO_PANEL=1`, `FAWC_AUTOSTART="cmd"`,
+Environment overrides: `FAWC_TERMINAL`, `FAWC_LAUNCHER`, `FAWC_NO_PANEL=1`, `FAWC_NO_NOTIFY=1`, `FAWC_AUTOSTART="cmd"`,
 `FAWC_CONFIG=/path/file.toml` (use only this file), `RUST_LOG=info` (logs).
 
 ## Build
