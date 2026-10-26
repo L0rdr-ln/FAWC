@@ -230,3 +230,31 @@ fn the_window_buttons_can_be_clicked_in_every_theme_and_button_style() {
     }
     std::env::remove_var("FDE_THEMES");
 }
+
+#[test]
+fn a_theme_uses_its_picture_when_the_file_exists_and_its_colours_when_not() {
+    use fde::config::Config;
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    let pics = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("pic.toml"), "[wallpaper]\nkind = \"solid\"\ncolor = \"#102030\"\nfile = \"pic.png\"\n").unwrap();
+    std::env::set_var("FDE_THEMES", dir.path());
+    std::env::set_var("FDE_WALLPAPERS", pics.path());
+    let cfg = Config::parse("[appearance]\ntheme = \"pic\"\n").unwrap();
+    // no file yet: the colour
+    let img = fde::wallpaper::for_config(&cfg).unwrap();
+    assert_eq!(&img.rgba[..3], &[0x10, 0x20, 0x30]);
+    // a 2x2 red picture appears
+    let file = std::fs::File::create(pics.path().join("pic.png")).unwrap();
+    let mut enc = png::Encoder::new(file, 2, 2);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    enc.write_header().unwrap().write_image_data(&[255, 0, 0, 255].repeat(4)).unwrap();
+    let img = fde::wallpaper::for_config(&cfg).unwrap();
+    assert_eq!((img.width, &img.rgba[..3]), (2, &[255u8, 0, 0][..]));
+    // a file name with a path is refused
+    std::fs::write(dir.path().join("bad.toml"), "[wallpaper]\nfile = \"../x.png\"\n").unwrap();
+    assert!(Config::parse("[appearance]\ntheme = \"bad\"\n").is_err());
+    std::env::remove_var("FDE_THEMES");
+    std::env::remove_var("FDE_WALLPAPERS");
+}

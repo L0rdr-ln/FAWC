@@ -27,6 +27,7 @@ maximize = "#ffc61a"
 minimize = "#27b6ff"
 
 [wallpaper]
-kind = "gradient"
+kind = "gradient"                # used until frutiger-metro.webp (or .png/.jpg) is in the wallpaper folder
+file = "frutiger-metro.webp"
 color = "#0b3a14"
 color2 = "#7bd62d"

@@ -27,6 +27,7 @@ maximize = "#f2b01c"
 minimize = "#ff8a1c"
 
 [wallpaper]
-kind = "gradient"
+kind = "gradient"                # used until dorific.webp (or .png/.jpg) is in the wallpaper folder
+file = "dorific.webp"
 color = "#ffe6bd"
 color2 = "#f0801a"

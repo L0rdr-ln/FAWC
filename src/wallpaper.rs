@@ -197,6 +197,23 @@ pub fn configured(path: &str) -> Option<Image> {
     bundled()
 }
 
+/// Where theme pictures are looked for, first match wins: `$FDE_WALLPAPERS`, the user's
+/// `~/.local/share/fde/wallpapers`, `/usr/share/fde/wallpapers`, and (for a built source tree)
+/// `assets/wallpapers` next to the sources.
+pub fn wallpaper_dirs() -> Vec<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let mut v = Vec::new();
+    if let Some(p) = std::env::var_os("FDE_WALLPAPERS") {
+        v.push(PathBuf::from(p));
+    }
+    if let Some(h) = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share"))) {
+        v.push(h.join("fde/wallpapers"));
+    }
+    v.push(PathBuf::from("/usr/share/fde/wallpapers"));
+    v.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/wallpapers")));
+    v
+}
+
 /// The picture for this configuration: the user's file; else the theme's own background (a
 /// solid colour or a gradient), or the bundled photograph for themes that use it.
 pub fn for_config(config: &crate::config::Config) -> Option<Image> {
@@ -207,6 +224,17 @@ pub fn for_config(config: &crate::config::Config) -> Option<Image> {
         }
     }
     let t = config.theme();
+    if !t.wallpaper.file.is_empty() {
+        for d in wallpaper_dirs() {
+            let p = d.join(&t.wallpaper.file);
+            if p.is_file() {
+                match load_image(&p) {
+                    Ok(i) => return Some(i),
+                    Err(e) => eprintln!("wallpaper: {e} (using the theme's colours)"),
+                }
+            }
+        }
+    }
     let c = |s: &str| crate::config::parse_color(s).unwrap_or([0.0, 0.0, 0.0]);
     let (w, h) = (256i32, 144i32);
     let (a, b) = (c(&t.wallpaper.color), c(&t.wallpaper.color2));

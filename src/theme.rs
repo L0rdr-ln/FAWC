@@ -35,13 +35,16 @@ impl Default for Buttons {
 pub struct ThemeWallpaper {
     /// "photo" (the bundled picture), "solid" or "gradient"
     pub kind: String,
+    /// a picture (PNG, JPEG or WebP) looked up by name in the wallpaper folders (see
+    /// `wallpaper_dirs`); when it is not found the kind above is used
+    pub file: String,
     pub color: String,
     pub color2: String,
 }
 
 impl Default for ThemeWallpaper {
     fn default() -> Self {
-        ThemeWallpaper { kind: "photo".into(), color: "#1c3a7a".into(), color2: "#050b24".into() }
+        ThemeWallpaper { kind: "photo".into(), file: String::new(), color: "#1c3a7a".into(), color2: "#050b24".into() }
     }
 }
 
@@ -151,6 +154,9 @@ impl Theme {
         }
         if !matches!(t.wallpaper.kind.as_str(), "photo" | "solid" | "gradient") {
             return Err("wallpaper.kind must be \"photo\", \"solid\" or \"gradient\"".into());
+        }
+        if t.wallpaper.file.contains(['/', '\\']) || t.wallpaper.file.starts_with('.') {
+            return Err("wallpaper.file must be a plain file name".into());
         }
         for (what, c) in [("wallpaper.color", &t.wallpaper.color), ("wallpaper.color2", &t.wallpaper.color2)] {
             crate::config::parse_color(c).ok_or_else(|| format!("{what}: \"{c}\" is not #rrggbb"))?;

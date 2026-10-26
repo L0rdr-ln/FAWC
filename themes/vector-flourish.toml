@@ -27,6 +27,7 @@ maximize = "#74c96a"
 minimize = "#5aa9ec"
 
 [wallpaper]
-kind = "gradient"
+kind = "gradient"                # used until vector-flourish.webp (or .png/.jpg) is in the wallpaper folder
+file = "vector-flourish.webp"
 color = "#ffffff"
 color2 = "#cfe6fb"

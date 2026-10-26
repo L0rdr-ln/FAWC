@@ -27,6 +27,7 @@ maximize = "#3ac79a"
 minimize = "#2f9ae8"
 
 [wallpaper]
-kind = "gradient"
+kind = "gradient"                # used until aqua.webp (or .png/.jpg) is in the wallpaper folder
+file = "aqua.webp"
 color = "#c3f5ff"
 color2 = "#0a7fa8"

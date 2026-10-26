@@ -27,6 +27,7 @@ maximize = "#79c43a"
 minimize = "#f4b43a"
 
 [wallpaper]
-kind = "gradient"
+kind = "gradient"                # used until eco.webp (or .png/.jpg) is in the wallpaper folder
+file = "eco.webp"
 color = "#c9f0a8"
 color2 = "#3f9a35"

@@ -13,8 +13,8 @@ A theme is one small TOML file. FDE comes with the six members of the Frutiger f
 | `aqua` | Frutiger Aqua: water and aquariums, cyan-teal glass, a wallpaper that deepens like the sea |
 
 These are homages drawn from scratch to match how the looks are remembered. They use no artwork
-from the original systems, and the wallpapers are plain gradients (real pictures need images
-you are allowed to use). The theme format can do more than these six use, such as capsule and
+from the original systems, and the wallpapers are plain gradients until real pictures are added: see
+`assets/wallpapers/README.md` for the file names and the licence rules. The theme format can do more than these six use, such as capsule and
 square buttons, buttons on the left and centred titles, so you can write your own, for example a
 Vista-like one (see below).
 
@@ -67,6 +67,7 @@ minimize = "#3d9be0"
 
 [wallpaper]
 kind = "photo"                 # "photo" (the bundled picture), "solid" or "gradient"
+file = "my-theme.webp"         # optional picture, looked up in ~/.local/share/fde/wallpapers (and /usr/share/fde/wallpapers, $FDE_WALLPAPERS); the kind is used when it is not there
 color = "#1c3a7a"              # solid colour, or the top of the gradient
 color2 = "#050b24"             # the bottom of the gradient
 ```
