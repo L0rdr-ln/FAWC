@@ -2,6 +2,7 @@
 name = "fawc"
 version = "0.1.0"
 edition = "2021"
+default-run = "fawc"
 license = "MIT"
 description = "A Wayland compositor with real glass: blur, gloss and translucency drawn on the GPU"
 
