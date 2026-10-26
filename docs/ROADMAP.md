@@ -42,7 +42,8 @@ is the first thing to do (see "Next").
 ## Desktop suite
 - [x] `fde-settings`: appearance (themes), displays (scale, resolution, position, night light),
       wallpaper, music, keyboard, desktop, session
-- [ ] settings: sound, network, power, defaults, a monitor layout picture
+- [x] settings: sound (volume and mute)
+- [ ] settings: network, power, defaults, a monitor layout picture
 - [ ] theme pictures for the wallpapers (the folder and the licence rules are ready:
       `assets/wallpapers/README.md`; only free-to-use pictures)
 - [ ] the mascot picture (brief and prompt: `docs/MASCOT.md`)

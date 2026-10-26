@@ -52,6 +52,22 @@ pub fn change_volume(delta: i32) {
     }
 }
 
+/// Set the volume of the default output to `percent` (0 .. 100).
+pub fn set_volume(percent: u32) {
+    let value = format!("{:.2}", percent.min(100) as f64 / 100.0);
+    if Command::new("wpctl").args(["set-volume", "@DEFAULT_AUDIO_SINK@", &value]).status().is_err() {
+        let _ = Command::new("pactl").args(["set-sink-volume", "@DEFAULT_SINK@", &format!("{}%", percent.min(100))]).status();
+    }
+}
+
+/// Mute or unmute the default output.
+pub fn set_mute(muted: bool) {
+    let v = if muted { "1" } else { "0" };
+    if Command::new("wpctl").args(["set-mute", "@DEFAULT_AUDIO_SINK@", v]).status().is_err() {
+        let _ = Command::new("pactl").args(["set-sink-mute", "@DEFAULT_SINK@", v]).status();
+    }
+}
+
 pub fn toggle_mute() {
     if Command::new("wpctl").args(["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]).status().is_err() {
         let _ = Command::new("pactl").args(["set-sink-mute", "@DEFAULT_SINK@", "toggle"]).status();
@@ -137,7 +153,10 @@ mod tests {
         change_volume(5);
         change_volume(-5);
         toggle_mute();
+        set_volume(35);
+        set_volume(250);
+        set_mute(true);
         let text = std::fs::read_to_string(&log).unwrap();
-        assert_eq!(text, "set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+\nset-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%-\nset-mute @DEFAULT_AUDIO_SINK@ toggle\n");
+        assert_eq!(text, "set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+\nset-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%-\nset-mute @DEFAULT_AUDIO_SINK@ toggle\nset-volume @DEFAULT_AUDIO_SINK@ 0.35\nset-volume @DEFAULT_AUDIO_SINK@ 1.00\nset-mute @DEFAULT_AUDIO_SINK@ 1\n");
     }
 }

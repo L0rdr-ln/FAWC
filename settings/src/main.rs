@@ -196,6 +196,33 @@ fn appearance_page(cfg: &Config, status: &Status) -> GBox {
     outer
 }
 
+fn sound_page() -> GBox {
+    let (outer, body) = page("Sound", "The volume of the default output (PipeWire or PulseAudio). This changes the sound server, not the configuration file.");
+    match fde::status::volume() {
+        None => {
+            let l = Label::new(Some("No sound server answered (wpctl or pactl)."));
+            l.set_halign(Align::Start);
+            l.add_css_class("hint");
+            body.append(&l);
+        }
+        Some(v) => {
+            let volume = scale(0.0, 100.0, 1.0, v.percent.min(100) as f64);
+            let muted = gtk4::Switch::new();
+            muted.set_active(v.muted);
+            muted.set_halign(Align::Start);
+            let pending = debounced({
+                let volume = volume.clone();
+                move || fde::status::set_volume(volume.value() as u32)
+            });
+            volume.connect_value_changed(move |_| pending());
+            muted.connect_active_notify(move |sw| fde::status::set_mute(sw.is_active()));
+            body.append(&row("Volume", &volume));
+            body.append(&row("Muted", &muted));
+        }
+    }
+    outer
+}
+
 fn displays_page(cfg: &Config, status: &Status) -> GBox {
     let (outer, body) = page(
         "Displays",
@@ -495,6 +522,7 @@ fn build(app: &gtk4::Application, quit_after: Option<u64>) {
     stack.set_transition_type(gtk4::StackTransitionType::Crossfade);
     stack.add_titled(&appearance_page(&cfg, &status), Some("appearance"), "Appearance");
     stack.add_titled(&displays_page(&cfg, &status), Some("displays"), "Displays");
+    stack.add_titled(&sound_page(), Some("sound"), "Sound");
     stack.add_titled(&wallpaper_page(&cfg, &status), Some("wallpaper"), "Wallpaper");
     stack.add_titled(&music_page(&cfg, &status), Some("music"), "Music");
     stack.add_titled(&keyboard_page(&cfg, &status), Some("keyboard"), "Keyboard");
@@ -508,7 +536,7 @@ fn build(app: &gtk4::Application, quit_after: Option<u64>) {
     let sidebar = gtk4::ListBox::new();
     sidebar.set_size_request(190, -1);
     sidebar.set_selection_mode(gtk4::SelectionMode::Single);
-    let pages = [("appearance", "Appearance"), ("displays", "Displays"), ("wallpaper", "Wallpaper"), ("music", "Music"), ("keyboard", "Keyboard"), ("shell", "Desktop"), ("session", "Session"), ("about", "About")];
+    let pages = [("appearance", "Appearance"), ("displays", "Displays"), ("sound", "Sound"), ("wallpaper", "Wallpaper"), ("music", "Music"), ("keyboard", "Keyboard"), ("shell", "Desktop"), ("session", "Session"), ("about", "About")];
     for (_, title) in pages {
         let l = Label::new(Some(title));
         l.set_halign(Align::Start);
