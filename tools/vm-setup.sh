@@ -26,6 +26,19 @@ fi
 # shellcheck disable=SC1091
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
+# a `cargo` that is only rustup's launcher (Ubuntu's rustup package) has no toolchain until one is chosen
+if ! cargo --version >/dev/null 2>&1; then
+    say "choosing the stable Rust toolchain"
+    if command -v rustup >/dev/null; then
+        rustup default stable
+    else
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        # shellcheck disable=SC1091
+        . "$HOME/.cargo/env"
+    fi
+fi
+cargo --version
+
 say "building FDE (several minutes the first time)"
 cd "$ROOT"
 cargo build --release --workspace
