@@ -448,34 +448,16 @@ impl Fde {
 
                 // the bent window: the texture drawn as a grid of small pieces
                 if let (Some(tex), Some(b)) = (&tmp, &wob) {
-                    let (tw, th) = (tex.size().w as f64, tex.size().h as f64);
                     let n = crate::wobble::N;
-                    let p = |i: usize, j: usize| -> (f64, f64) {
-                        ((b.pos[i][j].0 - view.origin.x as f64) * view.scale, (b.pos[i][j].1 - view.origin.y as f64) * view.scale)
-                    };
+                    let points: Vec<(f32, f32)> = (0..n * n)
+                        .map(|k| {
+                            let q = b.pos[k / n][k % n];
+                            (((q.0 - view.origin.x as f64) * view.scale) as f32, ((q.1 - view.origin.y as f64) * view.scale) as f32)
+                        })
+                        .collect();
                     let mut target = renderer.bind(scene)?;
                     let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
-                    for i in 0..n - 1 {
-                        for j in 0..n - 1 {
-                            let (tl, tr, bl, br) = (p(i, j), p(i, j + 1), p(i + 1, j), p(i + 1, j + 1));
-                            let x0 = ((tl.0 + bl.0) / 2.0).round() as i32;
-                            let x1 = ((tr.0 + br.0) / 2.0).round() as i32;
-                            let y0 = ((tl.1 + tr.1) / 2.0).round() as i32;
-                            let y1 = ((bl.1 + br.1) / 2.0).round() as i32;
-                            if x1 <= x0 || y1 <= y0 {
-                                continue;
-                            }
-                            let dest = Rectangle::<i32, Physical>::new((x0, y0).into(), (x1 - x0, y1 - y0).into());
-                            if dest.intersection(full).is_none() {
-                                continue;
-                            }
-                            let cell = Rectangle::<f64, BufferCoord>::new(
-                                (tw * j as f64 / (n - 1) as f64, th * i as f64 / (n - 1) as f64).into(),
-                                (tw / (n - 1) as f64, th / (n - 1) as f64).into(),
-                            );
-                            frame.render_texture_from_to(tex, cell, dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, 1.0, None, &[])?;
-                        }
-                    }
+                    glass.mesh.draw(&mut frame, tex, (size.w, size.h), &points, n)?;
                     let _ = frame.finish()?;
                 }
             }

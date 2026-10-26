@@ -73,7 +73,10 @@ impl Default for GlassStyle {
     }
 }
 
+pub mod mesh;
+
 pub struct Glass {
+    pub mesh: mesh::MeshProgram,
     shadow: GlesTexProgram,
     down: GlesTexProgram,
     up: GlesTexProgram,
@@ -111,7 +114,9 @@ impl Glass {
             UniformName::new("size", UniformType::_2f),
             UniformName::new("radius", UniformType::_1f),
         ];
+        let mesh = mesh::MeshProgram::new(renderer)?;
         Ok(Glass {
+            mesh,
             down: renderer.compile_custom_texture_shader(shaders::BLUR_DOWN, &hp)?,
             up: renderer.compile_custom_texture_shader(shaders::BLUR_UP, &hp)?,
             panel: renderer.compile_custom_texture_shader(shaders::GLASS, &panel_uniforms)?,
