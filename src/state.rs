@@ -84,6 +84,9 @@ pub struct Fde {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Fde>,
     pub data_device_state: DataDeviceState,
+    pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
+    /// surfaces whose program asked the screen not to lock (a video, a game)
+    pub idle_inhibitors: Vec<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub dmabuf_state: smithay::wayland::dmabuf::DmabufState,
     pub dmabuf_global: Option<smithay::wayland::dmabuf::DmabufGlobal>,
     pub xdg_activation_state: smithay::wayland::xdg_activation::XdgActivationState,
@@ -174,6 +177,7 @@ impl Fde {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Fde>(dh);
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Fde>(dh);
+        let idle_inhibit_state = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Fde>(dh);
         let dmabuf_state = smithay::wayland::dmabuf::DmabufState::new();
         let xdg_activation_state = smithay::wayland::xdg_activation::XdgActivationState::new::<Fde>(dh);
         let cursor_shape_state = smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Fde>(dh);
@@ -241,6 +245,8 @@ impl Fde {
             output_manager_state,
             seat_state,
             data_device_state,
+            idle_inhibit_state,
+            idle_inhibitors: Vec::new(),
             dmabuf_state,
             dmabuf_global: None,
             xdg_activation_state,
@@ -331,6 +337,9 @@ impl Fde {
             return false;
         }
         if self.last_activity.elapsed() < std::time::Duration::from_secs(limit) {
+            return false;
+        }
+        if self.idle_inhibited() {
             return false;
         }
         self.idle_lock_started = true;

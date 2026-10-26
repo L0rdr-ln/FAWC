@@ -1569,3 +1569,30 @@ fn the_dmabuf_global_is_offered_once_the_renderer_is_known() {
     }
     assert!(th.join().unwrap(), "linux-dmabuf is advertised");
 }
+
+#[test]
+fn a_window_that_asks_for_idle_inhibit_keeps_the_screen_awake_while_it_shows() {
+    use smithay::wayland::idle_inhibit::IdleInhibitHandler;
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-idle").unwrap();
+    let mut hn = Harness { display, state, socket };
+    open_window(&mut hn, dir.path(), "fde-e2e-idle", 200, 100);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    let surface = win.toplevel().unwrap().wl_surface().clone();
+    assert!(!hn.state.idle_inhibited());
+    hn.state.inhibit(surface.clone());
+    assert!(hn.state.idle_inhibited(), "the video window keeps the screen awake");
+    hn.state.minimize_window(&win);
+    hn.pump_for(400);
+    hn.state.tick_animations();
+    assert!(!hn.state.idle_inhibited(), "hidden in the task bar it no longer does");
+    hn.state.restore_specific(&win);
+    assert!(hn.state.idle_inhibited());
+    hn.state.uninhibit(surface);
+    assert!(!hn.state.idle_inhibited());
+}

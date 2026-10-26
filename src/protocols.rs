@@ -58,3 +58,31 @@ impl Fde {
         }
     }
 }
+
+// idle-inhibit-v1: a video or game keeps the screen from locking while its window is showing.
+impl smithay::wayland::idle_inhibit::IdleInhibitHandler for Fde {
+    fn inhibit(&mut self, surface: WlSurface) {
+        if !self.idle_inhibitors.contains(&surface) {
+            self.idle_inhibitors.push(surface);
+        }
+    }
+
+    fn uninhibit(&mut self, surface: WlSurface) {
+        self.idle_inhibitors.retain(|s| s != &surface);
+    }
+}
+smithay::delegate_idle_inhibit!(Fde);
+
+impl Fde {
+    /// Does a program that is showing ask for the screen to stay awake?
+    pub fn idle_inhibited(&self) -> bool {
+        use smithay::reexports::wayland_server::Resource;
+        self.idle_inhibitors.iter().any(|s| {
+            s.is_alive()
+                && match self.window_for_surface(s) {
+                    Some(w) => !self.minimized.contains(&w),
+                    None => true, // a panel or other surface
+                }
+        })
+    }
+}
