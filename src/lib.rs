@@ -5,6 +5,7 @@ pub mod backend_drm;
 pub mod backend_winit;
 pub mod cursor;
 pub mod demo;
+pub mod foreign_toplevel;
 pub mod glass;
 pub mod handlers;
 pub mod input;

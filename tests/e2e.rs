@@ -432,3 +432,62 @@ fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
     assert!(outer.loc.y + outer.size.h <= 560, "maximized window must stay above the panel: {outer:?}");
     drop(handle);
 }
+
+#[test]
+fn the_real_task_bar_shows_a_button_for_an_open_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): task bar test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let state = Fawc::new(&display.handle(), (w, h).into());
+    let socket = ListeningSocket::bind("fawc-e2e-tasks").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+
+    // the real panel program, as the compositor starts it
+    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
+        .env("WAYLAND_DISPLAY", "fawc-e2e-tasks")
+        .env_remove("DISPLAY")
+        .spawn()
+        .unwrap();
+    hn.pump_for(500);
+    let grab = |renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture| -> Vec<u8> {
+        let size = scene.size();
+        let target = renderer.bind(scene).unwrap();
+        let m = renderer.copy_framebuffer(&target, Rectangle::from_size(size), Fourcc::Abgr8888).unwrap();
+        renderer.map_texture(&m).unwrap().to_vec()
+    };
+    let probe = |bytes: &[u8]| (pixel(bytes, w, 100, 592), pixel(bytes, w, 450, 592));
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let (on_button, beside) = probe(&grab(&mut renderer, &mut scene));
+    assert!((on_button[0] - beside[0]).abs() < 6, "no task button yet: {on_button:?} {beside:?}");
+
+    // open a window: a button for it appears in the bar
+    let (tx, rx) = mpsc::channel();
+    let path = dir.path().join("fawc-e2e-tasks");
+    std::thread::spawn(move || client(path, tx, 200, 100, 0xff2030e0));
+    let t0 = Instant::now();
+    let mut appeared = false;
+    while t0.elapsed() < Duration::from_secs(10) {
+        hn.pump();
+        let _ = rx.try_recv();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        let (on_button, beside) = probe(&grab(&mut renderer, &mut scene));
+        if (on_button[0] - beside[0]).abs() > 12 {
+            appeared = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = panel.kill();
+    assert!(appeared, "the task bar never showed a button for the window");
+}

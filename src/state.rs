@@ -56,6 +56,7 @@ pub struct Fawc {
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
     pub layer_shell_state: WlrLayerShellState,
+    pub foreign_toplevels: crate::foreign_toplevel::ForeignToplevelState,
     pub background_effect_state: crate::background_effect::BackgroundEffectState,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
@@ -113,6 +114,7 @@ impl Fawc {
         let xdg_shell_state = XdgShellState::new::<Fawc>(dh);
         let xdg_decoration_state = XdgDecorationState::new::<Fawc>(dh);
         let layer_shell_state = WlrLayerShellState::new::<Fawc>(dh);
+        let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new::<Fawc>(dh);
         let background_effect_state = crate::background_effect::BackgroundEffectState::new::<Fawc>(dh);
         let shm_state = ShmState::new::<Fawc>(dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Fawc>(dh);
@@ -150,6 +152,7 @@ impl Fawc {
             xdg_shell_state,
             xdg_decoration_state,
             layer_shell_state,
+            foreign_toplevels,
             background_effect_state,
             shm_state,
             output_manager_state,

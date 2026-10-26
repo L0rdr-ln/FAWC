@@ -15,6 +15,35 @@ pub fn on_orb(x: f64, y: f64, height: i32) -> bool {
     (x - cx).powi(2) + (y - cy).powi(2) <= r * r
 }
 
+/// One window in the task list.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Task {
+    pub title: String,
+    pub active: bool,
+    pub minimized: bool,
+}
+
+const TASKS_LEFT: i32 = ORB_MARGIN * 2 + ORB_SIZE + 6;
+const TASK_GAP: i32 = 4;
+const TASK_MAX_W: i32 = 170;
+const CLOCK_ROOM: i32 = 90;
+
+/// The x range and the y range of task button `i` of `n` in a panel `width` wide.
+fn task_rect(i: usize, n: usize, width: i32, height: i32) -> (i32, i32, i32, i32) {
+    let avail = (width - TASKS_LEFT - CLOCK_ROOM).max(0);
+    let w = ((avail - TASK_GAP * (n as i32 - 1).max(0)) / n.max(1) as i32).clamp(0, TASK_MAX_W);
+    let x0 = TASKS_LEFT + i as i32 * (w + TASK_GAP);
+    (x0, x0 + w, 5, height - 5)
+}
+
+/// Which task button is at (x, y)?
+pub fn task_at(x: f64, y: f64, width: i32, height: i32, n: usize) -> Option<usize> {
+    (0..n).find(|&i| {
+        let (x0, x1, y0, y1) = task_rect(i, n, width, height);
+        x >= x0 as f64 && x < x1 as f64 && y >= y0 as f64 && y < y1 as f64
+    })
+}
+
 fn orb_center(height: i32) -> (f64, f64) {
     ((ORB_MARGIN + ORB_SIZE / 2) as f64, height as f64 / 2.0)
 }
@@ -29,7 +58,7 @@ fn blend(px: &mut [u8], rgb: [f32; 3], a: f32) {
 }
 
 /// `width` x `height` RGBA, premultiplied. `hover` brightens the orb, `clock` is e.g. "14:05".
-pub fn draw(text: &mut TextRenderer, width: i32, height: i32, hover: bool, clock: &str) -> Vec<u8> {
+pub fn draw(text: &mut TextRenderer, width: i32, height: i32, hover: bool, clock: &str, tasks: &[Task]) -> Vec<u8> {
     let mut buf = vec![0u8; (width * height * 4) as usize];
     for y in 0..height {
         let t = y as f32 / (height - 1).max(1) as f32;
@@ -75,6 +104,61 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, hover: bool, clock
             }
         }
     }
+    // the task buttons: a glass pill each, brighter for the active window, dim when minimized
+    for (i, task) in tasks.iter().enumerate() {
+        let (x0, x1, y0, y1) = task_rect(i, tasks.len(), width, height);
+        if x1 - x0 < 24 {
+            continue;
+        }
+        let rad = 6.0f32;
+        for y in y0..y1 {
+            for x in x0..x1 {
+                // rounded rectangle coverage
+                let dx = (x as f32 + 0.5 - (x0 + x1) as f32 / 2.0).abs() - ((x1 - x0) as f32 / 2.0 - rad);
+                let dy = (y as f32 + 0.5 - (y0 + y1) as f32 / 2.0).abs() - ((y1 - y0) as f32 / 2.0 - rad);
+                let d = dx.max(0.0).hypot(dy.max(0.0)) - rad;
+                let cover = (0.5 - d).clamp(0.0, 1.0);
+                if cover <= 0.0 {
+                    continue;
+                }
+                let t = (y - y0) as f32 / (y1 - y0) as f32;
+                let (base, a) = if task.active {
+                    ([0.55, 0.80, 1.0], 0.55 - 0.15 * t)
+                } else if task.minimized {
+                    ([0.20, 0.45, 0.75], 0.18)
+                } else {
+                    ([0.35, 0.65, 0.95], 0.32 - 0.10 * t)
+                };
+                let i = ((y * width + x) * 4) as usize;
+                blend(&mut buf[i..i + 4], base, a * cover);
+                if t < 0.45 {
+                    blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.12 * cover);
+                }
+                if d > -1.2 {
+                    blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.40 * cover);
+                }
+            }
+        }
+        let color = if task.minimized { [220, 235, 250] } else { [255, 255, 255] };
+        if let Some(img) = text.line(&task.title, x1 - x0 - 14, 13.0, color, Some(([20, 70, 140], 0.8)), 2) {
+            let tx = x0 + 8;
+            let ty = (height - img.height) / 2;
+            for yy in 0..img.height {
+                for xx in 0..img.width {
+                    let (px_, py_) = (tx + xx, ty + yy);
+                    if px_ < 0 || py_ < 0 || px_ >= width || py_ >= height {
+                        continue;
+                    }
+                    let sidx = ((yy * img.width + xx) * 4) as usize;
+                    let d = ((py_ * width + px_) * 4) as usize;
+                    let inv = 255 - img.rgba[sidx + 3] as u32;
+                    for c in 0..4 {
+                        buf[d + c] = (img.rgba[sidx + c] as u32 + buf[d + c] as u32 * inv / 255).min(255) as u8;
+                    }
+                }
+            }
+        }
+    }
     // the clock, with a soft glow, at the right
     if let Some(img) = text.line(clock, 120, 16.0, [255, 255, 255], Some(([20, 70, 140], 0.9)), 3) {
         let x0 = width - img.width - 14;
@@ -105,7 +189,7 @@ mod tests {
     fn the_orb_is_green_and_the_strip_is_blue_with_a_clock() {
         let mut text = TextRenderer::default();
         let (w, h) = (400, HEIGHT);
-        let buf = draw(&mut text, w, h, false, "12:34");
+        let buf = draw(&mut text, w, h, false, "12:34", &[Task { title: "Files".into(), active: true, minimized: false }, Task { title: "Terminal".into(), ..Default::default() }]);
         let at = |x: i32, y: i32| {
             let i = ((y * w + x) * 4) as usize;
             [buf[i] as i32, buf[i + 1] as i32, buf[i + 2] as i32, buf[i + 3] as i32]
@@ -124,6 +208,12 @@ mod tests {
             }
         }
         assert!(ink > 0 || text.line("x", 50, 16.0, [0; 3], None, 0).is_none(), "the clock leaves ink");
+        // two task buttons: the first is the active, lighter one
+        let (a, b) = (at(TASKS_LEFT + 80, h - 8), at(TASKS_LEFT + 80 + 174, h - 8));
+        assert!(a[0] > b[0], "the active task is lighter: {a:?} {b:?}");
+        assert_eq!(task_at((TASKS_LEFT + 5) as f64, 20.0, w, h, 2), Some(0));
+        assert_eq!(task_at((TASKS_LEFT + TASK_MAX_W + TASK_GAP + 5) as f64, 20.0, w, h, 2), Some(1));
+        assert_eq!(task_at(300.0, 2.0, w, h, 2), None);
         assert!(on_orb(22.0, 20.0, h) && !on_orb(100.0, 20.0, h));
     }
 }

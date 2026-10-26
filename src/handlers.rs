@@ -81,6 +81,7 @@ impl CompositorHandler for Fawc {
                 let _ = popup.send_configure();
             }
         }
+        self.sync_foreign_toplevels();
     }
 }
 
@@ -174,6 +175,7 @@ impl XdgShellHandler for Fawc {
         }
         self.minimized.retain(|w| w.toplevel().map(|t| t != &surface).unwrap_or(true));
         self.focus_top_window();
+        self.sync_foreign_toplevels();
     }
 }
 

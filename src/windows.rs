@@ -127,6 +127,15 @@ impl Fawc {
         }
     }
 
+    /// Bring back one particular minimized window.
+    pub fn restore_specific(&mut self, window: &Window) {
+        if let Some(i) = self.minimized.iter().position(|w| w == window) {
+            let w = self.minimized.remove(i);
+            self.minimized.push(w);
+            self.restore_window();
+        }
+    }
+
     pub fn close_window(&mut self, window: &Window) {
         if let Some(top) = window.toplevel() {
             top.send_close();

@@ -13,6 +13,7 @@ use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{delegate_noop, Connection, Dispatch, QueueHandle, WEnum};
 use wayland_protocols::ext::background_effect::v1::client::{ext_background_effect_manager_v1, ext_background_effect_surface_v1};
+use wayland_protocols_wlr::foreign_toplevel::v1::client::{zwlr_foreign_toplevel_handle_v1 as handle_mod, zwlr_foreign_toplevel_manager_v1 as manager_mod};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 const BTN_LEFT: u32 = 0x110;
@@ -27,6 +28,61 @@ struct App {
     clicked_orb: bool,
     hover_changed: bool,
     hover: bool,
+    seat: Option<wl_seat::WlSeat>,
+    toplevels: Vec<Toplevel>,
+    tasks_changed: bool,
+    click_task: Option<usize>,
+}
+
+struct Toplevel {
+    handle: handle_mod::ZwlrForeignToplevelHandleV1,
+    task: panel::Task,
+    /// what arrives before `done`
+    next: panel::Task,
+}
+
+impl Dispatch<manager_mod::ZwlrForeignToplevelManagerV1, ()> for App {
+    fn event(app: &mut Self, _: &manager_mod::ZwlrForeignToplevelManagerV1, event: manager_mod::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let manager_mod::Event::Toplevel { toplevel } = event {
+            app.toplevels.push(Toplevel { handle: toplevel, task: Default::default(), next: Default::default() });
+        }
+    }
+    wayland_client::event_created_child!(App, manager_mod::ZwlrForeignToplevelManagerV1, [
+        manager_mod::EVT_TOPLEVEL_OPCODE => (handle_mod::ZwlrForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<handle_mod::ZwlrForeignToplevelHandleV1, ()> for App {
+    fn event(app: &mut Self, handle: &handle_mod::ZwlrForeignToplevelHandleV1, event: handle_mod::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        let Some(i) = app.toplevels.iter().position(|t| &t.handle == handle) else { return };
+        match event {
+            handle_mod::Event::Title { title } => app.toplevels[i].next.title = title,
+            handle_mod::Event::State { state } => {
+                let t = &mut app.toplevels[i].next;
+                t.active = false;
+                t.minimized = false;
+                for c in state.chunks_exact(4) {
+                    match u32::from_ne_bytes([c[0], c[1], c[2], c[3]]) {
+                        x if x == handle_mod::State::Minimized as u32 => t.minimized = true,
+                        x if x == handle_mod::State::Activated as u32 => t.active = true,
+                        _ => {}
+                    }
+                }
+            }
+            handle_mod::Event::Done => {
+                let t = &mut app.toplevels[i];
+                if t.task != t.next {
+                    t.task = t.next.clone();
+                    app.tasks_changed = true;
+                }
+            }
+            handle_mod::Event::Closed => {
+                app.toplevels.remove(i);
+                app.tasks_changed = true;
+            }
+            _ => {}
+        }
+    }
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
@@ -74,10 +130,12 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                     app.hover_changed = true;
                 }
             }
-            wl_pointer::Event::Button { button, state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. }
-                if button == BTN_LEFT && panel::on_orb(app.pointer.0, app.pointer.1, app.size.1) =>
-            {
-                app.clicked_orb = true;
+            wl_pointer::Event::Button { button, state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. } if button == BTN_LEFT => {
+                if panel::on_orb(app.pointer.0, app.pointer.1, app.size.1) {
+                    app.clicked_orb = true;
+                } else {
+                    app.click_task = panel::task_at(app.pointer.0, app.pointer.1, app.size.0, app.size.1, app.toplevels.len());
+                }
             }
             _ => {}
         }
@@ -124,9 +182,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 4..=4, ())?;
     let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ())?;
     let shell: zwlr_layer_shell_v1::ZwlrLayerShellV1 = globals.bind(&qh, 1..=4, ())?;
-    let _seat: wl_seat::WlSeat = globals.bind(&qh, 1..=5, ())?;
+    let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=5, ())?;
+    // the window list, if the compositor offers it
+    let _manager: Option<manager_mod::ZwlrForeignToplevelManagerV1> = globals.bind(&qh, 1..=3, ()).ok();
 
-    let mut app = App::default();
+    let mut app = App { seat: Some(seat), ..App::default() };
     let surface = compositor.create_surface(&qh, ());
     let ls = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Top, "panel".into(), &qh, ());
     ls.set_size(0, panel::HEIGHT as u32);
@@ -160,13 +220,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             current_clock = clock();
             last_clock = Instant::now();
         }
+        if app.tasks_changed {
+            app.tasks_changed = false;
+            dirty = true;
+        }
+        if let Some(i) = app.click_task.take() {
+            if let (Some(t), Some(seat)) = (app.toplevels.get(i), app.seat.as_ref()) {
+                if t.task.active && !t.task.minimized {
+                    t.handle.set_minimized();
+                } else {
+                    t.handle.activate(seat);
+                }
+            }
+        }
         if app.size != size || app.hover != shown_hover || current_clock != shown {
             dirty = true;
         }
         if dirty {
             size = app.size;
             let (w, h) = size;
-            let rgba = panel::draw(&mut text, w, h, app.hover, &current_clock);
+            let rgba = panel::draw(&mut text, w, h, app.hover, &current_clock, &app.toplevels.iter().map(|t| t.task.clone()).collect::<Vec<_>>());
             // wl_shm ARGB8888 is B, G, R, A in memory
             let mut px = rgba;
             for p in px.chunks_exact_mut(4) {
