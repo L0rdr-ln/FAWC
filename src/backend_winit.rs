@@ -77,6 +77,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     event_loop.handle().insert_source(timer, |_, _, _| TimeoutAction::ToDuration(Duration::from_millis(16)))?;
 
     let (mut drawn, mut last_draw) = (0u64, std::time::Instant::now());
+    let mut stats = crate::redraw::FrameStats::default();
     while state.running {
         event_loop.dispatch(Some(Duration::from_millis(16)), &mut state)?;
         if crate::shell::termination_requested() {
@@ -94,7 +95,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         if scene.size().w != size.w || scene.size().h != size.h {
             scene = create_scene(backend.renderer(), size)?;
         }
+        let t_render = std::time::Instant::now();
         state.render_scene(backend.renderer(), &glass, &mut scene)?;
+        let render_time = t_render.elapsed();
+        let t_present = std::time::Instant::now();
         {
             let (renderer, mut target) = backend.bind()?;
             let mut frame = renderer.render(&mut target, size, Transform::Flipped180)?;
@@ -121,6 +125,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         let _ = now;
         backend.submit(Some(&[full_damage(size)]))?;
+        stats.add(render_time, t_present.elapsed());
     }
     Ok(())
 }

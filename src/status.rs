@@ -30,7 +30,8 @@ pub fn parse_pactl(volume: &str, mute: &str) -> Option<Volume> {
 }
 
 fn output(program: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new(program).args(args).output().ok()?;
+    // never wait long on a sound server that does not answer: the task bar draws on this thread
+    let out = Command::new("timeout").arg("1").arg(program).args(args).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 

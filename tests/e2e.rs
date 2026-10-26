@@ -2890,3 +2890,42 @@ fn fast_mode_skips_the_drop_shadow_and_auto_turns_on_for_software_graphics() {
     hn.state.config.appearance.performance = "auto".into();
     assert_eq!(hn.state.fast_mode(), hn.state.software_renderer);
 }
+
+/// Not a test: `FDE_BENCH=1 cargo test --release --test e2e frame_time_bench -- --ignored --nocapture`
+/// prints how long a frame takes on software graphics with 0, 1 and 3 windows.
+#[test]
+#[ignore]
+fn frame_time_bench() {
+    if std::env::var_os("FDE_BENCH").is_none() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = offscreen_renderer().unwrap();
+    let (w, h) = (1280, 800);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-bench").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    let mut time = |hn: &mut Harness, label: &str, renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture| {
+        for mode in ["quality", "fast"] {
+            hn.state.config.appearance.performance = mode.into();
+            hn.state.render_scene(renderer, &glass, scene).unwrap();
+            let t0 = Instant::now();
+            for _ in 0..10 {
+                hn.state.render_scene(renderer, &glass, scene).unwrap();
+            }
+            eprintln!("BENCH {label:>10} {mode:>8}: {:.1} ms per frame", t0.elapsed().as_secs_f64() * 100.0);
+        }
+    };
+    time(&mut hn, "no window", &mut renderer, &mut scene);
+    open_window(&mut hn, dir.path(), "fde-e2e-bench", 500, 350);
+    time(&mut hn, "1 window", &mut renderer, &mut scene);
+    open_window(&mut hn, dir.path(), "fde-e2e-bench", 500, 350);
+    open_window(&mut hn, dir.path(), "fde-e2e-bench", 500, 350);
+    time(&mut hn, "3 windows", &mut renderer, &mut scene);
+}

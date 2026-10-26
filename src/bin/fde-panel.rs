@@ -505,7 +505,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 fde::status::change_volume(delta);
             }
         }
-        if acted || status_checked.elapsed() >= Duration::from_secs(2) {
+        if acted || status_checked.elapsed() >= Duration::from_secs(5) {
             status_checked = std::time::Instant::now();
             status_now.clear();
             if fde::notify::dnd_on() {

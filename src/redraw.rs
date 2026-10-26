@@ -55,6 +55,44 @@ impl Fde {
     }
 }
 
+/// How long frames take, logged every five seconds (`RUST_LOG=info`): the first thing to look at
+/// when the desktop feels slow.
+pub struct FrameStats {
+    since: Instant,
+    frames: u32,
+    render: Duration,
+    present: Duration,
+    worst: Duration,
+}
+
+impl Default for FrameStats {
+    fn default() -> Self {
+        FrameStats { since: Instant::now(), frames: 0, render: Duration::ZERO, present: Duration::ZERO, worst: Duration::ZERO }
+    }
+}
+
+impl FrameStats {
+    /// A frame took `render` to draw and `present` to hand to the screen.
+    pub fn add(&mut self, render: Duration, present: Duration) {
+        self.frames += 1;
+        self.render += render;
+        self.present += present;
+        self.worst = self.worst.max(render + present);
+        if self.since.elapsed() >= Duration::from_secs(5) {
+            let n = self.frames.max(1) as f64;
+            tracing::info!(
+                "frames: {} in {:.1}s, drawing {:.1} ms and handing over {:.1} ms on average, slowest {:.0} ms",
+                self.frames,
+                self.since.elapsed().as_secs_f64(),
+                self.render.as_secs_f64() * 1000.0 / n,
+                self.present.as_secs_f64() * 1000.0 / n,
+                self.worst.as_secs_f64() * 1000.0
+            );
+            *self = FrameStats::default();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

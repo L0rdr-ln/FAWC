@@ -53,6 +53,7 @@ struct OutputGpu {
     /// what was drawn last: `Fde::redraw_serial` then, and when
     drawn: u64,
     last_draw: std::time::Instant,
+    stats: crate::redraw::FrameStats,
 }
 
 /// Everything the render callback needs besides the compositor state.
@@ -71,7 +72,10 @@ fn render_and_queue(state: &mut Fde, gpu: &mut Gpu, idx: usize) {
     }
     og.drawn = state.redraw_serial;
     og.last_draw = std::time::Instant::now();
-    if let Err(e) = state.render_output(renderer, glass, &mut og.scene, &og.output) {
+    let t_render = std::time::Instant::now();
+    let rendered = state.render_output(renderer, glass, &mut og.scene, &og.output);
+    og.stats.add(t_render.elapsed(), std::time::Duration::ZERO);
+    if let Err(e) = rendered {
         tracing::error!("render failed: {e}");
         return;
     }
@@ -209,7 +213,7 @@ fn create_output_gpu(hw: &Hardware, renderer: &mut GlesRenderer, monitor: &Monit
     )?;
     let (mw, mh) = (monitor.mode.size().0 as i32, monitor.mode.size().1 as i32);
     let scene = create_scene(renderer, (mw, mh).into())?;
-    Ok(OutputGpu { output: output.clone(), scene, compositor, crtc: monitor.crtc, queued: false, drawn: 0, last_draw: std::time::Instant::now() })
+    Ok(OutputGpu { output: output.clone(), scene, compositor, crtc: monitor.crtc, queued: false, drawn: 0, last_draw: std::time::Instant::now(), stats: Default::default() })
 }
 
 /// A monitor was plugged in or out: look again at what is connected.
