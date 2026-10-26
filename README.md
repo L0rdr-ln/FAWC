@@ -85,6 +85,13 @@ On a console FAWC uses the GPU directly (DRM/KMS, libseat, libinput). Please att
 | **Alt+Esc** | quit FAWC |
 | **Ctrl+Alt+F1..F12** | switch console (DRM backend) |
 
+## Wallpapers
+
+Point `wallpaper.path` at any PNG or JPEG you like, or use the Wallpaper page in settings. To fetch
+one from the web: `tools/get-wallpaper.sh URL [fill|fit|stretch|center|tile]` downloads it to
+`~/.local/share/fawc/wallpapers/` and sets it. The repository itself contains no third-party
+pictures; `tools/vm-setup.sh` fetches one (change or skip it with `FAWC_WALLPAPER_URL`).
+
 ## Configuration
 
 ![The settings app](docs/settings.png)
