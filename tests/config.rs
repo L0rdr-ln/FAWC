@@ -252,6 +252,11 @@ fn a_theme_uses_its_picture_when_the_file_exists_and_its_colours_when_not() {
     enc.write_header().unwrap().write_image_data(&[255, 0, 0, 255].repeat(4)).unwrap();
     let img = fde::wallpaper::for_config(&cfg).unwrap();
     assert_eq!((img.width, &img.rgba[..3]), (2, &[255u8, 0, 0][..]));
+    // the same picture under another extension is found too
+    std::fs::rename(pics.path().join("pic.png"), pics.path().join("pic.jpeg")).ok();
+    // (a PNG with a .jpeg name is still read by its content)
+    let img = fde::wallpaper::for_config(&cfg).unwrap();
+    assert_eq!(img.width, 2, "found as pic.jpeg");
     // a file name with a path is refused
     std::fs::write(dir.path().join("bad.toml"), "[wallpaper]\nfile = \"../x.png\"\n").unwrap();
     assert!(Config::parse("[appearance]\ntheme = \"bad\"\n").is_err());

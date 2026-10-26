@@ -225,8 +225,10 @@ pub fn for_config(config: &crate::config::Config) -> Option<Image> {
     }
     let t = config.theme();
     if !t.wallpaper.file.is_empty() {
-        for d in wallpaper_dirs() {
-            let p = d.join(&t.wallpaper.file);
+        // the file name as written, else the same name with another picture extension
+        let stem = std::path::Path::new(&t.wallpaper.file).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let names: Vec<String> = std::iter::once(t.wallpaper.file.clone()).chain(["webp", "png", "jpg", "jpeg"].iter().map(|e| format!("{stem}.{e}"))).collect();
+        for p in wallpaper_dirs().iter().flat_map(|d| names.iter().map(move |n| d.join(n))) {
             if p.is_file() {
                 match load_image(&p) {
                     Ok(i) => return Some(i),
