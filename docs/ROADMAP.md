@@ -1,40 +1,56 @@
 # FDE roadmap
 
-Each milestone is usable on its own. Verified by tests on software GL / headless wherever
-possible; hardware and VM runs are noted as such.
+Each milestone is usable on its own. Everything marked done has tests (software GL, headless, real
+Wayland and X11 clients) unless it says otherwise. **Nothing has run on real hardware yet**; that
+is the first thing to do (see "Next").
 
 ## Compositor
-- [x] M0 glass renderer: dual Kawase blur, glass panel shader (rounded, tint, gloss, edge),
-      pixel tests on software GL, CI
-- [x] M1 a compositor you can start: winit backend (nested), xdg-shell windows drawn with the
-      glass renderer, keyboard and pointer, move/resize, close/maximize/minimize, focus
-- [x] M2a title text with glow and orb buttons drawn by the compositor
-- [x] M2b one config file, applied live (accent, transparency, blur, gloss, terminal, keyboard, autostart)
-- [x] look: window drop shadows, diagonal glass reflections and an inner edge glow, a richer built-in wallpaper (sun rays, clouds, hazy hills, a swoosh of light, soap bubbles)
-- [x] background music (`fde-music`): your files, looped, volume/shuffle live; sound output itself untested here (no sound card)
-- [x] a bundled default wallpaper (`assets/wallpaper.webp`), also on the lock screen
-- [x] wallpaper from a PNG, JPEG or WebP file (`[wallpaper]` in the file, a Wallpaper page in settings)
-- [ ] M2c theme files (orb colours, fonts, shapes), output settings page
-- [x] cursor themes (XCursor, named and client-drawn cursors, resize arrows)
-- [~] M3 DRM/KMS + libinput backend (written, never run on hardware), VT switching; multiple monitors and per-monitor scale (compositor side tested with virtual outputs; DRM side compiled only); shell programs draw at the monitor's scale; a task bar per monitor; hot-plug (compositor side tested, udev trigger compiled only)
-- [ ] M4 (layer-shell and ext-background-effect-v1 done and tested) and ext-session-lock-v1 with `fde-lock` done and tested — idle lock, screen capture, `ext-background-effect` (blur on
-      request), fractional scale, output management
-- [~] M5 animations: opening fade + zoom and minimizing into the task bar button done (`appearance.animations`); closing fade done (windows closed through FDE: the close button and Alt+Q); workspace slide, Flip-3D style switcher to come
+- [x] glass renderer: dual Kawase blur, glass panel shader, drop shadows, reflections, inner glow
+- [x] windows: xdg-shell with server-side glass frames, move / resize / maximize / minimize /
+      fullscreen, popups, focus, snapping (Alt+arrows, drag to an edge), wobbly windows (a real
+      triangle mesh), open / minimize / close animations
+- [x] input: keyboard and pointer, key shortcuts, pointer lock and confine and relative motion
+      (games), cursor themes and named cursors, cursor-shape
+- [x] workspaces (Alt+1..9), window switcher with pictures (Alt+Tab)
+- [x] protocols: layer-shell, ext-background-effect, ext-session-lock, wlr-foreign-toplevel,
+      xdg-activation, linux-dmabuf (import itself untested without a GPU), idle-inhibit, viewporter,
+      fractional-scale, wlr-screencopy, clipboard and primary selection (Wayland and X11)
+- [x] XWayland: frames, focus, maximize / fullscreen / close, menus, clipboard
+- [x] config: one TOML file, applied live; themes (six Frutiger themes and your own); night light;
+      monitors (scale and position live, resolution at the next start)
+- [~] DRM/KMS + libinput backend, multi-monitor, hot-plug: written, compiled, **never run on hardware**
+- [ ] X11 programs at fractional scale (they look small or blurry on HiDPI), resize/move requests
+      from X11 programs
+- [ ] touch and tablet input, input methods (CJK typing), keyboard-shortcut inhibit
+- [ ] turning displays off when idle (DPMS), variable refresh rate, HDR and colour management,
+      direct scanout, multi-GPU laptops
+- [ ] window rules, session restore, hot corners / overview
 
 ## Shell
-- [x] S1a `fde-panel`: glass task bar with start orb and clock (layer-shell client, started by the compositor)
-- [x] S1b task list (wlr-foreign-toplevel-management: list, activate, minimize by click)
-- [x] S1c start menu (installed apps from .desktop files, glass, closes on Esc or leaving it)
-- [x] S1d notifications (`fde-notify`: org.freedesktop.Notifications, bubbles, expiry, dismiss)
-- [x] S1e search in the start menu (type to filter, arrows, Enter)
-- [ ] S1f notification actions and history, tray
-- [ ] S2 tray (StatusNotifierItem), volume, network, battery, notifications, OSD
-- [x] S3a lock screen `fde-lock` (Alt+L, password via unix_chkpwd)
-- [x] S3b idle lock (`session.idle_lock_seconds`)
-- [ ] S3c power menu, greeter (greetd), session entry, autostart, polkit agent
+- [x] `fde-panel`: task bar (start orb, task list, clock, workspace dots, volume and battery),
+      start menu with search and a power row (lock, log out, sleep, restart, shut down)
+- [x] `fde-notify`: org.freedesktop.Notifications with buttons and default actions
+- [x] `fde-lock`: lock screen, idle lock
+- [x] `fde-shot`: screenshots (Print key)
+- [x] `fde-music`: background music from your own files
+- [x] session: environment for programs and portals, polkit agent if installed, portal config for
+      screen sharing, a session entry for display managers (docs/SESSION.md)
+- [ ] notification history, do-not-disturb
+- [ ] system tray (StatusNotifierItem), network and Bluetooth status, an on-screen display
+- [ ] a greeter (greetd); today a display manager starts `start-fde`
 
 ## Desktop suite
-- [~] D1 first version done (appearance, keyboard, desktop, session pages); displays, sound, network, power to come. `fde-settings` (plan in [SETTINGS.md](SETTINGS.md); first step: one config file both the compositor and the app use): appearance, wallpaper, displays, input, sound, network, power
-- [ ] D2 GTK4 theme + Qt style + icon theme + cursors + sounds + wallpapers (original art)
-- [ ] D3 portal backend, screenshots/screen recording, file manager, installer / one-command setup
-- [ ] D4 packaging (Debian/Arch), documentation, accessibility basics
+- [x] `fde-settings`: appearance (themes), displays (scale, resolution, position, night light),
+      wallpaper, music, keyboard, desktop, session
+- [ ] settings: sound, network, power, defaults, a monitor layout picture
+- [ ] theme pictures for the wallpapers (the folder and the licence rules are ready:
+      `assets/wallpapers/README.md`; only free-to-use pictures)
+- [ ] the mascot picture (brief and prompt: `docs/MASCOT.md`)
+- [ ] GTK4 and Qt styling to match, an icon theme, sounds
+- [ ] file manager, a portal backend of its own, installer / one-command setup
+- [ ] packaging (Debian / Arch), accessibility basics (high contrast, screen reader)
+
+## Next
+1. Check CI and fix what is red; run the VM script (`tools/vm-setup.sh`) and report what breaks on
+   real hardware (DRM, audio, dmabuf, multi-monitor, X11 and the portals).
+2. Finish what hardware testing shows; then the open items above in the order that hurts most.

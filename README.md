@@ -29,8 +29,8 @@ the client. Clients can ask for the same blur behind their own translucent areas
 |---|---|
 | **Compositor** | xdg-shell windows with server-side glass frames, move / resize / maximize / minimize, wobbly windows (spring-bent while dragged), fullscreen, pointer lock for games, XWayland (X11 programs get the same glass frames), screen capture (wlr-screencopy), clipboard and primary selection (middle-click paste) between Wayland and X11 programs, fractional scaling, dmabuf, idle inhibit, focus, popups, keyboard and pointer; layer-shell (panels, launchers, wallpapers) with exclusive zones; `ext-background-effect-v1`; `ext-session-lock-v1`; `wlr-foreign-toplevel-management`; nested (winit) backend and a DRM/KMS backend |
 | **Cursors** | the mouse cursor comes from your XCursor theme (`appearance.cursor_theme`/`cursor_size`, or `$XCURSOR_THEME`), at the monitor's scale; clients can ask for named cursors (text beam, hand ...) or draw their own; resize arrows on window borders. The nested window uses the host's cursor |
-| **Task bar** `fde-panel` | glass strip with the start orb, a button per open window (click to raise or minimize), clock; blurred behind |
-| **Start menu** | the installed applications from `.desktop` files with a search field: type to filter, Up/Down, Enter starts, Esc clears or closes; glass sheet, closes when the pointer leaves |
+| **Task bar** `fde-panel` | glass strip with the start orb, a button per open window of the workspace being shown (click to raise or minimize), workspace dots, volume and battery, clock; blurred behind |
+| **Start menu** | the installed applications from `.desktop` files with a search field: type to filter, Up/Down, Enter starts, Esc clears or closes; glass sheet, closes when the pointer leaves; a power row at the bottom: Lock, Log out, Sleep, Restart, Shut down (the last three ask twice) |
 | **Notifications** `fde-notify` | the `org.freedesktop.Notifications` service on the session bus (what `notify-send` and every app talks to); glass bubbles at the top right, newest on top, expire on their timeout, critical ones stay, click to dismiss; started with the session when a D-Bus session bus exists |
 | **Themes** | `appearance.theme`: the six members of the Frutiger family: Frutiger Aero (default), Metro, Eco, Dorific, Vector Flourish and Aqua; your own as a small TOML file, see `docs/THEMES.md`. A theme sets the glass, the frame sizes, the buttons, the wallpaper and the colours of the task bar, menu, lock screen and notifications |
 | **Night light** | `[display] night_light = true` warms the whole picture in the evening (temperature and hours in the settings, Displays page); screenshots keep their colours |
@@ -53,8 +53,7 @@ everything is sharp.
 
 ![FDE at scale 2 (nested)](docs/hidpi.png)
 
-**Not verified:** the DRM/KMS backend (real console / GPU) has been written and compiled but never
-run on hardware, so multi-monitor output on real GPUs is untested too. Not done: GTK/Qt apps asking for blur.
+**Not verified:** nothing has run on real hardware. That covers the DRM/KMS backend (real console / GPU, so multi-monitor output and hot-plug on real GPUs), GPU buffer import (dmabuf), sound output, the screen-sharing portal, the polkit prompt and logging in from a display manager. Everything else is tested with software GL and real Wayland/X11 clients. Not done: GTK/Qt apps asking for blur, touch and tablet input, input methods, turning displays off when idle.
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Try it

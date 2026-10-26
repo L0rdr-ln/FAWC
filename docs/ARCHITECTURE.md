@@ -11,11 +11,11 @@ the experience, reuse the plumbing every Linux desktop shares.**
 | part | what it is | language / base |
 |---|---|---|
 | `fde` (compositor) | windows, input, outputs, the glass renderer, animations, layer-shell, session lock, screen capture, `ext-background-effect` (blur on request) | Rust, Smithay |
-| `fde-panel`, `fde-lock` (exist) and later `fde-notify`, `fde-osd`, a launcher with search | small hand-drawn layer-shell programs: task bar (start orb, task list, clock), start menu, lock screen; later tray, volume/network/battery, notifications, OSD, power menu. Own software drawing, no toolkit: they start instantly and have no dependencies | Rust, Wayland client |
+| `fde-panel`, `fde-lock`, `fde-notify`, `fde-shot`, `fde-music` | small hand-drawn layer-shell (and D-Bus) programs: task bar with start menu and power row, lock screen, notifications, screenshots, background music. Own software drawing, no toolkit: they start instantly and have no dependencies | Rust, Wayland client |
 | `fde-settings` | the control panel: appearance, wallpaper, displays, input, sound, network, power, defaults (plan: [SETTINGS.md](SETTINGS.md)) | Rust, GTK4 |
-| `fde-session` | session start (`wayland-sessions` entry), autostart, a greeter for greetd, polkit agent | Rust |
+| session | the compositor sets up the session (environment, polkit agent, autostart; docs/SESSION.md); `data/fde.desktop` is the entry for display managers; a greeter of its own is still to do | Rust |
 | theme | GTK4 and libadwaita-free CSS theme, Qt style, icon theme, cursor theme, sounds, wallpapers: all original artwork | CSS, SVG |
-| portal backend | `xdg-desktop-portal-fde` (screenshot, screencast, file chooser via GTK, settings) | Rust |
+| portals | screen sharing and screenshots through `xdg-desktop-portal-wlr` on FDE's screen capture (config in `data/`); a backend of FDE's own is still to do | config |
 
 ## What FDE reuses (talked to over D-Bus, not rewritten)
 
