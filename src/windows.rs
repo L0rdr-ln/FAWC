@@ -245,7 +245,52 @@ impl Fde {
     }
 
     /// Finish what has run its course: windows that have shrunk into the task bar leave the screen.
+    /// The window's frame and shadow room as the spring grid sees it (logical, shared space).
+    fn wobble_rect(&self, window: &Window) -> Option<Rectangle<f64, Logical>> {
+        let g = self.space.element_geometry(window)?;
+        let o = outer_rect(g, &self.style);
+        let m = 24.0;
+        Some(Rectangle::new(
+            (o.loc.x as f64 - m, o.loc.y as f64 - m).into(),
+            (o.size.w as f64 + 2.0 * m, o.size.h as f64 + 2.0 * m).into(),
+        ))
+    }
+
+    /// The pointer took hold of the window: it now hangs on springs.
+    pub fn start_wobble(&mut self, window: &Window, at: Point<f64, Logical>) {
+        if !self.config.appearance.wobbly_windows {
+            return;
+        }
+        let Some(rest) = self.wobble_rect(window) else { return };
+        self.wobbles.retain(|(w, _)| w != window);
+        let mut b = crate::wobble::Wobble::new(rest);
+        b.grab = Some(b.nearest((at.x, at.y)));
+        self.wobbles.push((window.clone(), b));
+    }
+
+    /// The pointer let go: the window swings free and settles.
+    pub fn release_wobbles(&mut self) {
+        for (_, b) in &mut self.wobbles {
+            b.grab = None;
+        }
+    }
+
+    fn step_wobbles(&mut self) {
+        let dt = self.wobble_time.elapsed().as_secs_f64();
+        self.wobble_time = std::time::Instant::now();
+        let mut wobbles = std::mem::take(&mut self.wobbles);
+        wobbles.retain_mut(|(w, b)| match self.wobble_rect(w) {
+            Some(rest) if self.config.appearance.wobbly_windows && !info(w).lock().unwrap().minimized => {
+                b.step(dt, rest);
+                !b.settled()
+            }
+            _ => false,
+        });
+        self.wobbles = wobbles;
+    }
+
     pub fn tick_animations(&mut self) {
+        self.step_wobbles();
         let done: Vec<Window> = self
             .space
             .elements()

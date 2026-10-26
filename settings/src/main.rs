@@ -148,6 +148,12 @@ fn appearance_page(cfg: &Config, status: &Status) -> GBox {
     body.append(&row("Blur (levels)", &blur));
     body.append(&row("Gloss", &gloss));
     body.append(&row("Animations", &animations));
+    let wobbly = gtk4::Switch::new();
+    wobbly.set_active(a.wobbly_windows);
+    wobbly.set_halign(Align::Start);
+    let st3 = status.clone();
+    wobbly.connect_active_notify(move |sw| st3.report(config::set(&path(), &model::wobbly(sw.is_active()))));
+    body.append(&row("Wobbly windows", &wobbly));
     outer
 }
 

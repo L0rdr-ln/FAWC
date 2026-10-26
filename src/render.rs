@@ -348,6 +348,26 @@ impl Fde {
                 let outer = zoomed(outer_full);
                 let outer_p = view.rect(outer);
                 let Some(visible) = outer_p.intersection(full) else { continue };
+                // a window that is bending is drawn into a texture of its own first
+                let wob = self
+                    .wobbles
+                    .iter()
+                    .find(|(w, _)| w == window)
+                    .filter(|(_, b)| b.displacement() > 0.4)
+                    .map(|(_, b)| b.clone());
+                let wm = sc(24, view.scale);
+                let mut tmp: Option<GlesTexture> = match &wob {
+                    Some(_) => Some(create_scene(renderer, (outer_p.size.w + 2 * wm, outer_p.size.h + 2 * wm).into())?),
+                    None => None,
+                };
+                let shift: smithay::utils::Point<i32, Physical> =
+                    if wob.is_some() { (wm - outer_p.loc.x, wm - outer_p.loc.y).into() } else { (0, 0).into() };
+                let outer_d = Rectangle::<i32, Physical>::new(outer_p.loc + shift, outer_p.size);
+                let tsize: Size<i32, Physical> = match &tmp {
+                    Some(t) => (t.size().w, t.size().h).into(),
+                    None => size,
+                };
+                let clip = Rectangle::<i32, Physical>::from_size(tsize);
                 let focused = focus
                     .as_ref()
                     .and_then(|f| window.toplevel().map(|t| t.wl_surface() == f))
@@ -380,7 +400,7 @@ impl Fde {
                 // the client's surfaces (and its popups) as render elements; a surface of
                 // logical size L is L * scale * zoom pixels
                 let k = view.scale * zoom;
-                let loc = view.rect(client).loc;
+                let loc = view.rect(client).loc + shift;
                 let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
                 if let Some(top) = window.toplevel() {
                     for (popup, offset) in PopupManager::popups_for_surface(top.wl_surface()) {
@@ -405,18 +425,59 @@ impl Fde {
                 ));
 
                 // the title (re-rendered only when it, its room or the focus change)
-                let title_draw = self.title_texture(renderer, window, &style, outer_p, focused, view.scale)?;
+                let title_draw = self.title_texture(renderer, window, &style, outer_d, focused, view.scale)?;
 
-                let mut target = renderer.bind(scene)?;
-                let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
-                glass.draw_shadow(&mut frame, &blurred, outer_p, &style, view.scale as f32, alpha)?;
-                glass.draw_panel_part(&mut frame, &blurred, src, outer_p, &style, alpha)?;
+                let target_tex: &mut GlesTexture = match tmp.as_mut() {
+                    Some(t) => t,
+                    None => &mut *scene,
+                };
+                let mut target = renderer.bind(target_tex)?;
+                let mut frame = renderer.render(&mut target, tsize, Transform::Normal)?;
+                if wob.is_some() {
+                    frame.clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[clip])?;
+                }
+                glass.draw_shadow(&mut frame, &blurred, outer_d, &style, view.scale as f32, alpha)?;
+                glass.draw_panel_part(&mut frame, &blurred, src, outer_d, &style, alpha)?;
                 if let Some((tex, dest)) = &title_draw {
                     let src_full = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());
                     frame.render_texture_from_to(tex, src_full, *dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, alpha, None, &[])?;
                 }
-                draw_render_elements(&mut frame, k, &elements, &[full])?;
+                draw_render_elements(&mut frame, k, &elements, &[clip])?;
                 let _ = frame.finish()?;
+                drop(target);
+
+                // the bent window: the texture drawn as a grid of small pieces
+                if let (Some(tex), Some(b)) = (&tmp, &wob) {
+                    let (tw, th) = (tex.size().w as f64, tex.size().h as f64);
+                    let n = crate::wobble::N;
+                    let p = |i: usize, j: usize| -> (f64, f64) {
+                        ((b.pos[i][j].0 - view.origin.x as f64) * view.scale, (b.pos[i][j].1 - view.origin.y as f64) * view.scale)
+                    };
+                    let mut target = renderer.bind(scene)?;
+                    let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                    for i in 0..n - 1 {
+                        for j in 0..n - 1 {
+                            let (tl, tr, bl, br) = (p(i, j), p(i, j + 1), p(i + 1, j), p(i + 1, j + 1));
+                            let x0 = ((tl.0 + bl.0) / 2.0).round() as i32;
+                            let x1 = ((tr.0 + br.0) / 2.0).round() as i32;
+                            let y0 = ((tl.1 + tr.1) / 2.0).round() as i32;
+                            let y1 = ((bl.1 + br.1) / 2.0).round() as i32;
+                            if x1 <= x0 || y1 <= y0 {
+                                continue;
+                            }
+                            let dest = Rectangle::<i32, Physical>::new((x0, y0).into(), (x1 - x0, y1 - y0).into());
+                            if dest.intersection(full).is_none() {
+                                continue;
+                            }
+                            let cell = Rectangle::<f64, BufferCoord>::new(
+                                (tw * j as f64 / (n - 1) as f64, th * i as f64 / (n - 1) as f64).into(),
+                                (tw / (n - 1) as f64, th / (n - 1) as f64).into(),
+                            );
+                            frame.render_texture_from_to(tex, cell, dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, 1.0, None, &[])?;
+                        }
+                    }
+                    let _ = frame.finish()?;
+                }
             }
             let _ = WindowSurfaceType::ALL;
 

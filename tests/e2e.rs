@@ -1596,3 +1596,62 @@ fn a_window_that_asks_for_idle_inhibit_keeps_the_screen_awake_while_it_shows() {
     hn.state.uninhibit(surface);
     assert!(!hn.state.idle_inhibited());
 }
+
+#[test]
+fn a_dragged_window_bends_on_its_springs_and_settles_flat() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): wobble test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-wob").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    open_window(&mut hn, dir.path(), "fde-e2e-wob", 260, 160);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    let g = hn.state.space.element_geometry(&win).unwrap();
+
+    // take the title bar and drag to the right in steps
+    let grab: smithay::utils::Point<f64, smithay::utils::Logical> = (g.loc.x as f64 + 60.0, g.loc.y as f64 - 16.0).into();
+    hn.state.pointer_moved(grab, 1);
+    hn.state.pointer_button(0x110, true, 2);
+    for k in 1..=8 {
+        hn.state.pointer_moved((grab.x + 18.0 * k as f64, grab.y + 6.0 * k as f64).into(), 3 + k);
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    let bent = hn.state.wobbles.iter().map(|(_, b)| b.displacement()).fold(0.0, f64::max);
+    assert!(bent > 1.0, "the dragged window bends: {bent}");
+    let bytes = grab_scene(&mut renderer, &mut scene);
+    if let Ok(path) = std::env::var("FDE_DUMP_WOBBLE") {
+        let file = std::fs::File::create(path).unwrap();
+        let mut enc = png::Encoder::new(file, w as u32, h as u32);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&bytes).unwrap();
+    }
+
+    // let go: it swings and then rests, drawn as a flat window again
+    hn.state.pointer_button(0x110, false, 20);
+    let t0 = Instant::now();
+    while !hn.state.wobbles.is_empty() {
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        std::thread::sleep(Duration::from_millis(16));
+        assert!(t0.elapsed() < Duration::from_secs(8), "the window never settled");
+    }
+    let g2 = hn.state.space.element_geometry(&win).unwrap();
+    let bytes = grab_scene(&mut renderer, &mut scene);
+    let c = pixel(&bytes, w, g2.loc.x + g2.size.w / 2, g2.loc.y + g2.size.h / 2);
+    assert!(c[2] > 150 && c[0] < 100, "the client's blue at the middle of the settled window: {c:?}");
+}

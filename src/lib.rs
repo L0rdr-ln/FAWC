@@ -27,3 +27,4 @@ pub mod state;
 pub mod text;
 pub mod wallpaper;
 pub mod windows;
+pub mod wobble;

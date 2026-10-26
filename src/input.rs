@@ -247,6 +247,7 @@ impl Fde {
             // straight to the lock screen
         } else if !pressed {
             if self.drag.take().is_some() {
+                self.release_wobbles();
                 return;
             }
         } else if let Some((layer, _, _)) = self.layer_surface_under(pos, &[Layer::Overlay, Layer::Top]) {
@@ -308,6 +309,7 @@ impl Fde {
         }
         let grab_offset = self.pointer_location - client.loc.to_f64();
         self.hover_cursor = "grabbing";
+        self.start_wobble(window, self.pointer_location);
         self.drag = Some(Drag::Move { window: window.clone(), grab_offset });
     }
 

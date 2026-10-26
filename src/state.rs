@@ -84,6 +84,9 @@ pub struct Fde {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Fde>,
     pub data_device_state: DataDeviceState,
+    /// windows that are bending on their springs
+    pub wobbles: Vec<(Window, crate::wobble::Wobble)>,
+    pub wobble_time: Instant,
     pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
     /// surfaces whose program asked the screen not to lock (a video, a game)
     pub idle_inhibitors: Vec<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
@@ -245,6 +248,8 @@ impl Fde {
             output_manager_state,
             seat_state,
             data_device_state,
+            wobbles: Vec::new(),
+            wobble_time: Instant::now(),
             idle_inhibit_state,
             idle_inhibitors: Vec::new(),
             dmabuf_state,

@@ -24,6 +24,10 @@ pub fn appearance(accent: &str, transparency: f64, blur: u32, gloss: f64, animat
     ]
 }
 
+pub fn wobbly(on: bool) -> Vec<(&'static str, Setting)> {
+    vec![("appearance.wobbly_windows", Setting::Bool(on))]
+}
+
 pub fn keyboard(layout: &str, repeat_rate: u32, repeat_delay: u32) -> Vec<(&'static str, Setting)> {
     vec![
         ("input.keyboard_layout", Setting::Str(layout.trim().to_string())),

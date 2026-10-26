@@ -27,7 +27,7 @@ the client. Clients can ask for the same blur behind their own translucent areas
 
 | | |
 |---|---|
-| **Compositor** | xdg-shell windows with server-side glass frames, move / resize / maximize / minimize, focus, popups, keyboard and pointer; layer-shell (panels, launchers, wallpapers) with exclusive zones; `ext-background-effect-v1`; `ext-session-lock-v1`; `wlr-foreign-toplevel-management`; nested (winit) backend and a DRM/KMS backend |
+| **Compositor** | xdg-shell windows with server-side glass frames, move / resize / maximize / minimize, wobbly windows (spring-bent while dragged), fullscreen, focus, popups, keyboard and pointer; layer-shell (panels, launchers, wallpapers) with exclusive zones; `ext-background-effect-v1`; `ext-session-lock-v1`; `wlr-foreign-toplevel-management`; nested (winit) backend and a DRM/KMS backend |
 | **Cursors** | the mouse cursor comes from your XCursor theme (`appearance.cursor_theme`/`cursor_size`, or `$XCURSOR_THEME`), at the monitor's scale; clients can ask for named cursors (text beam, hand ...) or draw their own; resize arrows on window borders. The nested window uses the host's cursor |
 | **Task bar** `fde-panel` | glass strip with the start orb, a button per open window (click to raise or minimize), clock; blurred behind |
 | **Start menu** | the installed applications from `.desktop` files with a search field: type to filter, Up/Down, Enter starts, Esc clears or closes; glass sheet, closes when the pointer leaves |

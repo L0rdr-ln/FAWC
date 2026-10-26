@@ -22,6 +22,8 @@ pub struct Appearance {
     /// the gloss band on the title bar, 0 .. 1
     pub gloss: f32,
     pub animations: bool,
+    /// windows bend and swing on springs while they are dragged
+    pub wobbly_windows: bool,
     /// the mouse cursor theme (a directory with `cursors/` in an icon path); empty = `$XCURSOR_THEME`
     pub cursor_theme: String,
     /// cursor size in pixels at scale 1; 0 = `$XCURSOR_SIZE`, else 24
@@ -30,7 +32,7 @@ pub struct Appearance {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Appearance { accent: "#4aa8ee".into(), transparency: 0.38, blur: 3, gloss: 0.8, animations: true, cursor_theme: String::new(), cursor_size: 0 }
+        Appearance { accent: "#4aa8ee".into(), transparency: 0.38, blur: 3, gloss: 0.8, animations: true, wobbly_windows: true, cursor_theme: String::new(), cursor_size: 0 }
     }
 }
 
