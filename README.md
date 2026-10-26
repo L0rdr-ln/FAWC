@@ -1,74 +1,79 @@
 # FAWC
 
-A complete desktop in the Frutiger Aero style (compositor, shell, settings, theme), starting with
-a Wayland compositor with **real glass**: the blur behind a window, the gloss on its title bar
-and the translucency of its frame are drawn on the GPU by the compositor itself, in the spirit of
-Frutiger Aero (Windows Vista/7 Aero, skeuomorphic glass, sky and water).
+[![build](https://github.com/L0rdr-ln/FAWC/actions/workflows/build.yml/badge.svg)](https://github.com/L0rdr-ln/FAWC/actions/workflows/build.yml)
+![license MIT](https://img.shields.io/badge/license-MIT-blue)
+
+A Wayland desktop in the **Frutiger Aero** style: glass windows that really blur what is behind
+them, gloss on the title bars, orb buttons, a sky-and-hills wallpaper, a glass task bar and start
+menu. The goal is a complete desktop suite the way GNOME or KDE are (compositor, shell, settings,
+theme, session), built in stages. Today: the compositor, a task bar with start menu and window
+list, and a lock screen.
 
 Written in Rust on [Smithay](https://github.com/Smithay/smithay), **not** on wlroots: wlroots'
 scene graph can only stack pictures and rectangles, it cannot read back what is behind a window,
-so a true blur is impossible there. FAWC runs its own render pass: it draws the scene bottom to
-top into an offscreen texture, and before every glass window it blurs the part of that texture
-behind the window (dual Kawase blur), draws the glass panel over it (rounded shape, tint, gloss,
-light edge) and then the client.
+so a true blur is impossible there. FAWC draws the scene bottom to top into an offscreen
+texture, and before every glass window it blurs the part of that texture behind the window (dual
+Kawase blur), draws the glass panel over it (rounded shape, tint, gloss, light edge) and then
+the client. Clients can ask for the same blur behind their own translucent areas with
+`ext-background-effect-v1`.
 
-![the glass demo scene](docs/glass-demo.png)
+![FAWC with two windows, the task bar and its window list](docs/shell.png)
 
-*`fawc glass-demo`: two glass windows over a sky; the stripes behind them are really blurred.*
+| start menu | lock screen |
+|---|---|
+| ![start menu](docs/menu.png) | ![lock screen](docs/lock.png) |
+
+## What works
+
+| | |
+|---|---|
+| **Compositor** | xdg-shell windows with server-side glass frames, move / resize / maximize / minimize, focus, popups, keyboard and pointer; layer-shell (panels, launchers, wallpapers) with exclusive zones; `ext-background-effect-v1`; `ext-session-lock-v1`; `wlr-foreign-toplevel-management`; nested (winit) backend and a DRM/KMS backend |
+| **Task bar** `fawc-panel` | glass strip with the start orb, a button per open window (click to raise or minimize), clock; blurred behind |
+| **Start menu** | the installed applications from `.desktop` files, glass sheet, closes on Esc or when the pointer leaves |
+| **Lock screen** `fawc-lock` | `Alt+L`: a glass login card; the password is checked by PAM's `unix_chkpwd` |
+| **Tests** | pixel tests of the glass on a software GL, and end-to-end tests with real Wayland clients (including the real panel and lock programs); no display or GPU needed |
+
+**Not verified:** the DRM/KMS backend (real console / GPU) has been written and compiled but never
+run on hardware, multi-monitor, hot-plug, HiDPI, cursor themes, GTK/Qt apps asking for blur.
+See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Try it
 
-Nested in a window of your current desktop (X11 or Wayland), with the demo client:
+Nested in a window of your current desktop (X11 or Wayland):
 
 ```sh
-cargo run &                         # prints WAYLAND_DISPLAY=wayland-N
-WAYLAND_DISPLAY=wayland-N cargo run --example demo-client
+cargo run &                         # opens a window; the task bar starts with it
+WAYLAND_DISPLAY=wayland-N cargo run --example demo-client   # N is printed in the log
 ```
 
-Keys: **Alt+Return** terminal (`foot`, or `$FAWC_TERMINAL`), **Alt+drag** or the title bar to move,
-borders to resize, orbs to close / maximize / minimize, **Alt+Tab** cycle, **Alt+m** restore a
-minimized window, **Alt+f** maximize, **Alt+q** close, **Alt+Esc** quit.
-
-![FAWC running nested](docs/nested.png)
-
-![The task bar](docs/shell.png)
-
-![The start menu](docs/menu.png)
-
-Alt+L locks the session: `fawc-lock` shows a glass login card and unlocks with your password (checked by PAM's `unix_chkpwd`).
-
-![The lock screen](docs/lock.png)
-
-The task bar (`fawc-panel`) starts with the compositor; click the orb for the start menu (the installed applications). `FAWC_NO_PANEL=1` turns it off.
-
-## Run it on a console or in a VM
+On a console or in a VM (Debian/Ubuntu), one script installs everything and builds:
 
 ```sh
 sudo apt install -y git
-git clone https://github.com/L0rdr-ln/fawc && fawc/tools/vm-setup.sh   # packages, Rust, build, launcher
-~/start-fawc                                                              # on a console: Ctrl+Alt+F3
+git clone https://github.com/L0rdr-ln/FAWC fawc && fawc/tools/vm-setup.sh
+~/start-fawc            # on a console: Ctrl+Alt+F3, log in, then run it
 ```
 
-On a console FAWC uses the GPU directly (DRM/KMS, libseat, libinput); inside a desktop it opens as
-a window. **The hardware backend is written but has only been compiled, never run on a real
-machine yet** (the development environment has no GPU): expect to find problems; please attach
-`~/fawc-last.log` to a report. First monitor only, no hot-plug, no cursor themes (a built-in arrow).
+On a console FAWC uses the GPU directly (DRM/KMS, libseat, libinput). Please attach
+`~/fawc-last.log` to a report if something is wrong.
 
-## Status
+## Keys
 
-Early. What exists:
+| | |
+|---|---|
+| **Alt+Return** | terminal (`foot`, or `$FAWC_TERMINAL`) |
+| **Alt+drag**, title bar | move; borders resize; the three orbs minimize / maximize / close |
+| **Alt+Tab** | cycle windows (**Alt+m** restore a minimized one) |
+| **Alt+f**, **Alt+q** | maximize, close |
+| **Alt+L** | lock the session |
+| **Alt+Esc** | quit FAWC |
+| **Ctrl+Alt+F1..F12** | switch console (DRM backend) |
 
-- the glass renderer (`src/glass`): blur, glass panel, rounded clipping, as GLES shaders;
-- a compositor core: xdg-shell windows with server-side glass frames and orb buttons, focus,
-  move / resize / maximize / minimize, popups, keyboard and pointer, a nested (winit) backend;
-- an end-to-end test (`tests/e2e.rs`) in which a real Wayland client opens a window and the
-  test checks the glass pixels and clicks the orb;
-- an offscreen demo (`fawc glass-demo out.png`) and pixel tests that run on a software GL
-  (llvmpipe), so the look is developed and checked without a display.
+## Settings through the environment (until the settings app exists)
 
-The goal is a full desktop suite, the way GNOME or KDE are: see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for what is written here and what is reused, and
-[docs/ROADMAP.md](docs/ROADMAP.md) for the stages.
+`FAWC_TERMINAL` terminal command · `FAWC_LAUNCHER` command for the orb when no apps are found ·
+`FAWC_NO_PANEL=1` no task bar · `FAWC_AUTOSTART="cmd"` extra program at start ·
+`FAWC_LOCK_CHECK` command that checks a password on stdin (testing) · `RUST_LOG=info` logs.
 
 ## Build
 
@@ -77,11 +82,22 @@ sudo apt install pkg-config libudev-dev libseat-dev libinput-dev libgbm-dev libe
     libgles-dev libxkbcommon-dev libdrm-dev libwayland-dev
 cargo build
 LIBGL_ALWAYS_SOFTWARE=1 cargo test        # software GL is enough
-cargo run -- glass-demo glass-demo.png
+cargo run -- glass-demo glass-demo.png    # render the demo scene offscreen
 ```
+
+## Documents
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): what is written here and what is reused
+- [docs/ROADMAP.md](docs/ROADMAP.md): the stages, what is done
+- [docs/SETTINGS.md](docs/SETTINGS.md): the plan for the control panel and the one config file
+- [CONTRIBUTING.md](CONTRIBUTING.md): building, testing, house rules
 
 ## Relation to sfwc
 
 [sfwc](https://github.com/L0rdr-ln/Simple-Floating-Wayland-Compositor) is the small floating
 compositor on wlroots. FAWC is a separate project with a different goal (looks first); it reuses
 ideas (theme format with a `[style]` section, headless pixel tests), not code.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). All artwork must be original or freely licensed.

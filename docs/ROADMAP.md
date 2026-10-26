@@ -6,10 +6,11 @@ possible; hardware and VM runs are noted as such.
 ## Compositor
 - [x] M0 glass renderer: dual Kawase blur, glass panel shader (rounded, tint, gloss, edge),
       pixel tests on software GL, CI
-- [ ] M1 a compositor you can start: winit backend (nested), xdg-shell windows drawn with the
+- [x] M1 a compositor you can start: winit backend (nested), xdg-shell windows drawn with the
       glass renderer, keyboard and pointer, move/resize, close/maximize/minimize, focus
-- [ ] M2 title text and orb buttons drawn by the compositor, themes (`[style]` compatible)
-- [ ] M3 DRM/KMS + libinput backend (real hardware, VMs), VT switching, multi-monitor, HiDPI
+- [x] M2a title text with glow and orb buttons drawn by the compositor
+- [ ] M2b themes (colours, gloss, orb colours from a theme file), one config file (see SETTINGS.md)
+- [ ] M3 (written, never run on hardware) DRM/KMS + libinput backend (real hardware, VMs), VT switching, multi-monitor, HiDPI
 - [ ] M4 (layer-shell and ext-background-effect-v1 done and tested) and ext-session-lock-v1 with `fawc-lock` done and tested — idle lock, screen capture, `ext-background-effect` (blur on
       request), fractional scale, output management
 - [ ] M5 animations: open/close fade + zoom, minimize, workspace slide, Flip-3D style switcher
@@ -20,10 +21,11 @@ possible; hardware and VM runs are noted as such.
 - [x] S1c start menu (installed apps from .desktop files, glass, closes on Esc or leaving it)
 - [ ] S1d launcher with search, tray, notifications
 - [ ] S2 tray (StatusNotifierItem), volume, network, battery, notifications, OSD
-- [ ] S3 lock screen, power menu, greeter (greetd), session entry, autostart, polkit agent
+- [x] S3a lock screen `fawc-lock` (Alt+L, password via unix_chkpwd)
+- [ ] S3b power menu, idle lock, greeter (greetd), session entry, autostart, polkit agent
 
 ## Desktop suite
-- [ ] D1 `fawc-settings`: appearance, wallpaper, displays, input, sound, network, power
+- [ ] D1 `fawc-settings` (plan in [SETTINGS.md](SETTINGS.md); first step: one config file both the compositor and the app use): appearance, wallpaper, displays, input, sound, network, power
 - [ ] D2 GTK4 theme + Qt style + icon theme + cursors + sounds + wallpapers (original art)
 - [ ] D3 portal backend, screenshots/screen recording, file manager, installer / one-command setup
 - [ ] D4 packaging (Debian/Arch), documentation, accessibility basics

@@ -11,8 +11,8 @@ the experience, reuse the plumbing every Linux desktop shares.**
 | part | what it is | language / base |
 |---|---|---|
 | `fawc` (compositor) | windows, input, outputs, the glass renderer, animations, layer-shell, session lock, screen capture, `ext-background-effect` (blur on request) | Rust, Smithay |
-| `fawc-shell` | panel (start orb, task bar, tray, clock, volume/network/battery), start menu / launcher, notifications, OSD, lock screen, power menu, desktop (wallpaper, icons) | Rust, GTK4 + layer-shell |
-| `fawc-settings` | the control panel: appearance, wallpaper, displays, input, sound, network, power, defaults | Rust, GTK4 |
+| `fawc-panel`, `fawc-lock` (exist) and later `fawc-notify`, `fawc-osd`, a launcher with search | small hand-drawn layer-shell programs: task bar (start orb, task list, clock), start menu, lock screen; later tray, volume/network/battery, notifications, OSD, power menu. Own software drawing, no toolkit: they start instantly and have no dependencies | Rust, Wayland client |
+| `fawc-settings` | the control panel: appearance, wallpaper, displays, input, sound, network, power, defaults (plan: [SETTINGS.md](SETTINGS.md)) | Rust, GTK4 |
 | `fawc-session` | session start (`wayland-sessions` entry), autostart, a greeter for greetd, polkit agent | Rust |
 | theme | GTK4 and libadwaita-free CSS theme, Qt style, icon theme, cursor theme, sounds, wallpapers: all original artwork | CSS, SVG |
 | portal backend | `xdg-desktop-portal-fawc` (screenshot, screencast, file chooser via GTK, settings) | Rust |
