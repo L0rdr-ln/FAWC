@@ -1222,3 +1222,43 @@ fn minimizing_shrinks_into_the_task_bar_button_and_restoring_brings_it_back() {
     assert_eq!(hn.state.space.element_geometry(&win).unwrap().loc, g.loc, "where it was");
     assert!(hn.state.minimize_progress(&win).is_none());
 }
+
+#[test]
+fn a_wallpaper_picture_from_the_configuration_is_what_the_monitor_shows() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): wallpaper test skipped");
+            return;
+        }
+    };
+    // a 2x2 picture: all dark green
+    let png_path = dir.path().join("w.png");
+    {
+        let file = std::fs::File::create(&png_path).unwrap();
+        let mut enc = png::Encoder::new(file, 2, 2);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        let data: Vec<u8> = (0..4).flat_map(|_| [10u8, 120, 20]).collect();
+        enc.write_header().unwrap().write_image_data(&data).unwrap();
+    }
+    let cfg = dir.path().join("fawc.toml");
+    std::fs::write(&cfg, format!("[wallpaper]\npath = \"{}\"\nmode = \"stretch\"\n", png_path.display())).unwrap();
+    std::env::set_var("FAWC_CONFIG", &cfg);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let state = Fawc::new(&display.handle(), (800, 600).into());
+    std::env::remove_var("FAWC_CONFIG");
+    let socket = ListeningSocket::bind("fawc-e2e-wall").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (800, 600).into()).unwrap();
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let px = grab_scene(&mut renderer, &mut scene);
+    for (x, y) in [(5, 5), (400, 300), (790, 590)] {
+        let p = pixel(&px, 800, x, y);
+        assert!((p[0] - 10).abs() < 4 && (p[1] - 120).abs() < 4 && (p[2] - 20).abs() < 4, "dark green at ({x},{y}), not the sky: {p:?}");
+    }
+}

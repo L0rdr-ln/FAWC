@@ -68,3 +68,46 @@ fn the_session_locks_by_itself_when_idle_and_activity_resets_the_timer() {
 }
 
 static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn write_png(path: &std::path::Path, rgb: [u8; 3]) {
+    let file = std::fs::File::create(path).unwrap();
+    let mut enc = png::Encoder::new(file, 2, 2);
+    enc.set_color(png::ColorType::Rgb);
+    enc.set_depth(png::BitDepth::Eight);
+    let data: Vec<u8> = (0..4).flat_map(|_| rgb).collect();
+    enc.write_header().unwrap().write_image_data(&data).unwrap();
+}
+
+#[test]
+fn the_wallpaper_file_is_loaded_and_follows_edits() {
+    let dir = tempfile::tempdir().unwrap();
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let (red, blue) = (dir.path().join("red.png"), dir.path().join("blue.png"));
+    write_png(&red, [200, 10, 10]);
+    write_png(&blue, [10, 10, 200]);
+    let file = dir.path().join("wall.toml");
+    std::fs::write(&file, format!("[wallpaper]\npath = \"{}\"\nmode = \"stretch\"\n", red.display())).unwrap();
+    std::env::set_var("FAWC_CONFIG", &file);
+
+    let display: Display<Fawc> = Display::new().unwrap();
+    let mut state = Fawc::new(&display.handle(), (800, 600).into());
+    assert_eq!(state.wallpaper_image.as_ref().unwrap().rgba[..3], [200, 10, 10]);
+
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    std::fs::write(&file, format!("[wallpaper]\npath = \"{}\"\n", blue.display())).unwrap();
+    state.check_config(true);
+    assert_eq!(state.wallpaper_image.as_ref().unwrap().rgba[..3], [10, 10, 200], "the new picture");
+    assert_eq!(state.config.wallpaper.mode, "fill");
+
+    // a mode that does not exist is refused: nothing changes
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    std::fs::write(&file, format!("[wallpaper]\npath = \"{}\"\nmode = \"wobble\"\n", red.display())).unwrap();
+    state.check_config(true);
+    assert_eq!(state.wallpaper_image.as_ref().unwrap().rgba[..3], [10, 10, 200]);
+
+    // a path that is not a picture: the built-in sky (and a note in the log)
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    std::fs::write(&file, "[wallpaper]\npath = \"/nonexistent/x.png\"\n").unwrap();
+    state.check_config(true);
+    assert!(state.wallpaper_image.is_none());
+}

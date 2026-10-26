@@ -99,6 +99,8 @@ pub struct Fawc {
     config_checked: std::time::Instant,
     /// the wallpaper as a texture, per size in physical pixels, made when needed
     pub wallpapers: std::collections::HashMap<(i32, i32), smithay::backend::renderer::gles::GlesTexture>,
+    /// the wallpaper picture from the configuration (None = the built-in sky)
+    pub wallpaper_image: Option<crate::wallpaper::Image>,
     pub text: crate::text::TextRenderer,
     /// draw our own mouse cursor (backends without a host cursor)
     pub draw_cursor: bool,
@@ -111,6 +113,20 @@ pub struct Fawc {
     pub session: Option<smithay::backend::session::libseat::LibSeatSession>,
     /// rendered window titles, by surface
     pub titles: std::collections::HashMap<(smithay::reexports::wayland_server::backend::ObjectId, i32), TitleTex>,
+}
+
+/// The wallpaper picture at `path`, or None (empty path, or a file that cannot be read: said in the log).
+pub fn load_wallpaper(path: &str) -> Option<crate::wallpaper::Image> {
+    if path.is_empty() {
+        return None;
+    }
+    match crate::wallpaper::load_png(std::path::Path::new(path)) {
+        Ok(i) => Some(i),
+        Err(e) => {
+            tracing::warn!("wallpaper: {e} (using the built-in sky)");
+            None
+        }
+    }
 }
 
 /// A window title as a texture, and what it was made from.
@@ -169,6 +185,7 @@ impl Fawc {
         let mut style = GlassStyle::default();
         config.apply_style(&mut style);
         seat.add_pointer();
+        let wallpaper_image = load_wallpaper(&config.wallpaper.path);
         let cursor_theme = crate::cursortheme::CursorTheme::load(&config.appearance.cursor_theme, config.appearance.cursor_size);
 
         let output = Output::new(
@@ -230,6 +247,7 @@ impl Fawc {
             config_watcher: crate::config::Watcher::new(),
             config_checked: std::time::Instant::now(),
             wallpapers: std::collections::HashMap::new(),
+            wallpaper_image,
             text: crate::text::TextRenderer::default(),
             draw_cursor: false,
             cursor_theme,
@@ -273,6 +291,10 @@ impl Fawc {
                     tracing::warn!("cannot set the keyboard layout: {e:?}");
                 }
             }
+        }
+        if new.wallpaper != self.config.wallpaper {
+            self.wallpaper_image = load_wallpaper(&new.wallpaper.path);
+            self.wallpapers.clear();
         }
         if new.appearance.cursor_theme != self.config.appearance.cursor_theme || new.appearance.cursor_size != self.config.appearance.cursor_size {
             self.cursor_theme = crate::cursortheme::CursorTheme::load(&new.appearance.cursor_theme, new.appearance.cursor_size);

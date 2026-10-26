@@ -36,6 +36,23 @@ impl Default for Appearance {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
+pub struct Wallpaper {
+    /// a PNG file; empty = the built-in sky
+    pub path: String,
+    /// fill | fit | stretch | center | tile
+    pub mode: String,
+}
+
+impl Default for Wallpaper {
+    fn default() -> Self {
+        Wallpaper { path: String::new(), mode: "fill".into() }
+    }
+}
+
+pub const WALLPAPER_MODES: [&str; 5] = ["fill", "fit", "stretch", "center", "tile"];
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
 pub struct Input {
     pub repeat_rate: i32,
     pub repeat_delay: i32,
@@ -111,6 +128,7 @@ pub fn parse_mode(s: &str) -> Option<(i32, i32, Option<f64>)> {
 pub struct Config {
     pub outputs: std::collections::BTreeMap<String, OutputConfig>,
     pub appearance: Appearance,
+    pub wallpaper: Wallpaper,
     pub input: Input,
     pub shell: Shell,
     pub session: Session,
@@ -179,6 +197,9 @@ impl Config {
             if o.x.is_some() != o.y.is_some() {
                 return Err(format!("outputs.{name}: x and y go together"));
             }
+        }
+        if !WALLPAPER_MODES.contains(&self.wallpaper.mode.as_str()) {
+            return Err(format!("wallpaper.mode must be one of {}", WALLPAPER_MODES.join(", ")));
         }
         if self.appearance.cursor_size > 256 {
             return Err("appearance.cursor_size must be at most 256".into());

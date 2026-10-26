@@ -255,7 +255,10 @@ impl Fawc {
         // wallpaper (one texture per size of monitor)
         let key = (size.w, size.h);
         if !self.wallpapers.contains_key(&key) {
-            let px = crate::wallpaper::procedural(size.w, size.h, false);
+            let px = match &self.wallpaper_image {
+                Some(img) => crate::wallpaper::lay_out(img, size.w, size.h, &self.config.wallpaper.mode),
+                None => crate::wallpaper::procedural(size.w, size.h, false),
+            };
             let tex = renderer.import_memory(&px, Fourcc::Abgr8888, Size::<i32, BufferCoord>::from((size.w, size.h)), false)?;
             self.wallpapers.insert(key, tex);
         }

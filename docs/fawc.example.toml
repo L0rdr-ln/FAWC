@@ -10,6 +10,10 @@ animations = true      # windows fade and grow in when they open and shrink into
 cursor_theme = ""      # an XCursor theme (a folder with cursors/ in ~/.icons, /usr/share/icons ...); empty = $XCURSOR_THEME
 cursor_size = 0        # pixels at scale 1; 0 = $XCURSOR_SIZE, else 24
 
+[wallpaper]
+path = ""              # a PNG file; empty = the built-in sky
+mode = "fill"          # fill (cover, crop) | fit (all of it, black bars) | stretch | center | tile
+
 [input]
 keyboard_layout = ""   # xkb layout, e.g. "de"; empty = system default
 repeat_rate = 25

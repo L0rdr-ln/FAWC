@@ -52,6 +52,10 @@ impl Status {
     }
 }
 
+fn path_of_config() -> std::path::PathBuf {
+    path()
+}
+
 fn path() -> std::path::PathBuf {
     config::user_path().unwrap_or_else(|| "fawc.toml".into())
 }
@@ -144,6 +148,57 @@ fn appearance_page(cfg: &Config, status: &Status) -> GBox {
     body.append(&row("Blur (levels)", &blur));
     body.append(&row("Gloss", &gloss));
     body.append(&row("Animations", &animations));
+    outer
+}
+
+fn wallpaper_page(cfg: &Config, status: &Status) -> GBox {
+    let (outer, body) = page("Wallpaper", "A PNG picture for the desktop background. Leave it empty for the built-in sky.");
+    let path = gtk4::Entry::new();
+    path.set_text(&cfg.wallpaper.path);
+    path.set_placeholder_text(Some("built-in sky"));
+    let choose = gtk4::Button::with_label("Choose a picture…");
+    let sky = gtk4::Button::with_label("Use the built-in sky");
+    let modes = gtk4::StringList::new(&config::WALLPAPER_MODES);
+    let mode = gtk4::DropDown::new(Some(modes), gtk4::Expression::NONE);
+    mode.set_selected(config::WALLPAPER_MODES.iter().position(|m| *m == cfg.wallpaper.mode).unwrap_or(0) as u32);
+    mode.set_halign(Align::Start);
+    let (p2, m2, s2) = (path.clone(), mode.clone(), status.clone());
+    let save = debounced(move || {
+        let chosen = config::WALLPAPER_MODES.get(m2.selected() as usize).copied().unwrap_or("fill");
+        s2.report(config::set(&path_of_config(), &model::wallpaper(&p2.text(), chosen)));
+    });
+    let s = save.clone();
+    path.connect_changed(move |_| s());
+    let s = save.clone();
+    mode.connect_selected_notify(move |_| s());
+    let p3 = path.clone();
+    sky.connect_clicked(move |_| p3.set_text(""));
+    let p4 = path.clone();
+    choose.connect_clicked(move |b| {
+        let dialog = gtk4::FileDialog::new();
+        dialog.set_title("Choose a wallpaper");
+        let filter = gtk4::FileFilter::new();
+        filter.set_name(Some("PNG pictures"));
+        filter.add_mime_type("image/png");
+        let filters = gtk4::gio::ListStore::new::<gtk4::FileFilter>();
+        filters.append(&filter);
+        dialog.set_filters(Some(&filters));
+        let p5 = p4.clone();
+        let parent = b.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
+        dialog.open(parent.as_ref(), gtk4::gio::Cancellable::NONE, move |res| {
+            if let Ok(file) = res {
+                if let Some(p) = file.path() {
+                    p5.set_text(&p.to_string_lossy());
+                }
+            }
+        });
+    });
+    let buttons = GBox::new(Orientation::Horizontal, 8);
+    buttons.append(&choose);
+    buttons.append(&sky);
+    body.append(&row("Picture", &path));
+    body.append(&buttons);
+    body.append(&row("How it fits", &mode));
     outer
 }
 
@@ -245,6 +300,7 @@ fn build(app: &gtk4::Application, quit_after: Option<u64>) {
     let stack = gtk4::Stack::new();
     stack.set_transition_type(gtk4::StackTransitionType::Crossfade);
     stack.add_titled(&appearance_page(&cfg, &status), Some("appearance"), "Appearance");
+    stack.add_titled(&wallpaper_page(&cfg, &status), Some("wallpaper"), "Wallpaper");
     stack.add_titled(&keyboard_page(&cfg, &status), Some("keyboard"), "Keyboard");
     stack.add_titled(&shell_page(&cfg, &status), Some("shell"), "Desktop");
     stack.add_titled(&session_page(&cfg, &status), Some("session"), "Session");
@@ -256,7 +312,7 @@ fn build(app: &gtk4::Application, quit_after: Option<u64>) {
     let sidebar = gtk4::ListBox::new();
     sidebar.set_size_request(190, -1);
     sidebar.set_selection_mode(gtk4::SelectionMode::Single);
-    let pages = [("appearance", "Appearance"), ("keyboard", "Keyboard"), ("shell", "Desktop"), ("session", "Session"), ("about", "About")];
+    let pages = [("appearance", "Appearance"), ("wallpaper", "Wallpaper"), ("keyboard", "Keyboard"), ("shell", "Desktop"), ("session", "Session"), ("about", "About")];
     for (_, title) in pages {
         let l = Label::new(Some(title));
         l.set_halign(Align::Start);

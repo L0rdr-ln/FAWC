@@ -10,7 +10,8 @@ possible; hardware and VM runs are noted as such.
       glass renderer, keyboard and pointer, move/resize, close/maximize/minimize, focus
 - [x] M2a title text with glow and orb buttons drawn by the compositor
 - [x] M2b one config file, applied live (accent, transparency, blur, gloss, terminal, keyboard, autostart)
-- [ ] M2c theme files (orb colours, fonts, shapes), wallpaper and output settings in the file
+- [x] wallpaper from a PNG file (`[wallpaper]` in the file, a Wallpaper page in settings)
+- [ ] M2c theme files (orb colours, fonts, shapes), output settings page
 - [x] cursor themes (XCursor, named and client-drawn cursors, resize arrows)
 - [~] M3 DRM/KMS + libinput backend (written, never run on hardware), VT switching; multiple monitors and per-monitor scale (compositor side tested with virtual outputs; DRM side compiled only); shell programs draw at the monitor's scale; a task bar per monitor; hot-plug (compositor side tested, udev trigger compiled only)
 - [ ] M4 (layer-shell and ext-background-effect-v1 done and tested) and ext-session-lock-v1 with `fawc-lock` done and tested — idle lock, screen capture, `ext-background-effect` (blur on
