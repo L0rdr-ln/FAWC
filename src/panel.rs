@@ -181,6 +181,82 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, hover: bool, clock
     buf
 }
 
+pub const MENU_W: i32 = 280;
+pub const MENU_ROW: i32 = 28;
+const MENU_PAD: i32 = 8;
+pub const MENU_MAX_ROWS: usize = 16;
+
+/// Size of the start menu with `n` entries.
+pub fn menu_size(n: usize) -> (i32, i32) {
+    (MENU_W, n.min(MENU_MAX_ROWS) as i32 * MENU_ROW + 2 * MENU_PAD)
+}
+
+/// Which menu row is at height `y`?
+pub fn menu_row_at(y: f64, n: usize) -> Option<usize> {
+    let row = ((y - MENU_PAD as f64) / MENU_ROW as f64).floor();
+    (row >= 0.0 && (row as usize) < n.min(MENU_MAX_ROWS)).then_some(row as usize)
+}
+
+/// The start menu: a glass sheet with rounded corners and one row per entry.
+pub fn draw_menu(text: &mut TextRenderer, names: &[String], hover: Option<usize>) -> Vec<u8> {
+    let (w, h) = menu_size(names.len());
+    let mut buf = vec![0u8; (w * h * 4) as usize];
+    let rad = 12.0f32;
+    for y in 0..h {
+        for x in 0..w {
+            let dx = (x as f32 + 0.5 - w as f32 / 2.0).abs() - (w as f32 / 2.0 - rad);
+            let dy = (y as f32 + 0.5 - h as f32 / 2.0).abs() - (h as f32 / 2.0 - rad);
+            let d = dx.max(0.0).hypot(dy.max(0.0)) - rad;
+            let cover = (0.5 - d).clamp(0.0, 1.0);
+            if cover <= 0.0 {
+                continue;
+            }
+            let t = y as f32 / h as f32;
+            let i = ((y * w + x) * 4) as usize;
+            let px = &mut buf[i..i + 4];
+            blend(px, [0.20 + 0.10 * (1.0 - t), 0.55 + 0.12 * (1.0 - t), 0.90], 0.62 * cover);
+            if t < 0.25 {
+                blend(px, [1.0, 1.0, 1.0], 0.16 * (1.0 - t * 4.0) * cover);
+            }
+            if d > -1.5 {
+                blend(px, [1.0, 1.0, 1.0], 0.45 * cover);
+            }
+        }
+    }
+    for (i, name) in names.iter().take(MENU_MAX_ROWS).enumerate() {
+        let y0 = MENU_PAD + i as i32 * MENU_ROW;
+        if hover == Some(i) {
+            for y in y0..y0 + MENU_ROW {
+                for x in MENU_PAD..w - MENU_PAD {
+                    let t = (y - y0) as f32 / MENU_ROW as f32;
+                    let idx = ((y * w + x) * 4) as usize;
+                    blend(&mut buf[idx..idx + 4], [0.75, 0.92, 1.0], 0.55 - 0.2 * t);
+                }
+            }
+        }
+        let color = if hover == Some(i) { [10, 50, 100] } else { [255, 255, 255] };
+        let glow = if hover == Some(i) { None } else { Some(([20, 70, 140], 0.8)) };
+        if let Some(img) = text.line(name, w - 2 * MENU_PAD - 16, 14.0, color, glow, 2) {
+            let (tx, ty) = (MENU_PAD + 10, y0 + (MENU_ROW - img.height) / 2);
+            for yy in 0..img.height {
+                for xx in 0..img.width {
+                    let (px_, py_) = (tx + xx, ty + yy);
+                    if px_ < 0 || py_ < 0 || px_ >= w || py_ >= h {
+                        continue;
+                    }
+                    let sidx = ((yy * img.width + xx) * 4) as usize;
+                    let d = ((py_ * w + px_) * 4) as usize;
+                    let inv = 255 - img.rgba[sidx + 3] as u32;
+                    for c in 0..4 {
+                        buf[d + c] = (img.rgba[sidx + c] as u32 + buf[d + c] as u32 * inv / 255).min(255) as u8;
+                    }
+                }
+            }
+        }
+    }
+    buf
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,5 +291,23 @@ mod tests {
         assert_eq!(task_at((TASKS_LEFT + TASK_MAX_W + TASK_GAP + 5) as f64, 20.0, w, h, 2), Some(1));
         assert_eq!(task_at(300.0, 2.0, w, h, 2), None);
         assert!(on_orb(22.0, 20.0, h) && !on_orb(100.0, 20.0, h));
+    }
+
+    #[test]
+    fn the_menu_has_rows_a_highlight_and_rounded_corners() {
+        let mut text = TextRenderer::default();
+        let names: Vec<String> = ["Files", "Terminal", "Settings"].iter().map(|s| s.to_string()).collect();
+        let (w, h) = menu_size(names.len());
+        let buf = draw_menu(&mut text, &names, Some(1));
+        let at = |x: i32, y: i32| {
+            let i = ((y * w + x) * 4) as usize;
+            [buf[i] as i32, buf[i + 1] as i32, buf[i + 2] as i32, buf[i + 3] as i32]
+        };
+        assert_eq!(at(0, 0)[3], 0, "the corner is transparent");
+        assert!(at(w / 2, h / 2)[3] > 100, "the sheet is translucent, not empty");
+        let (hi, plain) = (at(w - 20, MENU_PAD + MENU_ROW + 14), at(w - 20, MENU_PAD + 14));
+        assert!(hi[0] > plain[0] + 40, "the hovered row is lighter: {hi:?} {plain:?}");
+        assert_eq!(menu_row_at((MENU_PAD + MENU_ROW + 3) as f64, 3), Some(1));
+        assert_eq!(menu_row_at(2.0, 3), None);
     }
 }

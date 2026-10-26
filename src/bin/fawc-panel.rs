@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use fawc::panel;
 use fawc::text::TextRenderer;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
+use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{delegate_noop, Connection, Dispatch, QueueHandle, WEnum};
 use wayland_protocols::ext::background_effect::v1::client::{ext_background_effect_manager_v1, ext_background_effect_surface_v1};
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{zwlr_foreign_toplevel_handle_v1 as handle_mod, zwlr_foreign_toplevel_manager_v1 as manager_mod};
@@ -32,6 +32,16 @@ struct App {
     toplevels: Vec<Toplevel>,
     tasks_changed: bool,
     click_task: Option<usize>,
+    // the start menu
+    menu_surface: Option<wl_surface::WlSurface>,
+    pointer_on_menu: bool,
+    menu_hover: Option<usize>,
+    menu_click: Option<usize>,
+    menu_configured: bool,
+    menu_dirty: bool,
+    toggle_menu: bool,
+    close_menu: bool,
+    menu_entries: usize,
 }
 
 struct Toplevel {
@@ -107,31 +117,50 @@ impl Dispatch<wl_seat::WlSeat, ()> for App {
             if caps.contains(wl_seat::Capability::Pointer) {
                 seat.get_pointer(qh, ());
             }
+            if caps.contains(wl_seat::Capability::Keyboard) {
+                seat.get_keyboard(qh, ());
+            }
+        }
+    }
+}
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
+    fn event(app: &mut Self, _: &wl_keyboard::WlKeyboard, event: wl_keyboard::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        // key 1 is Escape in evdev numbering: no keymap needed for that
+        if let wl_keyboard::Event::Key { key: 1, state: WEnum::Value(wl_keyboard::KeyState::Pressed), .. } = event {
+            app.close_menu = true;
         }
     }
 }
 
 impl Dispatch<wl_pointer::WlPointer, ()> for App {
     fn event(app: &mut Self, _: &wl_pointer::WlPointer, event: wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        let n_menu = app.menu_entries;
         match event {
-            wl_pointer::Event::Enter { surface_x, surface_y, .. } | wl_pointer::Event::Motion { surface_x, surface_y, .. } => {
+            wl_pointer::Event::Enter { surface, surface_x, surface_y, .. } => {
+                app.pointer_on_menu = app.menu_surface.as_ref() == Some(&surface);
                 app.pointer = (surface_x, surface_y);
-                app.over_panel = true;
-                let hover = panel::on_orb(surface_x, surface_y, app.size.1);
-                if hover != app.hover {
-                    app.hover = hover;
-                    app.hover_changed = true;
-                }
+                pointer_moved(app, n_menu);
+            }
+            wl_pointer::Event::Motion { surface_x, surface_y, .. } => {
+                app.pointer = (surface_x, surface_y);
+                pointer_moved(app, n_menu);
             }
             wl_pointer::Event::Leave { .. } => {
-                app.over_panel = false;
+                if app.pointer_on_menu {
+                    app.close_menu = true;
+                }
+                app.pointer_on_menu = false;
+                app.menu_hover = None;
                 if app.hover {
                     app.hover = false;
                     app.hover_changed = true;
                 }
             }
             wl_pointer::Event::Button { button, state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. } if button == BTN_LEFT => {
-                if panel::on_orb(app.pointer.0, app.pointer.1, app.size.1) {
+                if app.pointer_on_menu {
+                    app.menu_click = panel::menu_row_at(app.pointer.1, n_menu);
+                } else if panel::on_orb(app.pointer.0, app.pointer.1, app.size.1) {
                     app.clicked_orb = true;
                 } else {
                     app.click_task = panel::task_at(app.pointer.0, app.pointer.1, app.size.0, app.size.1, app.toplevels.len());
@@ -142,15 +171,43 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
     }
 }
 
-impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for App {
-    fn event(app: &mut Self, s: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, event: zwlr_layer_surface_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+fn pointer_moved(app: &mut App, n_menu: usize) {
+    if app.pointer_on_menu {
+        let row = panel::menu_row_at(app.pointer.1, n_menu);
+        if row != app.menu_hover {
+            app.menu_hover = row;
+            app.menu_dirty = true;
+        }
+    } else {
+        let hover = panel::on_orb(app.pointer.0, app.pointer.1, app.size.1);
+        if hover != app.hover {
+            app.hover = hover;
+            app.hover_changed = true;
+        }
+    }
+}
+
+/// The user data tells the bar (0) from the start menu (1).
+impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, u8> for App {
+    fn event(app: &mut Self, s: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, event: zwlr_layer_surface_v1::Event, which: &u8, _: &Connection, _: &QueueHandle<Self>) {
         match event {
             zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
                 s.ack_configure(serial);
-                app.size = (width as i32, height as i32);
-                app.configured = true;
+                if *which == 0 {
+                    app.size = (width as i32, height as i32);
+                    app.configured = true;
+                } else {
+                    app.menu_configured = true;
+                    app.menu_dirty = true;
+                }
             }
-            zwlr_layer_surface_v1::Event::Closed => app.closed = true,
+            zwlr_layer_surface_v1::Event::Closed => {
+                if *which == 0 {
+                    app.closed = true;
+                } else {
+                    app.close_menu = true;
+                }
+            }
             _ => {}
         }
     }
@@ -175,6 +232,74 @@ fn launch() {
     }
 }
 
+fn launch_exec(exec: &str) {
+    if let Err(e) = Command::new("sh").arg("-c").arg(format!("exec {exec}")).spawn() {
+        eprintln!("fawc-panel: cannot start {exec}: {e}");
+    }
+}
+
+/// The start menu's pieces while it is open.
+struct Menu {
+    surface: wl_surface::WlSurface,
+    layer: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+    file: Option<std::fs::File>,
+}
+
+fn attach(
+    shm: &wl_shm::WlShm,
+    qh: &QueueHandle<App>,
+    surface: &wl_surface::WlSurface,
+    file: &mut Option<std::fs::File>,
+    mut px: Vec<u8>,
+    (w, h): (i32, i32),
+) -> std::io::Result<()> {
+    // wl_shm ARGB8888 is B, G, R, A in memory
+    for p in px.chunks_exact_mut(4) {
+        p.swap(0, 2);
+    }
+    let mut f = match file.take() {
+        Some(f) => f,
+        None => tempfile_in_runtime_dir()?,
+    };
+    f.set_len(px.len() as u64)?;
+    std::io::Seek::seek(&mut f, std::io::SeekFrom::Start(0))?;
+    f.write_all(&px)?;
+    let pool = shm.create_pool(f.as_fd(), px.len() as i32, qh, ());
+    let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, qh, ());
+    surface.attach(Some(&buffer), 0, 0);
+    surface.damage_buffer(0, 0, w, h);
+    surface.commit();
+    pool.destroy();
+    *file = Some(f);
+    Ok(())
+}
+
+fn open_menu(
+    compositor: &wl_compositor::WlCompositor,
+    shell: &zwlr_layer_shell_v1::ZwlrLayerShellV1,
+    qh: &QueueHandle<App>,
+    blur: &Option<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1>,
+    n: usize,
+) -> Menu {
+    let (w, h) = panel::menu_size(n);
+    let surface = compositor.create_surface(qh, ());
+    let layer = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Overlay, "start-menu".into(), qh, 1u8);
+    layer.set_size(w as u32, h as u32);
+    layer.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom | zwlr_layer_surface_v1::Anchor::Left);
+    layer.set_margin(0, 0, panel::HEIGHT + 4, 6);
+    layer.set_exclusive_zone(0);
+    layer.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand);
+    if let Some(b) = blur {
+        let effect = b.get_background_effect(&surface, qh, ());
+        let region = compositor.create_region(qh, ());
+        region.add(0, 0, w, h);
+        effect.set_blur_region(Some(&region));
+        region.destroy();
+    }
+    surface.commit();
+    Menu { surface, layer, file: None }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conn = Connection::connect_to_env()?;
     let (globals, mut queue) = registry_queue_init::<App>(&conn)?;
@@ -188,13 +313,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut app = App { seat: Some(seat), ..App::default() };
     let surface = compositor.create_surface(&qh, ());
-    let ls = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Top, "panel".into(), &qh, ());
+    let ls = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Top, "panel".into(), &qh, 0u8);
     ls.set_size(0, panel::HEIGHT as u32);
     ls.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom | zwlr_layer_surface_v1::Anchor::Left | zwlr_layer_surface_v1::Anchor::Right);
     ls.set_exclusive_zone(panel::HEIGHT);
     // ask for blur behind the whole bar, if the compositor offers it
-    let effect: Option<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
-    let blur = effect.map(|m| m.get_background_effect(&surface, &qh, ()));
+    let blur_manager: Option<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
+    let blur = blur_manager.as_ref().map(|m| m.get_background_effect(&surface, &qh, ()));
     surface.commit();
     while !app.configured {
         queue.blocking_dispatch(&mut app)?;
@@ -214,6 +339,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut size = (0, 0);
     let mut dirty = true;
     let mut file: Option<std::fs::File> = None;
+    let mut menu: Option<Menu> = None;
+    // for screenshots and tests: open the start menu at once
+    app.toggle_menu = std::env::var_os("FAWC_PANEL_OPEN_MENU").is_some();
+    let entries = {
+        let mut e = fawc::apps::installed();
+        e.truncate(panel::MENU_MAX_ROWS);
+        e
+    };
 
     while !app.closed {
         if last_clock.elapsed() >= Duration::from_secs(10) {
@@ -238,35 +371,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if dirty {
             size = app.size;
-            let (w, h) = size;
-            let rgba = panel::draw(&mut text, w, h, app.hover, &current_clock, &app.toplevels.iter().map(|t| t.task.clone()).collect::<Vec<_>>());
-            // wl_shm ARGB8888 is B, G, R, A in memory
-            let mut px = rgba;
-            for p in px.chunks_exact_mut(4) {
-                p.swap(0, 2);
-            }
-            let f = match file.take() {
-                Some(f) => f,
-                None => tempfile_in_runtime_dir()?,
-            };
-            f.set_len(px.len() as u64)?;
-            let mut f = f;
-            std::io::Seek::seek(&mut f, std::io::SeekFrom::Start(0))?;
-            f.write_all(&px)?;
-            let pool = shm.create_pool(f.as_fd(), px.len() as i32, &qh, ());
-            let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, &qh, ());
-            surface.attach(Some(&buffer), 0, 0);
-            surface.damage_buffer(0, 0, w, h);
-            surface.commit();
-            pool.destroy();
-            file = Some(f);
+            let tasks: Vec<panel::Task> = app.toplevels.iter().map(|t| t.task.clone()).collect();
+            let rgba = panel::draw(&mut text, size.0, size.1, app.hover, &current_clock, &tasks);
+            attach(&shm, &qh, &surface, &mut file, rgba, size)?;
             shown = current_clock.clone();
             shown_hover = app.hover;
             dirty = false;
         }
         if app.clicked_orb {
             app.clicked_orb = false;
-            launch();
+            app.toggle_menu = true;
+        }
+        // the start menu
+        if app.toggle_menu {
+            app.toggle_menu = false;
+            if menu.is_some() {
+                app.close_menu = true;
+            } else if !entries.is_empty() {
+                let m = open_menu(&compositor, &shell, &qh, &blur_manager, entries.len());
+                app.menu_surface = Some(m.surface.clone());
+                app.menu_entries = entries.len();
+                app.menu_configured = false;
+                menu = Some(m);
+            } else {
+                launch();
+            }
+        }
+        if let Some(row) = app.menu_click.take() {
+            if let Some(e) = entries.get(row) {
+                launch_exec(&e.exec);
+            }
+            app.close_menu = true;
+        }
+        if app.close_menu {
+            app.close_menu = false;
+            if let Some(m) = menu.take() {
+                m.layer.destroy();
+                m.surface.destroy();
+            }
+            app.menu_surface = None;
+            app.pointer_on_menu = false;
+            app.menu_hover = None;
+        }
+        if let Some(m) = &mut menu {
+            if app.menu_configured && app.menu_dirty {
+                app.menu_dirty = false;
+                let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
+                let px = panel::draw_menu(&mut text, &names, app.menu_hover);
+                attach(&shm, &qh, &m.surface, &mut m.file, px, panel::menu_size(names.len()))?;
+            }
         }
         // wait for events, but wake up for the clock
         queue.flush()?;

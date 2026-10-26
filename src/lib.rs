@@ -1,5 +1,6 @@
 //! FAWC: a Wayland compositor with real glass (blur, gloss, translucency drawn on the GPU).
 
+pub mod apps;
 pub mod background_effect;
 pub mod backend_drm;
 pub mod backend_winit;

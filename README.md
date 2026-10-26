@@ -33,7 +33,9 @@ minimized window, **Alt+f** maximize, **Alt+q** close, **Alt+Esc** quit.
 
 ![The task bar](docs/shell.png)
 
-The task bar (`fawc-panel`) starts with the compositor; click the orb to start `$FAWC_LAUNCHER` (default the terminal). `FAWC_NO_PANEL=1` turns it off.
+![The start menu](docs/menu.png)
+
+The task bar (`fawc-panel`) starts with the compositor; click the orb for the start menu (the installed applications). `FAWC_NO_PANEL=1` turns it off.
 
 ## Run it on a console or in a VM
 
