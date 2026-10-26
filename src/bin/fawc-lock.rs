@@ -17,6 +17,8 @@ struct Output {
     lock_surface: ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
     size: (i32, i32),
     scale: i32,
+    /// the wallpaper at this monitor's size and scale, made once
+    background: Option<((i32, i32), Vec<u8>)>,
     file: Option<std::fs::File>,
 }
 
@@ -170,7 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let surface = compositor.create_surface(&qh, ());
             let idx = app.outputs.len();
             let lock_surface = lock.get_lock_surface(&surface, &output, &qh, idx);
-            app.outputs.push(Output { surface, lock_surface, size: (0, 0), scale: 1, file: None });
+            app.outputs.push(Output { surface, lock_surface, size: (0, 0), scale: 1, background: None, file: None });
         }
     }
     if app.outputs.is_empty() {
@@ -202,7 +204,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let s = o.scale;
                 let (w, h) = (lw * s, lh * s);
-                let mut px = lockscreen::draw(&mut text, w, h, s, &app.user, app.typed.chars().count(), &app.message);
+                if o.background.as_ref().map(|(sz, _)| *sz != (w, h)).unwrap_or(true) {
+                    o.background = Some(((w, h), lockscreen::background(w, h)));
+                }
+                let bg = &o.background.as_ref().expect("background").1;
+                let mut px = lockscreen::draw(&mut text, bg, w, h, s, &app.user, app.typed.chars().count(), &app.message);
                 for p in px.chunks_exact_mut(4) {
                     p.swap(0, 2);
                 }

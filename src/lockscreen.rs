@@ -7,14 +7,20 @@ use crate::text::TextRenderer;
 pub const CARD_W: i32 = 380;
 pub const CARD_H: i32 = 210;
 
-/// `w` x `h` pixels at `s` pixels per logical pixel. `dots` is the number of characters typed;
-/// `message` a line under the field ("Wrong password").
-pub fn draw(text: &mut TextRenderer, w: i32, h: i32, s: i32, user: &str, dots: usize, message: &str) -> Vec<u8> {
+/// The picture behind the card: the wallpaper, opaque. Making it is slow, so make it once per
+/// monitor and pass it to `draw` every time.
+pub fn background(w: i32, h: i32) -> Vec<u8> {
     let mut buf = crate::wallpaper::procedural(w, h, false);
-    // the wallpaper has no transparency; make sure alpha is full
     for p in buf.chunks_exact_mut(4) {
         p[3] = 255;
     }
+    buf
+}
+
+/// `w` x `h` pixels at `s` pixels per logical pixel. `dots` is the number of characters typed;
+/// `message` a line under the field ("Wrong password").
+pub fn draw(text: &mut TextRenderer, background: &[u8], w: i32, h: i32, s: i32, user: &str, dots: usize, message: &str) -> Vec<u8> {
+    let mut buf = background.to_vec();
     let sf = s as f32;
     let (card_w, card_h) = (CARD_W * s, CARD_H * s);
     let (cx0, cy0) = ((w - card_w) / 2, (h - card_h) / 2);
@@ -89,8 +95,9 @@ mod tests {
     fn the_card_is_glass_in_the_middle_and_dots_follow_typing() {
         let mut text = TextRenderer::default();
         let (w, h) = (800, 600);
-        let empty = draw(&mut text, w, h, 1, "alice", 0, "");
-        let typed = draw(&mut text, w, h, 1, "alice", 3, "");
+        let bg = background(w, h);
+        let empty = draw(&mut text, &bg, w, h, 1, "alice", 0, "");
+        let typed = draw(&mut text, &bg, w, h, 1, "alice", 3, "");
         let at = |b: &[u8], x: i32, y: i32| {
             let i = ((y * w + x) * 4) as usize;
             [b[i] as i32, b[i + 1] as i32, b[i + 2] as i32, b[i + 3] as i32]
@@ -103,7 +110,7 @@ mod tests {
         let none = at(&empty, fx0 + 18, fy0 + 18);
         assert!(dot[0] < none[0] - 50, "a dark dot appears: {dot:?} vs {none:?}");
         // at 2x the card is twice as wide: its edge is at 2 * 190 px from the middle
-        let big = draw(&mut text, 1600, 1200, 2, "alice", 0, "");
+        let big = draw(&mut text, &background(1600, 1200), 1600, 1200, 2, "alice", 0, "");
         let row = |x: i32| {
             let i = ((600 * 1600 + x) * 4) as usize;
             [big[i] as i32, big[i + 1] as i32, big[i + 2] as i32]
