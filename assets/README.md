@@ -7,3 +7,7 @@
   decoded; delete the `include_bytes!` line in `src/wallpaper.rs` and `configured()` falls back).
 
 Everything else in the project's artwork is generated in code.
+
+## Logo and mascot
+
+`logo.svg` (a glass orb over sky and hill) and `mascot.svg` ("Bubbly", a glass bubble with a sprout) are drawn by hand for this project and are MIT like the rest. `docs/social-preview.png` is the 1280x640 picture for the GitHub repository card (upload it under Settings > Social preview).

@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="FAWC logo" height="128">
+  <img src="assets/mascot.svg" alt="Bubbly, the mascot" height="128">
+</p>
+
 # FAWC
 
 [![build](https://github.com/L0rdr-ln/FAWC/actions/workflows/build.yml/badge.svg)](https://github.com/L0rdr-ln/FAWC/actions/workflows/build.yml)
