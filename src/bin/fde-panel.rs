@@ -33,6 +33,9 @@ struct App {
     toplevels: Vec<Toplevel>,
     tasks_changed: bool,
     click_task: Option<usize>,
+    status_rects: Vec<(panel::StatusKind, i32, i32)>,
+    click_status: Option<panel::StatusKind>,
+    scroll_status: Option<(panel::StatusKind, i32)>,
     // the start menu
     menu_surface: Option<wl_surface::WlSurface>,
     pointer_on_menu: bool,
@@ -246,13 +249,27 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                     app.menu_click = if app.power_click.is_some() { None } else { panel::menu_row_at(app.pointer.1, n_menu) };
                 } else if panel::on_orb(app.pointer.0, app.pointer.1, app.size.1) {
                     app.clicked_orb = true;
+                } else if let Some(kind) = status_at(app) {
+                    app.click_status = Some(kind);
                 } else {
                     app.click_task = panel::task_at(app.pointer.0, app.pointer.1, app.size.0, app.size.1, app.toplevels.len());
+                }
+            }
+            wl_pointer::Event::Axis { axis: WEnum::Value(wl_pointer::Axis::VerticalScroll), value, .. } if !app.pointer_on_menu => {
+                if let Some(kind) = status_at(app) {
+                    // scrolling up makes it louder
+                    app.scroll_status = Some((kind, if value < 0.0 { 5 } else { -5 }));
                 }
             }
             _ => {}
         }
     }
+}
+
+/// The status label under the pointer on the bar.
+fn status_at(app: &App) -> Option<panel::StatusKind> {
+    let x = app.pointer.0 as i32;
+    app.status_rects.iter().find(|(_, x0, x1)| x >= *x0 && x < *x1).map(|(k, _, _)| *k)
 }
 
 fn pointer_moved(app: &mut App, n_menu: usize) {
@@ -441,6 +458,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut shown = String::new();
     let mut shown_hover = false;
     let mut shown_ws: Option<(usize, usize)> = None;
+    let mut shown_status: Vec<(panel::StatusKind, String)> = Vec::new();
+    let mut status_checked = std::time::Instant::now() - Duration::from_secs(10);
     let mut shown_scale = 1;
     let mut last_clock = Instant::now() - Duration::from_secs(60);
     let mut current_clock = String::new();
@@ -471,6 +490,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        // volume and battery: looked at every two seconds, and at once after a click or scroll
+        let mut status_now = shown_status.clone();
+        let acted = app.click_status.is_some() || app.scroll_status.is_some();
+        if let Some(kind) = app.click_status.take() {
+            if kind == panel::StatusKind::Volume {
+                fde::status::toggle_mute();
+            }
+        }
+        if let Some((kind, delta)) = app.scroll_status.take() {
+            if kind == panel::StatusKind::Volume {
+                fde::status::change_volume(delta);
+            }
+        }
+        if acted || status_checked.elapsed() >= Duration::from_secs(2) {
+            status_checked = std::time::Instant::now();
+            status_now.clear();
+            if let Some(v) = fde::status::volume() {
+                status_now.push((panel::StatusKind::Volume, fde::status::volume_label(v)));
+            }
+            if let Some(b) = fde::status::battery() {
+                status_now.push((panel::StatusKind::Battery, fde::status::battery_label(b)));
+            }
+        }
+        if status_now != shown_status {
+            dirty = true;
+        }
         let ws = fde::workspaces::read_workspace_state();
         if ws != shown_ws {
             dirty = true;
@@ -490,6 +535,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some((cur, count)) = ws {
                 panel::draw_workspaces(&mut rgba, size.0 * s, size.1 * s, s, cur, count);
             }
+            app.status_rects = panel::draw_status(&mut text, &mut rgba, size.0 * s, size.1 * s, s, &status_now, ws.map(|w| w.1).unwrap_or(1));
+            shown_status = status_now.clone();
             attach(&shm, &qh, &surface, &mut file, rgba, (size.0 * s, size.1 * s), s)?;
             shown_scale = s;
             // tell the compositor where each window's button is: minimizing shrinks towards it

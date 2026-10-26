@@ -217,6 +217,46 @@ pub fn draw_workspaces(buf: &mut [u8], width: i32, height: i32, s: i32, current:
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StatusKind {
+    Volume,
+    Battery,
+}
+
+/// Width of the workspace dots (logical pixels), 0 with a single workspace.
+fn workspace_dots_width(count: usize) -> f32 {
+    if count < 2 {
+        0.0
+    } else {
+        count as f32 * 9.0 + (count as f32 - 1.0) * 8.0 + 14.0
+    }
+}
+
+/// The status labels (volume, battery) right of the task buttons and left of the workspace dots,
+/// drawn over the bar. Returns where each one is, in logical x pixels, for hit testing.
+pub fn draw_status(
+    text: &mut TextRenderer,
+    buf: &mut [u8],
+    width: i32,
+    height: i32,
+    s: i32,
+    items: &[(StatusKind, String)],
+    workspaces: usize,
+) -> Vec<(StatusKind, i32, i32)> {
+    let sf = s as f32;
+    let pal = crate::theme::palette();
+    let mut right = width as f32 - (112.0 + workspace_dots_width(workspaces)) * sf;
+    let mut rects = Vec::new();
+    for (kind, label) in items {
+        let Some(img) = text.line(label, 220 * s, 12.5 * sf, [255, 255, 255], pal.glow(0.8), 2 * s) else { continue };
+        let x0 = right as i32 - img.width;
+        blit(buf, width, height, &img, x0, (height - img.height) / 2);
+        rects.push((*kind, x0 / s, (x0 + img.width) / s));
+        right = x0 as f32 - 12.0 * sf;
+    }
+    rects
+}
+
 pub const MENU_W: i32 = 320;
 pub const MENU_ROW: i32 = 28;
 const MENU_PAD: i32 = 8;
@@ -434,6 +474,22 @@ mod tests {
         assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + MENU_ROW + 3) as f64, 3), Some(1));
         assert_eq!(menu_row_at(2.0, 3), None, "the search field is not a row");
         assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + 3 * MENU_ROW + 3) as f64, 3), None, "below the last row");
+    }
+
+    #[test]
+    fn the_status_labels_are_drawn_left_of_the_dots_and_can_be_found_again() {
+        let mut text = TextRenderer::default();
+        let (w, h) = (600, HEIGHT);
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        let items = vec![(StatusKind::Volume, "Vol 45%".to_string()), (StatusKind::Battery, "Bat 87%".to_string())];
+        let rects = draw_status(&mut text, &mut buf, w, h, 1, &items, 4);
+        if text.line("x", 50, 12.0, [0, 0, 0], None, 0).is_none() {
+            return; // no fonts on this machine
+        }
+        assert_eq!(rects.len(), 2);
+        assert_eq!(rects[0].0, StatusKind::Volume);
+        assert!(rects[0].1 > rects[1].2 && rects[0].2 <= w - 112 - 60, "volume sits left of battery, both left of the dots: {rects:?}");
+        assert!(buf.iter().any(|&b| b > 0), "something was drawn");
     }
 
     #[test]

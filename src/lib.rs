@@ -25,6 +25,7 @@ pub mod protocols;
 pub mod render;
 pub mod screencopy;
 pub mod shell;
+pub mod status;
 pub mod state;
 pub mod text;
 pub mod theme;
