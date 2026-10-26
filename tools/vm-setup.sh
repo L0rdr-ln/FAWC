@@ -54,9 +54,9 @@ export WLR_NO_HARDWARE_CURSORS=1
 LAUNCH
 chmod +x "$HOME/start-fawc"
 
-# a wallpaper picture, downloaded here and not stored in the repository (the picture belongs to its
-# author: check the site's terms). Set FAWC_WALLPAPER_URL=none to skip, or to another picture's URL.
-wall_url="${FAWC_WALLPAPER_URL:-https://frutigeraeroarchive.org/images/wallpapers/daniele/daniele_25.jpg}"
+# FAWC comes with a wallpaper (assets/wallpaper.webp). To use another picture from the web, run
+# FAWC_WALLPAPER_URL=https://... tools/vm-setup.sh  (or tools/get-wallpaper.sh URL later).
+wall_url="${FAWC_WALLPAPER_URL:-none}"
 if [ "$wall_url" != "none" ]; then
     say "downloading the wallpaper"
     "$ROOT/tools/get-wallpaper.sh" "$wall_url" fill || echo "(no wallpaper downloaded: the built-in picture stays; try tools/get-wallpaper.sh URL later)"

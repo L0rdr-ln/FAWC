@@ -9,8 +9,11 @@ pub const CARD_H: i32 = 210;
 
 /// The picture behind the card: the wallpaper, opaque. Making it is slow, so make it once per
 /// monitor and pass it to `draw` every time.
-pub fn background(w: i32, h: i32) -> Vec<u8> {
-    let mut buf = crate::wallpaper::procedural(w, h, false);
+pub fn background(picture: Option<&crate::wallpaper::Image>, mode: &str, w: i32, h: i32) -> Vec<u8> {
+    let mut buf = match picture {
+        Some(img) => crate::wallpaper::lay_out(img, w, h, mode),
+        None => crate::wallpaper::procedural(w, h, false),
+    };
     for p in buf.chunks_exact_mut(4) {
         p[3] = 255;
     }
@@ -95,7 +98,7 @@ mod tests {
     fn the_card_is_glass_in_the_middle_and_dots_follow_typing() {
         let mut text = TextRenderer::default();
         let (w, h) = (800, 600);
-        let bg = background(w, h);
+        let bg = background(None, "fill", w, h);
         let empty = draw(&mut text, &bg, w, h, 1, "alice", 0, "");
         let typed = draw(&mut text, &bg, w, h, 1, "alice", 3, "");
         let at = |b: &[u8], x: i32, y: i32| {
@@ -110,7 +113,7 @@ mod tests {
         let none = at(&empty, fx0 + 18, fy0 + 18);
         assert!(dot[0] < none[0] - 50, "a dark dot appears: {dot:?} vs {none:?}");
         // at 2x the card is twice as wide: its edge is at 2 * 190 px from the middle
-        let big = draw(&mut text, &background(1600, 1200), 1600, 1200, 2, "alice", 0, "");
+        let big = draw(&mut text, &background(None, "fill", 1600, 1200), 1600, 1200, 2, "alice", 0, "");
         let row = |x: i32| {
             let i = ((600 * 1600 + x) * 4) as usize;
             [big[i] as i32, big[i + 1] as i32, big[i + 2] as i32]

@@ -105,9 +105,15 @@ fn the_wallpaper_file_is_loaded_and_follows_edits() {
     state.check_config(true);
     assert_eq!(state.wallpaper_image.as_ref().unwrap().rgba[..3], [10, 10, 200]);
 
-    // a path that is not a picture: the built-in sky (and a note in the log)
+    // a path that is not a picture: the wallpaper that comes with FAWC (and a note in the log)
     std::thread::sleep(std::time::Duration::from_millis(30));
     std::fs::write(&file, "[wallpaper]\npath = \"/nonexistent/x.png\"\n").unwrap();
     state.check_config(true);
-    assert!(state.wallpaper_image.is_none());
+    assert!(state.wallpaper_image.as_ref().map(|i| i.width >= 1900).unwrap_or(false), "the bundled picture");
+
+    // no path at all: the same
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    std::fs::write(&file, "[appearance]\nblur = 2\n").unwrap();
+    state.check_config(true);
+    assert!(state.wallpaper_image.as_ref().map(|i| i.width >= 1900).unwrap_or(false));
 }

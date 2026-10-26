@@ -115,18 +115,10 @@ pub struct Fawc {
     pub titles: std::collections::HashMap<(smithay::reexports::wayland_server::backend::ObjectId, i32), TitleTex>,
 }
 
-/// The wallpaper picture at `path`, or None (empty path, or a file that cannot be read: said in the log).
+/// The wallpaper picture: the file the configuration names, else the one built into the program
+/// (None = the generated sky, see `wallpaper::configured`).
 pub fn load_wallpaper(path: &str) -> Option<crate::wallpaper::Image> {
-    if path.is_empty() {
-        return None;
-    }
-    match crate::wallpaper::load_image(std::path::Path::new(path)) {
-        Ok(i) => Some(i),
-        Err(e) => {
-            tracing::warn!("wallpaper: {e} (using the built-in sky)");
-            None
-        }
-    }
+    crate::wallpaper::configured(path)
 }
 
 /// A window title as a texture, and what it was made from.

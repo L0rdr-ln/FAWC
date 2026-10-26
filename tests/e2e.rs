@@ -165,6 +165,7 @@ fn pixel(buf: &[u8], w: i32, x: i32, y: i32) -> [i32; 3] {
 fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -362,6 +363,7 @@ fn panel_client(path: std::path::PathBuf, tx: mpsc::Sender<(u32, u32)>, argb: u3
 fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -445,6 +447,7 @@ fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
 fn the_real_task_bar_shows_a_button_for_an_open_window() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -509,6 +512,7 @@ fn the_lock_screen_locks_the_session_and_unlocks_with_the_right_password() {
 
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -634,6 +638,7 @@ fn a_notification_sent_over_dbus_appears_as_a_bubble_and_goes_away() {
     }
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -756,6 +761,7 @@ fn typing_in_the_start_menu_filters_and_enter_starts_the_program() {
 
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -827,6 +833,7 @@ fn typing_in_the_start_menu_filters_and_enter_starts_the_program() {
 fn a_new_window_fades_and_grows_in() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -907,6 +914,7 @@ fn grab_scene(renderer: &mut smithay::backend::renderer::gles::GlesRenderer, sce
 fn a_window_on_the_second_monitor_is_drawn_there_and_the_pointer_and_maximize_follow() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -964,6 +972,7 @@ fn a_window_on_the_second_monitor_is_drawn_there_and_the_pointer_and_maximize_fo
 fn a_hidpi_monitor_draws_everything_at_double_size() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -1009,6 +1018,7 @@ fn the_task_bar_draws_at_the_monitors_scale() {
 
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -1060,6 +1070,7 @@ fn the_task_bar_draws_at_the_monitors_scale() {
 fn every_monitor_gets_its_own_task_bar_and_unplugging_one_closes_its_bar() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let display: Display<Fawc> = Display::new().unwrap();
     let mut state = Fawc::new(&display.handle(), (800, 600).into());
@@ -1145,6 +1156,7 @@ fn write_xcursor(path: &std::path::Path, size: u32, color: [u8; 4], hot: (u32, u
 fn the_cursor_comes_from_the_theme_and_turns_into_resize_arrows_on_a_border() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -1202,6 +1214,7 @@ fn the_cursor_comes_from_the_theme_and_turns_into_resize_arrows_on_a_border() {
 fn minimizing_shrinks_into_the_task_bar_button_and_restoring_brings_it_back() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -1272,6 +1285,7 @@ fn minimizing_shrinks_into_the_task_bar_button_and_restoring_brings_it_back() {
 fn a_wallpaper_picture_from_the_configuration_is_what_the_monitor_shows() {
     let dir = tempfile::tempdir().unwrap();
     let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FAWC_BUILTIN_SKY", "1"); // pixel checks use the generated sky, not the photograph
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,

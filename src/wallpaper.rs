@@ -152,21 +152,49 @@ pub fn load_image(path: &std::path::Path) -> Result<Image, String> {
 /// Read a WebP (lossy or lossless, with or without transparency) as RGBA.
 pub fn load_webp(path: &std::path::Path) -> Result<Image, String> {
     let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut dec = image_webp::WebPDecoder::new(std::io::BufReader::new(file)).map_err(|e| format!("{}: {e}", path.display()))?;
+    decode_webp(std::io::BufReader::new(file)).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn decode_webp<R: std::io::BufRead + std::io::Seek>(reader: R) -> Result<Image, String> {
+    let mut dec = image_webp::WebPDecoder::new(reader).map_err(|e| e.to_string())?;
     let (w, h) = dec.dimensions();
     let has_alpha = dec.has_alpha();
-    let size = dec.output_buffer_size().ok_or_else(|| format!("{}: picture too large", path.display()))?;
+    let size = dec.output_buffer_size().ok_or("picture too large")?;
     let mut data = vec![0u8; size];
-    dec.read_image(&mut data).map_err(|e| format!("{}: {e}", path.display()))?;
+    dec.read_image(&mut data).map_err(|e| e.to_string())?;
     let rgba: Vec<u8> = if has_alpha {
         data
     } else {
         data.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect()
     };
     if w == 0 || h == 0 {
-        return Err(format!("{}: empty picture", path.display()));
+        return Err("empty picture".into());
     }
     Ok(Image { width: w as i32, height: h as i32, rgba })
+}
+
+/// The wallpaper that comes with FAWC (`assets/wallpaper.webp`, built into the program), used
+/// when the configuration names none.
+const BUNDLED: &[u8] = include_bytes!("../assets/wallpaper.webp");
+
+pub fn bundled() -> Option<Image> {
+    decode_webp(std::io::Cursor::new(BUNDLED)).ok()
+}
+
+/// The picture to show: the file `path` names; if that is empty or cannot be read, the bundled
+/// one. `FAWC_BUILTIN_SKY=1` asks for the generated sky instead (None), which the tests use so
+/// that their pixel checks do not depend on a photograph.
+pub fn configured(path: &str) -> Option<Image> {
+    if !path.is_empty() {
+        match load_image(std::path::Path::new(path)) {
+            Ok(i) => return Some(i),
+            Err(e) => eprintln!("wallpaper: {e} (using the bundled picture)"),
+        }
+    }
+    if std::env::var_os("FAWC_BUILTIN_SKY").is_some() {
+        return None;
+    }
+    bundled()
 }
 
 /// Read a JPEG (colour or grey) as RGBA.
@@ -336,6 +364,20 @@ mod tests {
         let img = load_image(&path).unwrap();
         assert_eq!((img.width, img.height), (4, 4));
         assert_eq!(&img.rgba[..4], &[30, 160, 60, 255], "a lossless picture comes back exactly");
+    }
+
+    #[test]
+    fn the_bundled_wallpaper_is_a_big_sky_and_grass_picture() {
+        let img = bundled().expect("the wallpaper built into the program decodes");
+        assert!(img.width >= 1900 && img.height >= 1200, "a full-size picture: {}x{}", img.width, img.height);
+        // blue sky at the top, green grass at the bottom
+        let px = |x: i32, y: i32| {
+            let i = ((y * img.width + x) * 4) as usize;
+            [img.rgba[i] as i32, img.rgba[i + 1] as i32, img.rgba[i + 2] as i32]
+        };
+        let (sky, grass) = (px(img.width / 2, 40), px(img.width / 2, img.height - 40));
+        assert!(sky[2] > sky[0] + 60, "the sky is blue: {sky:?}");
+        assert!(grass[1] > grass[0] + 60 && grass[1] > grass[2] + 60, "the grass is green: {grass:?}");
     }
 
     #[test]

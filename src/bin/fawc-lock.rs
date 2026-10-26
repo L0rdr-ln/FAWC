@@ -181,6 +181,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // the same wallpaper as the desktop
+    let config = fawc::config::Config::load().unwrap_or_default();
+    let (picture, mode) = (fawc::wallpaper::configured(&config.wallpaper.path), config.wallpaper.mode.clone());
     let mut text = TextRenderer::default();
     while !app.finished {
         if app.unlock {
@@ -205,7 +208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let s = o.scale;
                 let (w, h) = (lw * s, lh * s);
                 if o.background.as_ref().map(|(sz, _)| *sz != (w, h)).unwrap_or(true) {
-                    o.background = Some(((w, h), lockscreen::background(w, h)));
+                    o.background = Some(((w, h), lockscreen::background(picture.as_ref(), &mode, w, h)));
                 }
                 let bg = &o.background.as_ref().expect("background").1;
                 let mut px = lockscreen::draw(&mut text, bg, w, h, s, &app.user, app.typed.chars().count(), &app.message);
