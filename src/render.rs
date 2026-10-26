@@ -471,6 +471,9 @@ impl Fde {
             }
         }
 
+        // screenshots that want no cursor are taken before it is drawn
+        self.fulfill_screencopy(renderer, output, scene, false);
+
         // our own mouse cursor, on the monitor the pointer is on
         let p = self.pointer_location;
         let on_this = p.x >= out_rect.loc.x as f64
@@ -480,6 +483,7 @@ impl Fde {
         if self.draw_cursor && on_this {
             self.draw_cursor_on(renderer, scene, size, view)?;
         }
+        self.fulfill_screencopy(renderer, output, scene, true);
         Ok(())
     }
 

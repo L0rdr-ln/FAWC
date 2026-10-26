@@ -85,6 +85,7 @@ pub struct Fde {
     pub seat_state: SeatState<Fde>,
     pub data_device_state: DataDeviceState,
     /// windows that are bending on their springs
+    pub screencopy: crate::screencopy::Screencopy,
     pub wobbles: Vec<(Window, crate::wobble::Wobble)>,
     pub wobble_time: Instant,
     pub viewporter_state: smithay::wayland::viewporter::ViewporterState,
@@ -182,6 +183,7 @@ impl Fde {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Fde>(dh);
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Fde>(dh);
+        crate::screencopy::create_global(dh);
         let viewporter_state = smithay::wayland::viewporter::ViewporterState::new::<Fde>(dh);
         let fractional_scale_state = smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Fde>(dh);
         let idle_inhibit_state = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Fde>(dh);
@@ -252,6 +254,7 @@ impl Fde {
             output_manager_state,
             seat_state,
             data_device_state,
+            screencopy: Default::default(),
             wobbles: Vec::new(),
             wobble_time: Instant::now(),
             viewporter_state,

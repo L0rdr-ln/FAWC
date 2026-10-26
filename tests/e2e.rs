@@ -1714,3 +1714,112 @@ fn a_program_learns_the_exact_scale_and_may_use_a_viewport() {
     }
     assert_eq!(th.join().unwrap(), Some(180), "1.5 is sent as 180/120");
 }
+
+// ------------------------------------------------------------------ screen capture
+
+use wayland_client::protocol::wl_output;
+use wayland_protocols_wlr::screencopy::v1::client::{zwlr_screencopy_frame_v1, zwlr_screencopy_manager_v1};
+
+#[derive(Default)]
+struct CopyApp {
+    buffer: Option<(u32, u32, u32, u32)>,
+    done: bool,
+    ready: bool,
+    failed: bool,
+}
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for CopyApp {
+    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+}
+delegate_noop!(CopyApp: ignore wl_shm::WlShm);
+delegate_noop!(CopyApp: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(CopyApp: ignore wl_buffer::WlBuffer);
+delegate_noop!(CopyApp: ignore wl_output::WlOutput);
+delegate_noop!(CopyApp: ignore zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1);
+impl Dispatch<zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1, ()> for CopyApp {
+    fn event(app: &mut Self, _: &zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1, event: zwlr_screencopy_frame_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        match event {
+            zwlr_screencopy_frame_v1::Event::Buffer { width, height, stride, format } => {
+                let f: u32 = match format {
+                    wayland_client::WEnum::Value(v) => v as u32,
+                    wayland_client::WEnum::Unknown(v) => v,
+                };
+                app.buffer = Some((width, height, stride, f));
+            }
+            zwlr_screencopy_frame_v1::Event::BufferDone => app.done = true,
+            zwlr_screencopy_frame_v1::Event::Ready { .. } => app.ready = true,
+            zwlr_screencopy_frame_v1::Event::Failed => app.failed = true,
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn a_program_can_take_a_screenshot_of_a_monitor_region() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): screencopy test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-copy").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    let path = dir.path().join("fde-e2e-copy");
+    let th = std::thread::spawn(move || {
+        let conn = Connection::from_socket(UnixStream::connect(path).unwrap()).unwrap();
+        let (globals, mut queue) = registry_queue_init::<CopyApp>(&conn).unwrap();
+        let qh = queue.handle();
+        let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).unwrap();
+        let output: wl_output::WlOutput = globals.bind(&qh, 1..=1, ()).unwrap();
+        let mgr: zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1 = globals.bind(&qh, 1..=3, ()).unwrap();
+        let frame = mgr.capture_output_region(0, &output, 100, 50, 120, 80, &qh, ());
+        let mut app = CopyApp::default();
+        while !app.done {
+            queue.blocking_dispatch(&mut app).unwrap();
+        }
+        let (bw, bh, stride, _) = app.buffer.expect("a buffer event");
+        let mut file = tempfile::tempfile_in(std::env::var("XDG_RUNTIME_DIR").unwrap()).unwrap();
+        file.write_all(&vec![0u8; (stride * bh) as usize]).unwrap();
+        use std::os::fd::AsFd;
+        let pool = shm.create_pool(file.as_fd(), (stride * bh) as i32, &qh, ());
+        let buf = pool.create_buffer(0, bw as i32, bh as i32, stride as i32, wl_shm::Format::Xrgb8888, &qh, ());
+        frame.copy(&buf);
+        while !app.ready && !app.failed {
+            queue.blocking_dispatch(&mut app).unwrap();
+        }
+        use std::io::{Read, Seek};
+        let mut px = vec![0u8; (stride * bh) as usize];
+        file.rewind().unwrap();
+        file.read_exact(&mut px).unwrap();
+        (app.ready, bw, bh, px)
+    });
+    let t0 = Instant::now();
+    while !th.is_finished() {
+        hn.pump();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        assert!(t0.elapsed() < Duration::from_secs(10), "the capture never finished");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let (ready, bw, bh, px) = th.join().unwrap();
+    assert!(ready, "the copy succeeded");
+    assert_eq!((bw, bh), (120, 80), "the buffer is as big as the region");
+    let shot = grab_scene(&mut renderer, &mut scene);
+    // the shared-memory pixels are B, G, R, X; the scene's are R, G, B, A
+    for (x, y) in [(0, 0), (60, 40), (119, 79), (10, 70)] {
+        let got = [px[((y * 120 + x) * 4 + 2) as usize] as i32, px[((y * 120 + x) * 4 + 1) as usize] as i32, px[((y * 120 + x) * 4) as usize] as i32];
+        let want = pixel(&shot, w, 100 + x, 50 + y);
+        for c in 0..3 {
+            assert!((got[c] - want[c]).abs() <= 3, "pixel ({x},{y}) channel {c}: {got:?} vs {want:?}");
+        }
+    }
+}

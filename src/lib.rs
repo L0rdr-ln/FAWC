@@ -22,6 +22,7 @@ pub mod panel;
 pub mod pointer_constraints;
 pub mod protocols;
 pub mod render;
+pub mod screencopy;
 pub mod shell;
 pub mod state;
 pub mod text;
