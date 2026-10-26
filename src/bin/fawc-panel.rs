@@ -12,6 +12,7 @@ use fawc::text::TextRenderer;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{delegate_noop, Connection, Dispatch, QueueHandle, WEnum};
+use wayland_protocols::ext::background_effect::v1::client::{ext_background_effect_manager_v1, ext_background_effect_surface_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 const BTN_LEFT: u32 = 0x110;
@@ -37,6 +38,12 @@ delegate_noop!(App: ignore wl_shm::WlShm);
 delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(App: ignore wl_buffer::WlBuffer);
 delegate_noop!(App: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
+delegate_noop!(App: ignore ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1);
+delegate_noop!(App: ignore wayland_client::protocol::wl_region::WlRegion);
+
+impl Dispatch<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1, ()> for App {
+    fn event(_: &mut Self, _: &ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1, _: ext_background_effect_manager_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
 
 impl Dispatch<wl_seat::WlSeat, ()> for App {
     fn event(_: &mut Self, seat: &wl_seat::WlSeat, event: wl_seat::Event, _: &(), _: &Connection, qh: &QueueHandle<Self>) {
@@ -125,11 +132,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ls.set_size(0, panel::HEIGHT as u32);
     ls.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom | zwlr_layer_surface_v1::Anchor::Left | zwlr_layer_surface_v1::Anchor::Right);
     ls.set_exclusive_zone(panel::HEIGHT);
+    // ask for blur behind the whole bar, if the compositor offers it
+    let effect: Option<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
+    let blur = effect.map(|m| m.get_background_effect(&surface, &qh, ()));
     surface.commit();
     while !app.configured {
         queue.blocking_dispatch(&mut app)?;
     }
 
+    if let Some(b) = &blur {
+        let region = compositor.create_region(&qh, ());
+        region.add(0, 0, app.size.0, app.size.1);
+        b.set_blur_region(Some(&region));
+        region.destroy();
+    }
     let mut text = TextRenderer::default();
     let mut shown = String::new();
     let mut shown_hover = false;

@@ -274,6 +274,7 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
 
 // ------------------------------------------------------------------ layer shell
 
+use wayland_protocols::ext::background_effect::v1::client::{ext_background_effect_manager_v1, ext_background_effect_surface_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 #[derive(Default)]
@@ -291,6 +292,11 @@ delegate_noop!(PanelApp: ignore wl_shm::WlShm);
 delegate_noop!(PanelApp: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(PanelApp: ignore wl_buffer::WlBuffer);
 delegate_noop!(PanelApp: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
+delegate_noop!(PanelApp: ignore ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1);
+delegate_noop!(PanelApp: ignore wayland_client::protocol::wl_region::WlRegion);
+impl Dispatch<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1, ()> for PanelApp {
+    fn event(_: &mut Self, _: &ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1, _: ext_background_effect_manager_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
 
 impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for PanelApp {
     fn event(app: &mut Self, s: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, event: zwlr_layer_surface_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
@@ -317,6 +323,13 @@ fn panel_client(path: std::path::PathBuf, tx: mpsc::Sender<(u32, u32)>, argb: u3
     ls.set_size(0, 40);
     ls.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom | zwlr_layer_surface_v1::Anchor::Left | zwlr_layer_surface_v1::Anchor::Right);
     ls.set_exclusive_zone(40);
+    // blur behind the right half of the panel
+    let manager: ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1 = globals.bind(&qh, 1..=1, ()).unwrap();
+    let effect = manager.get_background_effect(&surface, &qh, ());
+    let region = compositor.create_region(&qh, ());
+    region.add(400, 0, 400, 40);
+    effect.set_blur_region(Some(&region));
+    region.destroy();
     surface.commit();
     while !app.configured {
         queue.blocking_dispatch(&mut app).expect("dispatch");
@@ -387,6 +400,14 @@ fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
     assert!(p[1] > 150 && p[0] < 80 && p[2] < 100, "the green panel at the bottom: {p:?}");
     let above = pixel(&bytes, w, 400, 540);
     assert!(above[1] < 150 || above[2] > 100, "the wallpaper above the panel: {above:?}");
+
+    // the blur region the client asked for arrived with the commit
+    {
+        let map = smithay::desktop::layer_map_for_output(&hn.state.output);
+        let layer = map.layers().next().expect("the panel is mapped");
+        let b = fawc::background_effect::blur_bounds(layer.wl_surface()).expect("a blur region");
+        assert_eq!((b.loc.x, b.loc.y, b.size.w, b.size.h), (400, 0, 400, 40));
+    }
 
     // the usable area is what the panel leaves
     let usable = hn.state.usable_area();

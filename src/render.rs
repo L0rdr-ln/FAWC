@@ -78,19 +78,76 @@ impl Fawc {
     }
 
     /// Draw the layer surfaces of the given layers (in that order) into the scene.
+    /// Blur what is behind `rect` (pixels of `scene`) and draw it back there: the effect a
+    /// client asks for with ext-background-effect.
+    fn blur_behind(
+        &self,
+        renderer: &mut GlesRenderer,
+        glass: &Glass,
+        scene: &mut GlesTexture,
+        rect: Rectangle<i32, Physical>,
+    ) -> Result<(), GlesError> {
+        let size = scene.size();
+        let full = Rectangle::<i32, Physical>::from_size((size.w, size.h).into());
+        let Some(rect) = rect.intersection(full) else { return Ok(()) };
+        let margin = 24;
+        let region = Rectangle::<i32, Physical>::new(
+            (rect.loc.x - margin, rect.loc.y - margin).into(),
+            (rect.size.w + 2 * margin, rect.size.h + 2 * margin).into(),
+        )
+        .intersection(full)
+        .unwrap_or(rect);
+        let blurred = glass.blur(renderer, scene, region, self.style.blur_levels)?;
+        let bs = blurred.size();
+        let src = Rectangle::<f64, BufferCoord>::new(
+            (
+                (rect.loc.x - region.loc.x) as f64 / region.size.w as f64 * bs.w as f64,
+                (rect.loc.y - region.loc.y) as f64 / region.size.h as f64 * bs.h as f64,
+            )
+                .into(),
+            (
+                rect.size.w as f64 / region.size.w as f64 * bs.w as f64,
+                rect.size.h as f64 / region.size.h as f64 * bs.h as f64,
+            )
+                .into(),
+        );
+        let mut target = renderer.bind(scene)?;
+        let mut frame = renderer.render(&mut target, (size.w, size.h).into(), Transform::Normal)?;
+        frame.render_texture_from_to(&blurred, src, rect, &[rect], &[], Transform::Normal, 1.0, None, &[])?;
+        let _ = frame.finish()?;
+        Ok(())
+    }
+
     fn draw_layers(
         &mut self,
         renderer: &mut GlesRenderer,
+        glass: &Glass,
         scene: &mut GlesTexture,
         size: Size<i32, Physical>,
         layers: &[Layer],
     ) -> Result<(), GlesError> {
         let full = Rectangle::<i32, Physical>::from_size(size);
-        let map = layer_map_for_output(&self.output);
-        let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
         for l in layers {
-            for ls in map.layers_on(*l) {
-                let Some(geo) = map.layer_geometry(ls) else { continue };
+            let surfaces: Vec<_> = {
+                let map = layer_map_for_output(&self.output);
+                map.layers_on(*l).cloned().collect()
+            };
+            for ls in surfaces {
+                let geo = {
+                    let map = layer_map_for_output(&self.output);
+                    match map.layer_geometry(&ls) {
+                        Some(g) => g,
+                        None => continue,
+                    }
+                };
+                // blur behind the part the client asked for
+                if let Some(b) = crate::background_effect::blur_bounds(ls.wl_surface()) {
+                    let r = Rectangle::<i32, Physical>::new(
+                        ((geo.loc.x + b.loc.x), (geo.loc.y + b.loc.y)).into(),
+                        (b.size.w, b.size.h).into(),
+                    );
+                    self.blur_behind(renderer, glass, scene, r)?;
+                }
                 // AsRenderElements gives front-to-back; drawing wants back to front, below
                 let mut e = ls.render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
                     renderer,
@@ -99,17 +156,15 @@ impl Fawc {
                     1.0,
                 );
                 e.reverse();
-                elements.extend(e);
+                if e.is_empty() {
+                    continue;
+                }
+                let mut target = renderer.bind(scene)?;
+                let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                draw_render_elements(&mut frame, 1.0, &e, &[full])?;
+                let _ = frame.finish()?;
             }
         }
-        drop(map);
-        if elements.is_empty() {
-            return Ok(());
-        }
-        let mut target = renderer.bind(scene)?;
-        let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
-        draw_render_elements(&mut frame, 1.0, &elements, &[full])?;
-        let _ = frame.finish()?;
         Ok(())
     }
 
@@ -161,7 +216,7 @@ impl Fawc {
         }
 
         // wallpaper and bottom layers
-        self.draw_layers(renderer, scene, size, &[Layer::Background, Layer::Bottom])?;
+        self.draw_layers(renderer, glass, scene, size, &[Layer::Background, Layer::Bottom])?;
 
         // windows, back to front
         let windows: Vec<Window> = self.space.elements().cloned().collect();
@@ -240,7 +295,7 @@ impl Fawc {
         let _ = WindowSurfaceType::ALL;
 
         // panels, launchers, notifications above the windows
-        self.draw_layers(renderer, scene, size, &[Layer::Top, Layer::Overlay])?;
+        self.draw_layers(renderer, glass, scene, size, &[Layer::Top, Layer::Overlay])?;
 
         if self.draw_cursor {
             if self.cursor_texture.is_none() {

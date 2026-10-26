@@ -47,6 +47,7 @@ impl CompositorHandler for Fawc {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        crate::background_effect::commit(surface);
         self.popups.commit(surface);
         if let Some(window) = self.window_for_surface(surface) {
             window.on_commit();
@@ -236,6 +237,7 @@ impl WlrLayerShellHandler for Fawc {
 
 delegate_compositor!(Fawc);
 delegate_layer_shell!(Fawc);
+crate::delegate_background_effect!(Fawc);
 delegate_shm!(Fawc);
 delegate_output!(Fawc);
 delegate_seat!(Fawc);
