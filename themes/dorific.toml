@@ -1,0 +1,32 @@
+name = "Dorific"
+description = "The warm one: glossy orange glass, amber orbs, cream and sunset gradients."
+accent = "#f28a1c"
+transparency = 0.42
+blur = 3
+gloss = 0.9
+radius = 13
+border = 6
+titlebar = 32
+client_tint = [1.0, 0.93, 0.82, 0.10]
+highlight = 1.0
+reflections = 1.0
+glow = 1.0
+shadow = 1.0
+rim = 0.8
+title_ink = "#4a2204"
+title_ink_dim = "#8a6a4a"
+title_glow = 0.95
+
+[buttons]
+style = "orb"
+size = 18
+gap = 7
+margin = 9
+close = "#d93a1a"
+maximize = "#f2b01c"
+minimize = "#ff8a1c"
+
+[wallpaper]
+kind = "gradient"
+color = "#ffe6bd"
+color2 = "#f0801a"

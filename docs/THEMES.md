@@ -1,20 +1,22 @@
 # Themes
 
-A theme is one small TOML file. FDE comes with ten (`themes/` in the source):
+A theme is one small TOML file. FDE comes with the six members of the Frutiger family
+(`themes/` in the source):
 
-| id | look | after |
-|---|---|---|
-| `aero` | glossy blue glass, round orbs, the sky and hill wallpaper (default) | the general Frutiger Aero look |
-| `vista` | Vista Glass: translucent blue glass with diagonal reflections, black titles with a white glow, a capsule of three buttons hanging from the top edge | Windows Vista, 2006 |
-| `seven` | Seven Glass: lighter, clearer glass, bright inner glow, capsule buttons | Windows 7, 2009 |
-| `aqua` | light grey title bars, glossy red/yellow/green buttons on the left, centred titles, deep shadows | Mac OS X Aqua / Leopard, 2000-2009 |
-| `luna` | bold blue title bars with rounded tops and square bottoms, square gel buttons, the sky-and-hill wallpaper | Windows XP, 2001 |
-| `nature` | fresh green glass, leaf-coloured orbs, sky fading into grass | the nature wallpaper themes of the era |
-| `dark-aero` | Frutiger Aero after dark | "Dark Aero" in the Frutiger family |
-| `frutiger-metro` | flatter and crisper, saturated blue, a little gloss left | "Frutiger Metro" in the Frutiger family |
+| id | look |
+|---|---|
+| `aero` | Frutiger Aero: glossy blue glass, round orbs, the sky and hill wallpaper (default) |
+| `frutiger-metro` | the loud one: saturated green, crisp frames, hot-pink and yellow accents |
+| `eco` | Frutiger Eco: fresh green glass, leaf-coloured orbs, sky fading into grass |
+| `dorific` | Dorific: the warm one, glossy orange glass, amber orbs, cream and sunset gradients |
+| `vector-flourish` | Vector Flourish: light and airy, white and pastel glass, pink, green and blue orbs |
+| `aqua` | Frutiger Aqua: water and aquariums, cyan-teal glass, a wallpaper that deepens like the sea |
 
-These are homages drawn from scratch to match how those looks are remembered; none of them uses
-anything from the original systems.
+These are homages drawn from scratch to match how the looks are remembered. They use no artwork
+from the original systems, and the wallpapers are plain gradients (real pictures need images
+you are allowed to use). The theme format can do more than these six use, such as capsule and
+square buttons, buttons on the left and centred titles, so you can write your own, for example a
+Vista-like one (see below).
 
 Choose one in the settings (Appearance > Theme) or in `fde.toml`:
 

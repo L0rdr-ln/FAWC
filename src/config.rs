@@ -13,7 +13,7 @@ use crate::glass::GlassStyle;
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Appearance {
-    /// the look of the whole desktop: a theme name (`aero`, `vista`, `seven`, `aqua`, `luna`, `nature`, `dark-aero`, `frutiger-metro` or a file in `themes/`)
+    /// the look of the whole desktop: a theme name (`aero`, `frutiger-metro`, `eco`, `dorific`, `vector-flourish`, `aqua` or a file in `themes/`)
     pub theme: String,
     /// accent colour of the glass, "#rrggbb"
     pub accent: String,

@@ -1,20 +1,20 @@
 name = "Frutiger Metro"
-description = "The flatter sibling: crisp square-ish frames and saturated blue, with a little Aero gloss left on the edges."
-accent = "#1e90d8"
-transparency = 0.88
+description = "The loud one: saturated green, crisp frames, hot-pink and yellow accents, black and white contrast."
+accent = "#2fa32b"
+transparency = 0.82
 blur = 2
-gloss = 0.5
-radius = 3
+gloss = 0.6
+radius = 4
 border = 2
 titlebar = 30
 client_tint = [0.0, 0.0, 0.0, 0.0]
-highlight = 0.6
-reflections = 0.3
-glow = 0.3
+highlight = 0.7
+reflections = 0.35
+glow = 0.35
 shadow = 0.7
 rim = 1.0
 title_ink = "#ffffff"
-title_ink_dim = "#d3e8f7"
+title_ink_dim = "#d6efd2"
 title_glow = 0.0
 
 [buttons]
@@ -22,11 +22,11 @@ style = "square"
 size = 18
 gap = 3
 margin = 6
-close = "#d9381e"
-maximize = "#1e90d8"
-minimize = "#1e90d8"
+close = "#ff2d78"
+maximize = "#ffc61a"
+minimize = "#27b6ff"
 
 [wallpaper]
 kind = "gradient"
-color = "#0a4f8f"
-color2 = "#5cc4ff"
+color = "#0b3a14"
+color2 = "#7bd62d"

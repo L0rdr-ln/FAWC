@@ -2,7 +2,7 @@
 # (a file that does not parse is reported in the log and ignored).
 
 [appearance]
-theme = "aero"         # aero, vista, seven, aqua, luna, nature, dark-aero, frutiger-metro, or a file in ~/.config/fde/themes/NAME.toml (see docs/THEMES.md)
+theme = "aero"         # aero, frutiger-metro, eco, dorific, vector-flourish, aqua, or a file in ~/.config/fde/themes/NAME.toml (see docs/THEMES.md)
 # accent, transparency, blur and gloss below override the theme's own values; leave them out to get the theme's
 accent = "#4aa8ee"     # colour of the glass, #rrggbb
 transparency = 0.38    # tint strength of window frames, 0 (clear) .. 1

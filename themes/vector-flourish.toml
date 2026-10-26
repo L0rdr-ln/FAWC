@@ -1,0 +1,32 @@
+name = "Vector Flourish"
+description = "Light and airy: white and pastel glass with soft pink, green and blue orbs."
+accent = "#8fc4ee"
+transparency = 0.30
+blur = 4
+gloss = 0.7
+radius = 16
+border = 5
+titlebar = 32
+client_tint = [1.0, 1.0, 1.0, 0.12]
+highlight = 1.0
+reflections = 0.8
+glow = 1.0
+shadow = 0.7
+rim = 0.5
+title_ink = "#2b3f6b"
+title_ink_dim = "#7a8aa8"
+title_glow = 1.0
+
+[buttons]
+style = "orb"
+size = 17
+gap = 7
+margin = 9
+close = "#ef6fa0"
+maximize = "#74c96a"
+minimize = "#5aa9ec"
+
+[wallpaper]
+kind = "gradient"
+color = "#ffffff"
+color2 = "#cfe6fb"

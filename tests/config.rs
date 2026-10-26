@@ -122,16 +122,16 @@ fn the_wallpaper_file_is_loaded_and_follows_edits() {
 fn a_theme_sets_the_look_unless_the_user_set_it_by_hand() {
     use fde::config::Config;
     use fde::glass::GlassStyle;
-    let luna = Config::parse("[appearance]\ntheme = \"luna\"\n").unwrap();
+    let metro = Config::parse("[appearance]\ntheme = \"frutiger-metro\"\n").unwrap();
     let mut s = GlassStyle::default();
-    luna.apply_style(&mut s);
-    assert_eq!((s.radius, s.radius_bottom, s.border, s.button_style), (8.0, 0.0, 4.0, 3.0));
-    assert_eq!(s.tint_frame[3], 1.0, "luna's title bar is solid");
+    metro.apply_style(&mut s);
+    assert_eq!((s.radius, s.radius_bottom, s.border, s.button_style), (4.0, 4.0, 2.0, 3.0));
+    assert_eq!(s.tint_frame[3], 0.82, "metro's title bar is nearly solid");
     // a hand-set accent still wins
-    let own = Config::parse("[appearance]\ntheme = \"luna\"\naccent = \"#ff0000\"\n").unwrap();
+    let own = Config::parse("[appearance]\ntheme = \"frutiger-metro\"\naccent = \"#ff0000\"\n").unwrap();
     own.apply_style(&mut s);
     assert_eq!(&s.tint_frame[..3], &[1.0, 0.0, 0.0]);
-    assert_eq!(s.tint_frame[3], 1.0, "the transparency still comes from the theme");
+    assert_eq!(s.tint_frame[3], 0.82, "the transparency still comes from the theme");
     assert!(Config::parse("[appearance]\ntheme = \"nope\"\n").unwrap_err().contains("theme"));
 }
 
@@ -195,11 +195,22 @@ fn shell_preview() {
 }
 
 #[test]
-fn the_window_buttons_can_be_clicked_in_every_theme() {
+fn the_window_buttons_can_be_clicked_in_every_theme_and_button_style() {
     use fde::config::Config;
     use fde::glass::GlassStyle;
     use fde::layout::{button_center, hit, outer_rect, Button, Hit};
     use smithay::utils::{Logical, Rectangle};
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // the styles the built-in themes do not use, as theme files of their own
+    let dir = tempfile::tempdir().unwrap();
+    for (id, body) in [
+        ("capsule", "[buttons]\nstyle = \"capsule\"\ngap = 1\nmargin = 6\n"),
+        ("left", "title_align = \"center\"\n[buttons]\nside = \"left\"\nsize = 12\n"),
+        ("flat", "[buttons]\nstyle = \"flat\"\n"),
+    ] {
+        std::fs::write(dir.path().join(format!("{id}.toml")), body).unwrap();
+    }
+    std::env::set_var("FDE_THEMES", dir.path());
     for (id, _) in fde::theme::Theme::list() {
         let cfg = Config::parse(&format!("[appearance]\ntheme = \"{id}\"\n")).unwrap();
         let mut style = GlassStyle::default();
@@ -217,4 +228,5 @@ fn the_window_buttons_can_be_clicked_in_every_theme() {
         seen.dedup();
         assert_eq!(seen.len(), 3, "{id}: three different places");
     }
+    std::env::remove_var("FDE_THEMES");
 }

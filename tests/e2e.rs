@@ -1935,7 +1935,7 @@ fn every_theme_changes_how_a_window_is_drawn() {
     hn.state.space.map_element(win.clone(), (120, 80), false);
 
     let mut shots: Vec<(String, Vec<u8>)> = Vec::new();
-    for id in ["aero", "vista", "seven", "aqua", "luna", "nature", "dark-aero", "frutiger-metro"] {
+    for id in ["aero", "frutiger-metro", "eco", "dorific", "vector-flourish", "aqua"] {
         let cfg = fde::config::Config::parse(&format!("[appearance]\ntheme = \"{id}\"\n")).unwrap();
         cfg.apply_style(&mut hn.state.style);
         hn.state.wallpaper_image = fde::state::load_wallpaper(&cfg);
@@ -1947,10 +1947,10 @@ fn every_theme_changes_how_a_window_is_drawn() {
     }
     if let Ok(path) = std::env::var("FDE_DUMP_THEMES") {
         // one picture with the five side by side
-        let (tw, th) = (w as u32 * 4, h as u32 * 3);
+        let (tw, th) = (w as u32 * 3, h as u32 * 2);
         let mut all = vec![0u8; (tw * th * 4) as usize];
         for (k, (_, px)) in shots.iter().enumerate() {
-            let (ox, oy) = ((k as u32 % 4) * w as u32, (k as u32 / 4) * h as u32);
+            let (ox, oy) = ((k as u32 % 3) * w as u32, (k as u32 / 3) * h as u32);
             for y in 0..h as u32 {
                 let src = (y * w as u32 * 4) as usize;
                 let dst = (((oy + y) * tw + ox) * 4) as usize;
@@ -1964,14 +1964,20 @@ fn every_theme_changes_how_a_window_is_drawn() {
         enc.write_header().unwrap().write_image_data(&all).unwrap();
     }
     let g = hn.state.space.element_geometry(&win).unwrap();
-    // luna: a solid blue title bar over the photograph; aqua: a light grey one over a blue gradient
-    let luna = pixel(&shots[4].1, w, g.loc.x + 20, g.loc.y - 14);
-    assert!(luna[2] > 150 && luna[0] < 70, "luna's title bar is solid blue: {luna:?}");
-    let aqua = pixel(&shots[3].1, w, g.loc.x + 60, g.loc.y - 12);
-    assert!(aqua.iter().all(|&c| c > 150) && (aqua[0] - aqua[2]).abs() < 40, "aqua's title bar is light grey: {aqua:?}");
-    let aqua_bg = pixel(&shots[3].1, w, 5, 5);
-    assert!(aqua_bg[2] > aqua_bg[1] && aqua_bg[2] > 80, "aqua's blue gradient desktop: {aqua_bg:?}");
-    // dark aero is dark
-    let dark = pixel(&shots[6].1, w, 5, 5);
-    assert!(dark.iter().sum::<i32>() < 3 * 100, "dark aero's desktop is dark: {dark:?}");
+    // every theme has a desktop and a title bar of its own colour
+    let desk: Vec<[i32; 3]> = shots.iter().map(|(_, px)| pixel(px, w, 5, 5)).collect();
+    let bars: Vec<[i32; 3]> = shots.iter().map(|(_, px)| pixel(px, w, g.loc.x + 90, g.loc.y - 16)).collect();
+    for i in 0..desk.len() {
+        for j in i + 1..desk.len() {
+            assert_ne!(desk[i], desk[j], "desktops of {} and {} differ", shots[i].0, shots[j].0);
+            assert_ne!(bars[i], bars[j], "title bars of {} and {} differ", shots[i].0, shots[j].0);
+        }
+    }
+    // dorific is orange, aqua is cyan, eco is green
+    let orange = &bars[3];
+    assert!(orange[0] > orange[2] + 40, "dorific's title bar is warm: {orange:?}");
+    let cyan = &bars[5];
+    assert!(cyan[2] > cyan[0] && cyan[1] > cyan[0], "aqua's title bar is cyan: {cyan:?}");
+    let green = &bars[2];
+    assert!(green[1] > green[0] && green[1] > green[2], "eco's title bar is green: {green:?}");
 }

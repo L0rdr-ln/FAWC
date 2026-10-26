@@ -1,5 +1,5 @@
-name = "Aero Nature"
-description = "Fresh green glass, leaf-coloured orbs, a sky fading into grass."
+name = "Frutiger Eco"
+description = "Fresh green glass, leaf-coloured orbs and a sky fading into grass."
 accent = "#5db84a"
 transparency = 0.34
 blur = 4
@@ -28,5 +28,5 @@ minimize = "#f4b43a"
 
 [wallpaper]
 kind = "gradient"
-color = "#bfe8ff"
-color2 = "#4fae3d"
+color = "#c9f0a8"
+color2 = "#3f9a35"

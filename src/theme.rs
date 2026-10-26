@@ -1,4 +1,5 @@
-//! Themes: a look for the whole desktop in one small TOML file. FDE ships a few; more can be put
+//! Themes: a look for the whole desktop in one small TOML file. FDE ships the six members of the
+//! Frutiger family: Aero, Metro, Eco, Dorific, Vector Flourish and Aqua; more can be put
 //! in `~/.config/fde/themes/NAME.toml` (or `/etc/fde/themes`, `/usr/share/fde/themes`) and chosen
 //! with `appearance.theme = "NAME"`. Keys the user sets in `[appearance]` (accent, transparency,
 //! blur, gloss) still win over the theme's own values.
@@ -106,13 +107,11 @@ impl Default for Theme {
 /// The themes that come with FDE: (id, file text).
 pub const BUILTIN: &[(&str, &str)] = &[
     ("aero", include_str!("../themes/aero.toml")),
-    ("vista", include_str!("../themes/vista.toml")),
-    ("seven", include_str!("../themes/seven.toml")),
-    ("aqua", include_str!("../themes/aqua.toml")),
-    ("luna", include_str!("../themes/luna.toml")),
-    ("nature", include_str!("../themes/nature.toml")),
-    ("dark-aero", include_str!("../themes/dark-aero.toml")),
     ("frutiger-metro", include_str!("../themes/frutiger-metro.toml")),
+    ("eco", include_str!("../themes/eco.toml")),
+    ("dorific", include_str!("../themes/dorific.toml")),
+    ("vector-flourish", include_str!("../themes/vector-flourish.toml")),
+    ("aqua", include_str!("../themes/aqua.toml")),
 ];
 
 fn dirs() -> Vec<PathBuf> {
@@ -214,7 +213,7 @@ mod tests {
         let aero = Theme::find("aero").unwrap();
         let d = Theme::default();
         assert_eq!((aero.accent.as_str(), aero.radius, aero.border, aero.titlebar), (d.accent.as_str(), d.radius, d.border, d.titlebar));
-        assert!(Theme::list().len() >= 8);
+        assert_eq!(BUILTIN.len(), 6);
     }
 
     #[test]
