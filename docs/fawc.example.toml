@@ -6,7 +6,7 @@ accent = "#4aa8ee"     # colour of the glass, #rrggbb
 transparency = 0.38    # tint strength of window frames, 0 (clear) .. 1
 blur = 3               # blur levels 1..6: softer but slower
 gloss = 0.8            # gloss band on the title bar, 0 .. 1
-animations = true      # (not used yet)
+animations = true      # windows fade and grow in when they open
 
 [input]
 keyboard_layout = ""   # xkb layout, e.g. "de"; empty = system default

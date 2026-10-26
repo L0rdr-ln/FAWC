@@ -14,8 +14,9 @@ pub fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
 }
 
-pub fn appearance(accent: &str, transparency: f64, blur: u32, gloss: f64) -> Vec<(&'static str, Setting)> {
+pub fn appearance(accent: &str, transparency: f64, blur: u32, gloss: f64, animations: bool) -> Vec<(&'static str, Setting)> {
     vec![
+        ("appearance.animations", Setting::Bool(animations)),
         ("appearance.accent", Setting::Str(accent.to_string())),
         ("appearance.transparency", Setting::Float(round2(transparency))),
         ("appearance.blur", Setting::Int(blur as i64)),
@@ -52,13 +53,13 @@ mod tests {
     fn every_page_writes_a_file_the_compositor_accepts_and_reads_back() {
         let dir = tempfile::tempdir().unwrap();
         let f = dir.path().join("fawc.toml");
-        set(&f, &appearance(&hex_color(1.0, 0.5, 0.0), 0.61234, 4, 0.5)).unwrap();
+        set(&f, &appearance(&hex_color(1.0, 0.5, 0.0), 0.61234, 4, 0.5, false)).unwrap();
         set(&f, &keyboard(" de ", 30, 400)).unwrap();
         set(&f, &shell("alacritty", "", false)).unwrap();
         set(&f, &session(10)).unwrap();
         let c = Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(c.appearance.accent, "#ff8000");
-        assert_eq!((c.appearance.transparency, c.appearance.blur, c.appearance.gloss), (0.61, 4, 0.5));
+        assert_eq!((c.appearance.transparency, c.appearance.blur, c.appearance.gloss, c.appearance.animations), (0.61, 4, 0.5, false));
         assert_eq!((c.input.keyboard_layout.as_str(), c.input.repeat_rate, c.input.repeat_delay), ("de", 30, 400));
         assert_eq!((c.shell.terminal.as_str(), c.shell.panel), ("alacritty", false));
         assert_eq!(c.session.idle_lock_seconds, 600);

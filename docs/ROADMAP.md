@@ -14,7 +14,7 @@ possible; hardware and VM runs are noted as such.
 - [ ] M3 (written, never run on hardware) DRM/KMS + libinput backend (real hardware, VMs), VT switching, multi-monitor, HiDPI
 - [ ] M4 (layer-shell and ext-background-effect-v1 done and tested) and ext-session-lock-v1 with `fawc-lock` done and tested — idle lock, screen capture, `ext-background-effect` (blur on
       request), fractional scale, output management
-- [ ] M5 animations: open/close fade + zoom, minimize, workspace slide, Flip-3D style switcher
+- [~] M5 animations: opening fade + zoom done (`appearance.animations`); close, minimize, workspace slide, Flip-3D style switcher to come
 
 ## Shell
 - [x] S1a `fawc-panel`: glass task bar with start orb and clock (layer-shell client, started by the compositor)

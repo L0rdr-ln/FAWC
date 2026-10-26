@@ -113,7 +113,7 @@ pub fn render_scene(
         )?;
         let mut target = renderer.bind(&mut scene)?;
         let mut frame = renderer.render(&mut target, (W, H).into(), Transform::Normal)?;
-        glass.draw_panel_part(&mut frame, &blurred, src, win.outer, &win.style)?;
+        glass.draw_panel_part(&mut frame, &blurred, src, win.outer, &win.style, 1.0)?;
         let inner = Rectangle::<i32, Physical>::new(
             (
                 win.outer.loc.x + win.style.border as i32,

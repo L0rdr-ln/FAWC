@@ -175,7 +175,8 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     };
     let (w, h) = (800, 600);
     let display: Display<Fawc> = Display::new().unwrap();
-    let state = Fawc::new(&display.handle(), (w, h).into());
+    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
     let socket = ListeningSocket::bind("fawc-e2e").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
@@ -365,7 +366,8 @@ fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
     };
     let (w, h) = (800, 600);
     let display: Display<Fawc> = Display::new().unwrap();
-    let state = Fawc::new(&display.handle(), (w, h).into());
+    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
     let socket = ListeningSocket::bind("fawc-e2e-layer").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
@@ -447,7 +449,8 @@ fn the_real_task_bar_shows_a_button_for_an_open_window() {
     };
     let (w, h) = (800, 600);
     let display: Display<Fawc> = Display::new().unwrap();
-    let state = Fawc::new(&display.handle(), (w, h).into());
+    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
     let socket = ListeningSocket::bind("fawc-e2e-tasks").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
@@ -510,7 +513,8 @@ fn the_lock_screen_locks_the_session_and_unlocks_with_the_right_password() {
     };
     let (w, h) = (800, 600);
     let display: Display<Fawc> = Display::new().unwrap();
-    let state = Fawc::new(&display.handle(), (w, h).into());
+    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
     let socket = ListeningSocket::bind("fawc-e2e-lock").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
@@ -605,7 +609,8 @@ fn a_notification_sent_over_dbus_appears_as_a_bubble_and_goes_away() {
 
     let (w, h) = (800, 600);
     let display: Display<Fawc> = Display::new().unwrap();
-    let state = Fawc::new(&display.handle(), (w, h).into());
+    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
     let socket = ListeningSocket::bind("fawc-e2e-notify").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
@@ -725,7 +730,8 @@ fn typing_in_the_start_menu_filters_and_enter_starts_the_program() {
 
     let (w, h) = (800, 600);
     let display: Display<Fawc> = Display::new().unwrap();
-    let state = Fawc::new(&display.handle(), (w, h).into());
+    let mut state = Fawc::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
     let socket = ListeningSocket::bind("fawc-e2e-menu").unwrap();
     let mut hn = Harness { display, state, socket };
     let glass = Glass::new(&mut renderer).unwrap();
@@ -770,4 +776,60 @@ fn typing_in_the_start_menu_filters_and_enter_starts_the_program() {
     let _ = panel.wait();
     assert!(marker_z.exists(), "Enter after typing \"zzt\" starts the matching program");
     assert!(!marker_a.exists(), "and not the other one");
+}
+
+#[test]
+fn a_new_window_fades_and_grows_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): animation test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let state = Fawc::new(&display.handle(), (w, h).into());
+    assert!(state.config.appearance.animations, "on by default");
+    let socket = ListeningSocket::bind("fawc-e2e-anim").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+
+    let (tx, rx) = mpsc::channel();
+    let path = dir.path().join("fawc-e2e-anim");
+    std::thread::spawn(move || client(path, tx, 200, 100, 0xff2030e0));
+    let t0 = Instant::now();
+    loop {
+        hn.pump();
+        if let Ok(Msg::Mapped { .. }) = rx.try_recv() {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "no window");
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    let green = |hn: &mut Harness, renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture| {
+        hn.state.render_scene(renderer, &glass, scene).unwrap();
+        let size = scene.size();
+        let target = renderer.bind(scene).unwrap();
+        let m = renderer.copy_framebuffer(&target, Rectangle::from_size(size), Fourcc::Abgr8888).unwrap();
+        let bytes = renderer.map_texture(&m).unwrap().to_vec();
+        // the window is dark blue (green 0x30), the sky behind it is light (lots of green)
+        pixel(&bytes, w, 175, 157)[1]
+    };
+    // the first frames: the window is still mostly the wallpaper behind it
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    // hold the animation at its very start (rendering on a software GL is slow, so "just now" is not exact)
+    hn.state.set_open_start(&win, Instant::now() + Duration::from_secs(60));
+    let early = green(&mut hn, &mut renderer, &mut scene);
+    // after the animation: the window in its colour
+    hn.state.restart_open_animation(&win);
+    std::thread::sleep(Duration::from_millis(400));
+    hn.pump();
+    let late = green(&mut hn, &mut renderer, &mut scene);
+    assert_eq!(hn.state.open_progress(&win), 1.0, "the animation is over");
+    assert!(early > late + 25, "the window faded in: green {early} then {late}");
 }

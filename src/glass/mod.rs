@@ -235,6 +235,7 @@ impl Glass {
         src: Rectangle<f64, BufferCoord>,
         dest: Rectangle<i32, Physical>,
         style: &GlassStyle,
+        alpha: f32,
     ) -> Result<(), GlesError> {
         let bs = blurred.size();
         frame.render_texture_from_to(
@@ -244,7 +245,7 @@ impl Glass {
             &[Rectangle::from_size(dest.size)],
             &[],
             Transform::Normal,
-            1.0,
+            alpha,
             Some(&self.panel),
             &[
                 Uniform::new("size", (dest.size.w as f32, dest.size.h as f32)),

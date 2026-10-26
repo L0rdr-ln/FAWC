@@ -10,6 +10,14 @@ use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 use crate::layout::{client_rect, hit, outer_rect, Hit};
 use crate::state::{Fawc, WinInfo};
 
+/// The opening animation: a short fade and zoom.
+pub const OPEN_SECONDS: f32 = 0.18;
+
+/// Ease-out: fast at first, settling at the end.
+pub fn ease_out(t: f32) -> f32 {
+    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
+}
+
 fn info(window: &Window) -> &Mutex<WinInfo> {
     window.user_data().get_or_insert_threadsafe(|| Mutex::new(WinInfo::default()))
 }
@@ -31,8 +39,30 @@ impl Fawc {
         let origin = 70 + self.cascade;
         self.cascade = (self.cascade + step) % (6 * step);
         let loc = (origin + b, origin + b + t);
+        info(&window).lock().unwrap().opened = Some(std::time::Instant::now());
         self.space.map_element(window.clone(), loc, true);
         self.focus_window(&window);
+    }
+
+    /// Start the opening animation again (a window shown again; also lets tests look at its start).
+    pub fn restart_open_animation(&mut self, window: &Window) {
+        self.set_open_start(window, std::time::Instant::now());
+    }
+
+    /// Pretend the window appeared at `at` (a time in the future holds the animation at its start).
+    pub fn set_open_start(&mut self, window: &Window, at: std::time::Instant) {
+        info(window).lock().unwrap().opened = Some(at);
+    }
+
+    /// How far the opening animation of `window` is, 0 (just appeared) .. 1 (done or off).
+    pub fn open_progress(&self, window: &Window) -> f32 {
+        if !self.config.appearance.animations {
+            return 1.0;
+        }
+        match info(window).lock().unwrap().opened {
+            Some(t) => (t.elapsed().as_secs_f32() / OPEN_SECONDS).clamp(0.0, 1.0),
+            None => 1.0,
+        }
     }
 
     /// Give the keyboard to `window` and bring it to the front.
@@ -155,5 +185,19 @@ impl Fawc {
 
     pub fn outer_of(&self, window: &Window) -> Option<Rectangle<i32, Logical>> {
         self.space.element_geometry(window).map(|g| outer_rect(g, &self.style))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_easing_starts_fast_ends_at_one_and_stays_in_range() {
+        assert_eq!(ease_out(0.0), 0.0);
+        assert_eq!(ease_out(1.0), 1.0);
+        assert!(ease_out(0.5) > 0.8, "most of the movement is early");
+        assert_eq!(ease_out(2.0), 1.0);
+        assert_eq!(ease_out(-1.0), 0.0);
     }
 }

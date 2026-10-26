@@ -25,6 +25,8 @@ pub struct WinInfo {
     /// where the window was before it was maximized
     pub restore: Option<Rectangle<i32, Logical>>,
     pub minimized: bool,
+    /// when the window appeared, for the opening animation
+    pub opened: Option<std::time::Instant>,
 }
 
 /// What a drag with the pointer is doing.

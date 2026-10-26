@@ -122,11 +122,14 @@ fn appearance_page(cfg: &Config, status: &Status) -> GBox {
     let transparency = scale(0.0, 1.0, 0.01, a.transparency as f64);
     let blur = scale(1.0, 6.0, 1.0, a.blur as f64);
     let gloss = scale(0.0, 1.0, 0.01, a.gloss as f64);
-    let (acc2, tr2, bl2, gl2, st2) = (accent.clone(), transparency.clone(), blur.clone(), gloss.clone(), status.clone());
+    let animations = gtk4::Switch::new();
+    animations.set_active(a.animations);
+    animations.set_halign(Align::Start);
+    let (acc2, tr2, bl2, gl2, an2, st2) = (accent.clone(), transparency.clone(), blur.clone(), gloss.clone(), animations.clone(), status.clone());
     let save = debounced(move || {
         let c = acc2.rgba();
         let hex = model::hex_color(c.red(), c.green(), c.blue());
-        st2.report(config::set(&path(), &model::appearance(&hex, tr2.value(), bl2.value() as u32, gl2.value())));
+        st2.report(config::set(&path(), &model::appearance(&hex, tr2.value(), bl2.value() as u32, gl2.value(), an2.is_active())));
     });
     for s in [&transparency, &blur, &gloss] {
         let save = save.clone();
@@ -134,10 +137,13 @@ fn appearance_page(cfg: &Config, status: &Status) -> GBox {
     }
     let save2 = save.clone();
     accent.connect_rgba_notify(move |_| save2());
+    let save3 = save.clone();
+    animations.connect_active_notify(move |_| save3());
     body.append(&row("Accent colour", &accent));
     body.append(&row("Glass tint", &transparency));
     body.append(&row("Blur (levels)", &blur));
     body.append(&row("Gloss", &gloss));
+    body.append(&row("Animations", &animations));
     outer
 }
 

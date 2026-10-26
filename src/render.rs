@@ -254,7 +254,23 @@ impl Fawc {
         let windows: Vec<Window> = self.space.elements().cloned().collect();
         for window in &windows {
             let Some(client) = self.space.element_geometry(window) else { continue };
-            let outer = outer_rect(client, &self.style);
+            // opening: fade in and grow from 92 % around the middle
+            let progress = self.open_progress(window);
+            let e = crate::windows::ease_out(progress);
+            let (alpha, zoom): (f32, f64) = (e, 0.92 + 0.08 * e as f64);
+            let outer_full = outer_rect(client, &self.style);
+            let center = (
+                outer_full.loc.x as f64 + outer_full.size.w as f64 / 2.0,
+                outer_full.loc.y as f64 + outer_full.size.h as f64 / 2.0,
+            );
+            let scaled = |r: Rectangle<i32, Logical>| -> Rectangle<i32, Logical> {
+                let (w, h) = ((r.size.w as f64 * zoom).round() as i32, (r.size.h as f64 * zoom).round() as i32);
+                let x = (center.0 + (r.loc.x as f64 - center.0) * zoom).round() as i32;
+                let y = (center.1 + (r.loc.y as f64 - center.1) * zoom).round() as i32;
+                Rectangle::new((x, y).into(), (w, h).into())
+            };
+            let client = scaled(client);
+            let outer = scaled(outer_full);
             let outer_p = phys(outer);
             let Some(visible) = outer_p.intersection(full) else { continue };
             let focused = self
@@ -290,6 +306,7 @@ impl Fawc {
 
             // the client's surfaces (and its popups) as render elements
             let loc = client.loc.to_physical(1);
+            let zoom_scale = smithay::utils::Scale::from(zoom);
             let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
             if let Some(top) = window.toplevel() {
                 for (popup, offset) in PopupManager::popups_for_surface(top.wl_surface()) {
@@ -298,17 +315,17 @@ impl Fawc {
                         renderer,
                         popup.wl_surface(),
                         popup_loc,
-                        1.0,
-                        1.0,
+                        zoom,
+                        alpha,
                         Kind::Unspecified,
                     ));
                 }
             }
             elements.extend(window.render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
                 renderer,
-                loc - window.geometry().loc.to_physical(1),
-                1.0.into(),
-                1.0,
+                loc - window.geometry().loc.to_physical(1).to_f64().upscale(zoom).to_i32_round(),
+                zoom_scale,
+                alpha,
             ));
 
             // the title (re-rendered only when it, its room or the focus change)
@@ -316,10 +333,10 @@ impl Fawc {
 
             let mut target = renderer.bind(scene)?;
             let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
-            glass.draw_panel_part(&mut frame, &blurred, src, outer_p, &style)?;
+            glass.draw_panel_part(&mut frame, &blurred, src, outer_p, &style, alpha)?;
             if let Some((tex, dest)) = &title_draw {
                 let src_full = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());
-                frame.render_texture_from_to(tex, src_full, *dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, 1.0, None, &[])?;
+                frame.render_texture_from_to(tex, src_full, *dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, alpha, None, &[])?;
             }
             draw_render_elements(&mut frame, 1.0, &elements, &[full])?;
             let _ = frame.finish()?;
