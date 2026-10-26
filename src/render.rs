@@ -560,6 +560,10 @@ impl Fde {
             self.draw_switcher(renderer, scene, size, view)?;
         }
 
+        if self.help_open && pointer_here {
+            self.draw_help(renderer, scene, size, view)?;
+        }
+
         // "Workspace 2" for a moment after switching
         if let Some((since, text)) = self.hud.clone() {
             let age = since.elapsed().as_secs_f32();
@@ -601,6 +605,47 @@ impl Fde {
             glass.mesh.draw_multiply(&mut frame, &tex, (size.w, size.h), &[(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)], 2)?;
             let _ = frame.finish()?;
         }
+        Ok(())
+    }
+
+    /// The shortcut cheat sheet: a dimmed screen and a panel with the keys and what they do.
+    fn draw_help(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        scene: &mut GlesTexture,
+        size: Size<i32, Physical>,
+        view: View,
+    ) -> Result<(), GlesError> {
+        let full = Rectangle::<i32, Physical>::from_size(size);
+        let (row_h, key_w, desc_w, pad) = (sc(26, view.scale), sc(210, view.scale), sc(420, view.scale), sc(22, view.scale));
+        let rows = crate::input::SHORTCUTS.len() as i32;
+        let (pw, ph) = (key_w + desc_w + 2 * pad, (rows + 2) * row_h + 2 * pad);
+        let panel = Rectangle::<i32, Physical>::new(((size.w - pw) / 2, (size.h - ph) / 2).into(), (pw.min(size.w), ph.min(size.h)).into());
+        let mut lines: Vec<(GlesTexture, Rectangle<i32, Physical>)> = Vec::new();
+        let px = 14.0 * view.scale as f32;
+        let glow = Some(([8, 40, 90], 0.9));
+        let mut add = |text: &str, x: i32, y: i32, width: i32, size_px: f32, color: [u8; 3], this: &mut Fde, renderer: &mut GlesRenderer| -> Result<(), GlesError> {
+            if let Some(img) = this.text.line(text, width, size_px, color, glow, sc(3, view.scale)) {
+                let tex = renderer.import_memory(&img.rgba, Fourcc::Abgr8888, Size::<i32, BufferCoord>::from((img.width, img.height)), false)?;
+                lines.push((tex, Rectangle::new((x, y).into(), (img.width, img.height).into())));
+            }
+            Ok(())
+        };
+        add("Keyboard shortcuts", panel.loc.x + pad, panel.loc.y + pad, pw - 2 * pad, 18.0 * view.scale as f32, [255, 255, 255], self, renderer)?;
+        for (i, (keys, what)) in crate::input::SHORTCUTS.iter().enumerate() {
+            let y = panel.loc.y + pad + (i as i32 + 2) * row_h;
+            add(keys, panel.loc.x + pad, y, key_w, px, [190, 230, 255], self, renderer)?;
+            add(what, panel.loc.x + pad + key_w, y, desc_w, px, [255, 255, 255], self, renderer)?;
+        }
+        let mut target = renderer.bind(scene)?;
+        let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+        frame.draw_solid(full, &[full], Color32F::new(0.0, 0.0, 0.0, 0.45))?;
+        frame.draw_solid(panel, &[Rectangle::from_size(panel.size)], Color32F::new(0.05, 0.16, 0.32, 0.85))?;
+        for (tex, dest) in &lines {
+            let src = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());
+            frame.render_texture_from_to(tex, src, *dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, 1.0, None, &[])?;
+        }
+        let _ = frame.finish()?;
         Ok(())
     }
 

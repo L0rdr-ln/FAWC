@@ -25,6 +25,8 @@ enum Action {
     Cycle(i32),
     CancelSwitcher,
     ToggleDnd,
+    ToggleHelp,
+    CloseHelp,
     Restore,
     Lock,
     Snap(crate::windows::Snap),
@@ -36,6 +38,24 @@ enum Action {
     Screenshot,
     SwitchVt(i32),
 }
+
+/// The keyboard shortcuts, as the cheat sheet (Alt+F1) shows them.
+pub const SHORTCUTS: &[(&str, &str)] = &[
+    ("Alt+Return", "open a terminal"),
+    ("Alt+Tab", "switch windows (hold Alt; Shift+Tab goes back)"),
+    ("Alt+Q / Alt+F4", "close the window"),
+    ("Alt+F", "maximize or restore"),
+    ("Alt+Left / Right", "snap to the left or right half"),
+    ("Alt+Up / Down", "maximize; restore, un-snap or minimize"),
+    ("Alt+M", "bring back a minimized window"),
+    ("Alt+1 .. 9", "go to a workspace (Shift: send the window there)"),
+    ("Alt+Ctrl+Left / Right", "previous or next workspace"),
+    ("Alt+L", "lock the screen"),
+    ("Alt+N", "do not disturb on or off"),
+    ("Print", "screenshot of this monitor"),
+    ("Alt+F1", "this list"),
+    ("Alt+Esc", "end the session"),
+];
 
 /// The cursor for resizing at `e`.
 pub fn edges_cursor(e: &Edges) -> &'static str {
@@ -81,6 +101,12 @@ impl Fde {
                         }
                         if event.state() == KeyState::Pressed && handle.modified_sym().raw() == keysyms::KEY_Print {
                             return FilterResult::Intercept(Action::Screenshot);
+                        }
+                        if event.state() == KeyState::Pressed && state.help_open && handle.modified_sym().raw() == keysyms::KEY_Escape && !mods.alt {
+                            return FilterResult::Intercept(Action::CloseHelp);
+                        }
+                        if event.state() == KeyState::Pressed && mods.alt && handle.modified_sym().raw() == keysyms::KEY_F1 {
+                            return FilterResult::Intercept(Action::ToggleHelp);
                         }
                         if event.state() == KeyState::Pressed && mods.alt {
                             // workspaces: Alt+1..9 (by key position, so Shift does not change it)
@@ -188,6 +214,8 @@ impl Fde {
             Action::Cycle(d) => self.switcher_step(d),
             Action::CancelSwitcher => self.switcher_cancel(),
             Action::ToggleDnd => self.toggle_do_not_disturb(),
+            Action::ToggleHelp => self.help_open = !self.help_open,
+            Action::CloseHelp => self.help_open = false,
             Action::Restore => self.restore_window(),
             Action::Lock => crate::shell::start_sibling("fde-lock"),
             Action::Workspace(n) => self.switch_workspace(n),

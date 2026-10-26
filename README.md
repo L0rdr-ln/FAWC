@@ -89,6 +89,7 @@ On a console FDE uses the GPU directly (DRM/KMS, libseat, libinput). Please atta
 | **Alt+1 .. Alt+9** | switch workspace (Alt+Shift+1..9 sends the front window there, Alt+Ctrl+Left/Right steps; the task bar shows the dots) |
 | **Alt+Up / Alt+Down** | maximize; un-maximize, un-snap or minimize |
 | **Alt+N** | do not disturb on/off: only critical notifications are shown while it is on; the task bar shows "DND" (click it to turn it off) |
+| **Alt+F1** | the list of all shortcuts on the screen (Esc closes it) |
 | **Alt+Esc** | quit FDE |
 | **Print** | screenshot of the monitor the pointer is on, saved to `~/Pictures/Screenshot_DATE.png` (`fde-shot`) |
 | **Ctrl+Alt+F1..F12** | switch console (DRM backend) |

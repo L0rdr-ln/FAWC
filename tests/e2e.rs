@@ -2808,3 +2808,42 @@ fn night_light_warms_the_picture_in_its_hours_and_leaves_it_alone_outside() {
     assert_eq!(noon, plain, "outside the warm hours nothing changes");
     std::env::remove_var("FDE_NIGHT_LIGHT_NOW");
 }
+
+#[test]
+fn the_shortcut_cheat_sheet_covers_the_screen_when_it_is_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): cheat sheet test skipped");
+            return;
+        }
+    };
+    let (w, h) = (1000, 700);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let closed = grab_scene(&mut renderer, &mut scene);
+    state.help_open = true;
+    state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let open = grab_scene(&mut renderer, &mut scene);
+    if let Ok(path) = std::env::var("FDE_DUMP_HELP") {
+        let file = std::fs::File::create(path).unwrap();
+        let mut enc = png::Encoder::new(file, w as u32, h as u32);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&open).unwrap();
+    }
+    let dark = |px: &[u8], x: i32, y: i32| pixel(px, w, x, y).iter().sum::<i32>();
+    assert!(dark(&open, 5, 5) < dark(&closed, 5, 5) * 7 / 10, "the corner is dimmed");
+    assert!(dark(&open, w / 2, h / 2) < dark(&closed, w / 2, h / 2), "the middle is under the panel");
+    state.help_open = false;
+    state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    assert_eq!(grab_scene(&mut renderer, &mut scene), closed, "closing it brings the desktop back");
+}

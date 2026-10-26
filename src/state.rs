@@ -118,6 +118,8 @@ pub struct Fde {
     pub screencopy: crate::screencopy::Screencopy,
     pub wobbles: Vec<(Window, crate::wobble::Wobble)>,
     pub switcher: Option<crate::switcher::Switcher>,
+    /// the shortcut cheat sheet is showing
+    pub help_open: bool,
     /// Alt was let go while the switcher was open: commit after the key event is handled
     pub switcher_commit: bool,
     /// the last picture of windows that were asked to close, by their surface
@@ -311,6 +313,7 @@ impl Fde {
             screencopy: Default::default(),
             wobbles: Vec::new(),
             switcher: None,
+            help_open: false,
             switcher_commit: false,
             snapshots: Default::default(),
             ghosts: Vec::new(),
