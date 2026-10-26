@@ -118,6 +118,10 @@ pub struct Fde {
     pub screencopy: crate::screencopy::Screencopy,
     pub wobbles: Vec<(Window, crate::wobble::Wobble)>,
     pub switcher: Option<crate::switcher::Switcher>,
+    /// the graphics are drawn by the CPU (a VM without 3D): `appearance.performance = "auto"` then uses fast mode
+    pub software_renderer: bool,
+    /// counts every reason to draw again; a monitor that has drawn this number is up to date
+    pub redraw_serial: u64,
     /// the shortcut cheat sheet is showing
     pub help_open: bool,
     /// Alt was let go while the switcher was open: commit after the key event is handled
@@ -313,6 +317,8 @@ impl Fde {
             screencopy: Default::default(),
             wobbles: Vec::new(),
             switcher: None,
+            software_renderer: false,
+            redraw_serial: 1,
             help_open: false,
             switcher_commit: false,
             snapshots: Default::default(),
@@ -377,6 +383,7 @@ impl Fde {
             return;
         }
         tracing::info!("configuration reloaded");
+        self.request_redraw();
         new.apply_style(&mut self.style);
         if std::env::var_os("FDE_TERMINAL").is_none() {
             self.terminal = new.shell.terminal.clone();

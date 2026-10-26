@@ -2847,3 +2847,46 @@ fn the_shortcut_cheat_sheet_covers_the_screen_when_it_is_open() {
     state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
     assert_eq!(grab_scene(&mut renderer, &mut scene), closed, "closing it brings the desktop back");
 }
+
+#[test]
+fn fast_mode_skips_the_drop_shadow_and_auto_turns_on_for_software_graphics() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): fast mode test skipped");
+            return;
+        }
+    };
+    let (w, h) = (640, 480);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-fast").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    open_window(&mut hn, dir.path(), "fde-e2e-fast", 240, 140);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    let below = (g.loc.x + g.size.w / 2, g.loc.y + g.size.h + 14); // in the shadow, under the frame
+
+    hn.state.detect_renderer(&mut renderer);
+    let software = std::env::var_os("LIBGL_ALWAYS_SOFTWARE").is_some();
+    assert_eq!(hn.state.software_renderer, software, "the test machine's graphics are recognised");
+
+    hn.state.config.appearance.performance = "quality".into();
+    assert!(!hn.state.fast_mode());
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let shadowed = pixel(&grab_scene(&mut renderer, &mut scene), w, below.0, below.1);
+    hn.state.config.appearance.performance = "fast".into();
+    assert!(hn.state.fast_mode());
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let plain = pixel(&grab_scene(&mut renderer, &mut scene), w, below.0, below.1);
+    assert!(shadowed.iter().sum::<i32>() < plain.iter().sum::<i32>(), "no shadow in fast mode: {shadowed:?} vs {plain:?}");
+    hn.state.config.appearance.performance = "auto".into();
+    assert_eq!(hn.state.fast_mode(), hn.state.software_renderer);
+}

@@ -26,6 +26,8 @@ pub struct Appearance {
     pub animations: bool,
     /// windows bend and swing on springs while they are dragged
     pub wobbly_windows: bool,
+    /// "auto" (fast mode when the graphics are software-drawn, as in a VM without 3D), "quality" or "fast" (one blur pass, no drop shadows, no wobble)
+    pub performance: String,
     /// the mouse cursor theme (a directory with `cursors/` in an icon path); empty = `$XCURSOR_THEME`
     pub cursor_theme: String,
     /// cursor size in pixels at scale 1; 0 = `$XCURSOR_SIZE`, else 24
@@ -34,7 +36,7 @@ pub struct Appearance {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Appearance { theme: "aero".into(), accent: "#4aa8ee".into(), transparency: 0.38, blur: 3, gloss: 0.8, animations: true, wobbly_windows: true, cursor_theme: String::new(), cursor_size: 0 }
+        Appearance { theme: "aero".into(), accent: "#4aa8ee".into(), transparency: 0.38, blur: 3, gloss: 0.8, animations: true, wobbly_windows: true, performance: "auto".into(), cursor_theme: String::new(), cursor_size: 0 }
     }
 }
 
@@ -257,6 +259,9 @@ impl Config {
             if !v.is_empty() && parse_clock(v).is_none() {
                 return Err(format!("display.{key}: \"{v}\" is not HH:MM"));
             }
+        }
+        if !matches!(self.appearance.performance.as_str(), "auto" | "quality" | "fast") {
+            return Err("appearance.performance must be \"auto\", \"quality\" or \"fast\"".into());
         }
         crate::theme::Theme::find(&self.appearance.theme).map_err(|e| format!("appearance.theme: {e}"))?;
         parse_color(&self.appearance.accent).ok_or_else(|| format!("appearance.accent: \"{}\" is not #rrggbb", self.appearance.accent))?;

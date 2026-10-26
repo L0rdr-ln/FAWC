@@ -135,7 +135,8 @@ impl Fde {
     }
 
     /// Tell the settings app which monitors there are: `$XDG_RUNTIME_DIR/fde/outputs.toml`.
-    pub fn write_outputs_state(&self) {
+    pub fn write_outputs_state(&mut self) {
+        self.request_redraw();
         let outputs: Vec<OutputInfo> = self
             .all_outputs()
             .iter()

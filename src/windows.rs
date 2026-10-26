@@ -393,7 +393,7 @@ impl Fde {
 
     /// The pointer took hold of the window: it now hangs on springs.
     pub fn start_wobble(&mut self, window: &Window, at: Point<f64, Logical>) {
-        if !self.config.appearance.wobbly_windows {
+        if !self.config.appearance.wobbly_windows || self.fast_mode() {
             return;
         }
         let Some(rest) = self.wobble_rect(window) else { return };

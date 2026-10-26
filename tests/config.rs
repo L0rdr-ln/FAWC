@@ -341,3 +341,11 @@ fn alt_n_toggles_do_not_disturb_and_says_so_on_screen() {
     assert!(!fde::notify::dnd_on());
     assert_eq!(state.hud.as_ref().map(|h| h.1.as_str()), Some("Do not disturb: off"));
 }
+
+#[test]
+fn the_performance_setting_is_checked() {
+    use fde::config::Config;
+    assert_eq!(Config::parse("").unwrap().appearance.performance, "auto");
+    assert!(Config::parse("[appearance]\nperformance = \"fast\"\n").is_ok());
+    assert!(Config::parse("[appearance]\nperformance = \"turbo\"\n").is_err());
+}

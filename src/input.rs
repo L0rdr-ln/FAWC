@@ -70,6 +70,7 @@ pub fn edges_cursor(e: &Edges) -> &'static str {
 impl Fde {
     pub fn process_input_event<B: InputBackend>(&mut self, event: InputEvent<B>) {
         self.note_activity();
+        self.request_redraw();
         match event {
             InputEvent::Keyboard { event } => {
                 let serial = SERIAL_COUNTER.next_serial();
@@ -268,6 +269,7 @@ impl Fde {
     }
 
     pub fn pointer_moved(&mut self, pos: Point<f64, Logical>, time: u32) {
+        self.request_redraw();
         let pos = self.clamp_to_outputs(pos);
         if !self.locked && self.drag.is_none() {
             // programs that read the mouse directly (games) get the movement, and a grab keeps
@@ -347,6 +349,7 @@ impl Fde {
     }
 
     pub fn pointer_button(&mut self, button: u32, pressed: bool, time: u32) {
+        self.request_redraw();
         let serial = SERIAL_COUNTER.next_serial();
         let pos = self.pointer_location;
 

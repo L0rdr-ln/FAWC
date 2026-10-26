@@ -23,6 +23,7 @@ pub mod panel;
 pub mod pointer_constraints;
 pub mod power;
 pub mod protocols;
+pub mod redraw;
 pub mod render;
 pub mod screencopy;
 pub mod shell;

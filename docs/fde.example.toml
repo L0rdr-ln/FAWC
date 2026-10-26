@@ -8,6 +8,7 @@ accent = "#4aa8ee"     # colour of the glass, #rrggbb
 transparency = 0.38    # tint strength of window frames, 0 (clear) .. 1
 blur = 3               # blur levels 1..6: softer but slower
 gloss = 0.8            # gloss band on the title bar, 0 .. 1
+performance = "auto"   # auto: "fast" when the graphics are software-drawn (a VM without 3D); "quality" or "fast" (one blur pass, no shadows, no wobble)
 wobbly_windows = true  # windows bend and swing on springs while you drag them
 animations = true      # windows fade and grow in when they open and shrink into the task bar when minimized
 cursor_theme = ""      # an XCursor theme (a folder with cursors/ in ~/.icons, /usr/share/icons ...); empty = $XCURSOR_THEME

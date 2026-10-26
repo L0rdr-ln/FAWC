@@ -50,6 +50,9 @@ struct OutputGpu {
     compositor: Compositor,
     crtc: crtc::Handle,
     queued: bool,
+    /// what was drawn last: `Fde::redraw_serial` then, and when
+    drawn: u64,
+    last_draw: std::time::Instant,
 }
 
 /// Everything the render callback needs besides the compositor state.
@@ -63,9 +66,11 @@ struct Gpu {
 fn render_and_queue(state: &mut Fde, gpu: &mut Gpu, idx: usize) {
     let Gpu { renderer, glass, outputs } = gpu;
     let Some(og) = outputs.get_mut(idx) else { return };
-    if og.queued {
+    if og.queued || !state.needs_redraw(og.drawn, og.last_draw) {
         return;
     }
+    og.drawn = state.redraw_serial;
+    og.last_draw = std::time::Instant::now();
     if let Err(e) = state.render_output(renderer, glass, &mut og.scene, &og.output) {
         tracing::error!("render failed: {e}");
         return;
@@ -204,7 +209,7 @@ fn create_output_gpu(hw: &Hardware, renderer: &mut GlesRenderer, monitor: &Monit
     )?;
     let (mw, mh) = (monitor.mode.size().0 as i32, monitor.mode.size().1 as i32);
     let scene = create_scene(renderer, (mw, mh).into())?;
-    Ok(OutputGpu { output: output.clone(), scene, compositor, crtc: monitor.crtc, queued: false })
+    Ok(OutputGpu { output: output.clone(), scene, compositor, crtc: monitor.crtc, queued: false, drawn: 0, last_draw: std::time::Instant::now() })
 }
 
 /// A monitor was plugged in or out: look again at what is connected.
@@ -289,6 +294,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     let formats = renderer.egl_context().dmabuf_render_formats().iter().copied().collect::<Vec<_>>();
+    state.detect_renderer(&mut renderer);
     let glass = Glass::new(&mut renderer)?;
     let hw = Rc::new(Hardware { drm: Rc::new(RefCell::new(drm)), gbm: gbm.clone(), drm_fd: drm_fd.clone(), formats });
     let mut gpu_outputs = Vec::new();

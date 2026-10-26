@@ -420,7 +420,7 @@ impl Fde {
                 )
                 .intersection(full)
                 .unwrap_or(visible);
-                let blurred = glass.blur(renderer, scene, region, style.blur_levels)?;
+                let blurred = glass.blur(renderer, scene, region, if self.fast_mode() { 1 } else { style.blur_levels })?;
                 let bs = blurred.size();
                 let src = Rectangle::<f64, BufferCoord>::new(
                     (
@@ -475,7 +475,9 @@ impl Fde {
                 if to_texture {
                     frame.clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[clip])?;
                 }
-                glass.draw_shadow(&mut frame, &blurred, outer_d, &style, view.scale as f32, alpha)?;
+                if !self.fast_mode() {
+                    glass.draw_shadow(&mut frame, &blurred, outer_d, &style, view.scale as f32, alpha)?;
+                }
                 glass.draw_panel_part(&mut frame, &blurred, src, outer_d, &style, alpha)?;
                 if let Some((tex, dest)) = &title_draw {
                     let src_full = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());

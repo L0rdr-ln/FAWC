@@ -46,6 +46,7 @@ impl CompositorHandler for Fde {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        self.request_redraw();
         on_commit_buffer_handler::<Self>(surface);
         crate::background_effect::commit(surface);
         self.popups.commit(surface);
@@ -114,6 +115,7 @@ impl SeatHandler for Fde {
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         self.cursor_status = image;
+        self.request_redraw();
     }
 }
 

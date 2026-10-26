@@ -26,6 +26,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut state = Fde::new(&dh, (size.w, size.h).into());
 
     state.enable_dmabuf(smithay::backend::renderer::ImportDma::dmabuf_formats(backend.renderer()));
+    state.detect_renderer(backend.renderer());
     let glass = Glass::new(backend.renderer())?;
     let mut scene: GlesTexture = create_scene(backend.renderer(), size)?;
 
@@ -61,7 +62,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // winit events (input, resize, close)
     event_loop.handle().insert_source(winit_loop, |event, _, state| match event {
-        WinitEvent::Resized { size, .. } => state.resize_output((size.w, size.h).into()),
+        WinitEvent::Resized { size, .. } => {
+            state.request_redraw();
+            state.resize_output((size.w, size.h).into())
+        }
+        WinitEvent::Redraw => state.request_redraw(),
         WinitEvent::Input(event) => state.process_input_event(event),
         WinitEvent::CloseRequested => state.running = false,
         _ => {}
@@ -71,12 +76,19 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let timer = Timer::from_duration(Duration::from_millis(16));
     event_loop.handle().insert_source(timer, |_, _, _| TimeoutAction::ToDuration(Duration::from_millis(16)))?;
 
+    let (mut drawn, mut last_draw) = (0u64, std::time::Instant::now());
     while state.running {
         event_loop.dispatch(Some(Duration::from_millis(16)), &mut state)?;
         if crate::shell::termination_requested() {
             tracing::info!("asked to terminate: ending the session");
             state.running = false;
         }
+        // an idle desktop is not drawn again and again
+        if !state.needs_redraw(drawn, last_draw) {
+            continue;
+        }
+        drawn = state.redraw_serial;
+        last_draw = std::time::Instant::now();
 
         let size = backend.window_size();
         if scene.size().w != size.w || scene.size().h != size.h {
