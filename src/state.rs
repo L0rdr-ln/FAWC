@@ -140,8 +140,8 @@ pub struct Fde {
 
 /// The wallpaper picture: the file the configuration names, else the one built into the program
 /// (None = the generated sky, see `wallpaper::configured`).
-pub fn load_wallpaper(path: &str) -> Option<crate::wallpaper::Image> {
-    crate::wallpaper::configured(path)
+pub fn load_wallpaper(config: &crate::config::Config) -> Option<crate::wallpaper::Image> {
+    crate::wallpaper::for_config(config)
 }
 
 /// A window title as a texture, and what it was made from.
@@ -214,7 +214,7 @@ impl Fde {
         let mut style = GlassStyle::default();
         config.apply_style(&mut style);
         seat.add_pointer();
-        let wallpaper_image = load_wallpaper(&config.wallpaper.path);
+        let wallpaper_image = load_wallpaper(&config);
         let cursor_theme = crate::cursortheme::CursorTheme::load(&config.appearance.cursor_theme, config.appearance.cursor_size);
 
         let output = Output::new(
@@ -338,9 +338,12 @@ impl Fde {
                 }
             }
         }
-        if new.wallpaper != self.config.wallpaper {
-            self.wallpaper_image = load_wallpaper(&new.wallpaper.path);
+        if new.wallpaper != self.config.wallpaper || new.appearance.theme != self.config.appearance.theme {
+            self.wallpaper_image = load_wallpaper(&new);
             self.wallpapers.clear();
+        }
+        if new.appearance != self.config.appearance || new.explicit != self.config.explicit {
+            self.titles.clear(); // new colours for the title text
         }
         if new.appearance.cursor_theme != self.config.appearance.cursor_theme || new.appearance.cursor_size != self.config.appearance.cursor_size {
             self.cursor_theme = crate::cursortheme::CursorTheme::load(&new.appearance.cursor_theme, new.appearance.cursor_size);

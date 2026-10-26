@@ -1908,3 +1908,73 @@ fn an_x11_program_gets_a_managed_window_that_can_be_closed() {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+#[test]
+fn every_theme_changes_how_a_window_is_drawn() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): theme test skipped");
+            return;
+        }
+    };
+    let (w, h) = (480, 300);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-theme").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    open_window(&mut hn, dir.path(), "fde-e2e-theme", 240, 120);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    hn.state.space.map_element(win.clone(), (120, 80), false);
+
+    let mut shots: Vec<(String, Vec<u8>)> = Vec::new();
+    for id in ["aero", "metro", "nordic", "sakura", "midnight"] {
+        let cfg = fde::config::Config::parse(&format!("[appearance]\ntheme = \"{id}\"\n")).unwrap();
+        cfg.apply_style(&mut hn.state.style);
+        hn.state.wallpaper_image = fde::state::load_wallpaper(&cfg);
+        hn.state.wallpapers.clear();
+        hn.state.titles.clear();
+        hn.state.config = cfg;
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        shots.push((id.to_string(), grab_scene(&mut renderer, &mut scene)));
+    }
+    if let Ok(path) = std::env::var("FDE_DUMP_THEMES") {
+        // one picture with the five side by side
+        let (tw, th) = (w as u32 * 3, h as u32 * 2);
+        let mut all = vec![0u8; (tw * th * 4) as usize];
+        for (k, (_, px)) in shots.iter().enumerate() {
+            let (ox, oy) = ((k as u32 % 3) * w as u32, (k as u32 / 3) * h as u32);
+            for y in 0..h as u32 {
+                let src = (y * w as u32 * 4) as usize;
+                let dst = (((oy + y) * tw + ox) * 4) as usize;
+                all[dst..dst + w as usize * 4].copy_from_slice(&px[src..src + w as usize * 4]);
+            }
+        }
+        let file = std::fs::File::create(path).unwrap();
+        let mut enc = png::Encoder::new(file, tw, th);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&all).unwrap();
+    }
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    // metro: square corners, a solid accent title bar and the solid teal background
+    let metro = &shots[1].1;
+    let outer = hn.state.outer_of(&win);
+    let _ = outer;
+    let bg = pixel(metro, w, 5, 5);
+    assert!(bg[1] > bg[0] + 40 && bg[1] > 90, "metro's solid teal desktop: {bg:?}");
+    let aero_bg = pixel(&shots[0].1, w, 5, 5);
+    assert_ne!(bg, aero_bg);
+    let title = pixel(metro, w, g.loc.x + 20, g.loc.y - 20);
+    assert!(title[2] > 150 && title[0] < 60, "metro's title bar is the solid blue accent: {title:?}");
+    // nordic is dark
+    let nordic = pixel(&shots[2].1, w, g.loc.x + 20, g.loc.y - 20);
+    assert!(nordic.iter().sum::<i32>() < 3 * 130, "nordic's title bar is dark: {nordic:?}");
+}

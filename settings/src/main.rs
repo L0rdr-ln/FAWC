@@ -116,19 +116,22 @@ fn scale(min: f64, max: f64, step: f64, value: f64) -> gtk4::Scale {
 }
 
 fn appearance_page(cfg: &Config, status: &Status) -> GBox {
-    let (outer, body) = page("Appearance", "The glass of windows, the task bar and menus. Changes apply to the running desktop.");
+    let (outer, body) = page("Appearance", "The look of windows, the task bar and menus. Pick a theme, then adjust it if you like. Changes apply to the running desktop.");
     let a = &cfg.appearance;
-    let rgba = gdk::RGBA::parse(a.accent.as_str()).unwrap_or(gdk::RGBA::new(0.29, 0.66, 0.93, 1.0));
+    let (look_accent, look_transparency, look_blur, look_gloss) = cfg.look();
+    let rgba = gdk::RGBA::parse(look_accent.as_str()).unwrap_or(gdk::RGBA::new(0.29, 0.66, 0.93, 1.0));
     let dialog = gtk4::ColorDialog::new();
     let accent = gtk4::ColorDialogButton::new(Some(dialog));
     accent.set_rgba(&rgba);
     accent.set_halign(Align::Start);
-    let transparency = scale(0.0, 1.0, 0.01, a.transparency as f64);
-    let blur = scale(1.0, 6.0, 1.0, a.blur as f64);
-    let gloss = scale(0.0, 1.0, 0.01, a.gloss as f64);
+    let transparency = scale(0.0, 1.0, 0.01, look_transparency as f64);
+    let blur = scale(1.0, 6.0, 1.0, look_blur as f64);
+    let gloss = scale(0.0, 1.0, 0.01, look_gloss as f64);
     let animations = gtk4::Switch::new();
     animations.set_active(a.animations);
     animations.set_halign(Align::Start);
+    // set while the page changes its own controls, so that does not count as the user's edit
+    let updating = Rc::new(std::cell::Cell::new(false));
     let (acc2, tr2, bl2, gl2, an2, st2) = (accent.clone(), transparency.clone(), blur.clone(), gloss.clone(), animations.clone(), status.clone());
     let save = debounced(move || {
         let c = acc2.rgba();
@@ -136,13 +139,49 @@ fn appearance_page(cfg: &Config, status: &Status) -> GBox {
         st2.report(config::set(&path(), &model::appearance(&hex, tr2.value(), bl2.value() as u32, gl2.value(), an2.is_active())));
     });
     for s in [&transparency, &blur, &gloss] {
-        let save = save.clone();
-        s.connect_value_changed(move |_| save());
+        let (save, up) = (save.clone(), updating.clone());
+        s.connect_value_changed(move |_| {
+            if !up.get() {
+                save()
+            }
+        });
     }
-    let save2 = save.clone();
-    accent.connect_rgba_notify(move |_| save2());
+    let (save2, up2) = (save.clone(), updating.clone());
+    accent.connect_rgba_notify(move |_| {
+        if !up2.get() {
+            save2()
+        }
+    });
     let save3 = save.clone();
     animations.connect_active_notify(move |_| save3());
+
+    // the theme: choosing one clears the colours the user set, so the theme's own apply
+    let themes = fde::theme::Theme::list();
+    let names: Vec<&str> = themes.iter().map(|(_, n)| n.as_str()).collect();
+    let picker = gtk4::DropDown::from_strings(&names);
+    picker.set_selected(themes.iter().position(|(id, _)| *id == a.theme).unwrap_or(0) as u32);
+    picker.set_halign(Align::Start);
+    let ids: Vec<String> = themes.iter().map(|(id, _)| id.clone()).collect();
+    let (acc3, tr3, bl3, gl3, st4, up3) = (accent.clone(), transparency.clone(), blur.clone(), gloss.clone(), status.clone(), updating.clone());
+    picker.connect_selected_notify(move |d| {
+        let Some(id) = ids.get(d.selected() as usize) else { return };
+        if up3.get() {
+            return;
+        }
+        st4.report(config::set(&path(), &model::theme_changes(id)));
+        if let Ok(c) = Config::load() {
+            let (ac, t, b, g) = c.look();
+            up3.set(true);
+            if let Ok(col) = gdk::RGBA::parse(ac.as_str()) {
+                acc3.set_rgba(&col);
+            }
+            tr3.set_value(t as f64);
+            bl3.set_value(b as f64);
+            gl3.set_value(g as f64);
+            up3.set(false);
+        }
+    });
+    body.append(&row("Theme", &picker));
     body.append(&row("Accent colour", &accent));
     body.append(&row("Glass tint", &transparency));
     body.append(&row("Blur (levels)", &blur));

@@ -81,8 +81,10 @@ impl Fde {
         };
         if stale {
             self.titles.remove(&key);
-            let (color, glow) = if focused { ([6, 35, 61], 0.95) } else { ([70, 88, 104], 0.7) };
-            if let Some(img) = self.text.line(&title, max_width + 2 * pad, 13.0 * scale as f32, color, Some(([255, 255, 255], glow)), pad) {
+            let ink = if focused { style.title_ink } else { style.title_ink_dim };
+            let color = [(ink[0] * 255.0).round() as u8, (ink[1] * 255.0).round() as u8, (ink[2] * 255.0).round() as u8];
+            let glow = if style.title_glow > 0.0 { Some(([255, 255, 255], style.title_glow * if focused { 1.0 } else { 0.74 })) } else { None };
+            if let Some(img) = self.text.line(&title, max_width + 2 * pad, 13.0 * scale as f32, color, glow, pad) {
                 let tex = renderer.import_memory(
                     &img.rgba,
                     Fourcc::Abgr8888,

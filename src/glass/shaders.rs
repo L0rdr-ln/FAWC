@@ -65,6 +65,10 @@ uniform vec4 tint_client;   // tint over the client area
 uniform float gloss;        // 0..1
 uniform float highlight;    // 0..1 light line inside the border
 uniform float focus;        // 0..1
+uniform float reflections;  // 0..1
+uniform float glow;         // 0..1
+uniform float rim;          // 0..1
+uniform float flat_buttons; // 1 = square glyphs instead of orbs
 uniform float orb_size;     // button diameter in pixels (0 = none)
 uniform float orb_gap;
 uniform float orb_margin;
@@ -109,6 +113,22 @@ void main() {
                                border + titlebar * 0.5);
             vec2 o = px - center;
             float r = orb_size * 0.5;
+            if (flat_buttons > 0.5) {
+                // flat glyphs: cross, square, bar
+                float t = max(0.9, orb_size * 0.07);
+                float h = r * 0.62;
+                float g = 0.0;
+                if (i == 0) {
+                    float dd = min(abs(o.x - o.y), abs(o.x + o.y)) * 0.70711;
+                    g = (1.0 - smoothstep(t - 0.6, t + 0.6, dd)) * step(max(abs(o.x), abs(o.y)), h + 0.5);
+                } else if (i == 1) {
+                    float q = max(abs(o.x), abs(o.y));
+                    g = (1.0 - smoothstep(t - 0.6, t + 0.6, abs(q - h))) * step(q, h + t + 1.0);
+                } else {
+                    g = (1.0 - smoothstep(t - 0.6, t + 0.6, abs(o.y + h * 0.7))) * step(abs(o.x), h + 0.5);
+                }
+                rgb = mix(rgb, c, clamp(g, 0.0, 1.0) * (0.55 + 0.45 * focus));
+            } else {
             float od = length(o) - r;
             float orb_cover = clamp(0.5 - od, 0.0, 1.0);
             if (orb_cover > 0.0) {
@@ -118,10 +138,11 @@ void main() {
                 body = mix(body, mix(c, vec3(1.0), 0.55), smoothstep(0.55, 1.0, lit));
                 body = mix(body, vec3(0.5), 1.0 - focus * 0.85);   // dimmed when the window is not focused
                 float glint = smoothstep(0.0, 1.0, 1.0 - length((o - vec2(0.0, -r * 0.42)) / vec2(r * 0.72, r * 0.42)));
-                body = mix(body, vec3(1.0), glint * 0.75);
+                body = mix(body, vec3(1.0), glint * 0.75 * (0.3 + 0.7 * reflections));
                 float orb_rim = smoothstep(1.2, 0.0, abs(od + 0.5));
                 body = mix(body, vec3(0.0), orb_rim * 0.35);
                 rgb = mix(rgb, body, orb_cover);
+            }
             }
         }
     }
@@ -131,19 +152,19 @@ void main() {
         float streak = smoothstep(0.10, 0.27, u) * (1.0 - smoothstep(0.27, 0.40, u))      // broad
                      + 0.55 * smoothstep(0.47, 0.52, u) * (1.0 - smoothstep(0.52, 0.60, u)); // narrow
         float fade = 1.0 - smoothstep(0.0, 1.0, px.y / size.y) * 0.55;                     // weaker towards the bottom
-        rgb = mix(rgb, vec3(1.0), clamp(streak * fade, 0.0, 1.0) * gloss * (in_client ? 0.10 : 0.16) * (0.5 + 0.5 * focus));
+        rgb = mix(rgb, vec3(1.0), clamp(streak * fade, 0.0, 1.0) * gloss * reflections * (in_client ? 0.10 : 0.16) * (0.5 + 0.5 * focus));
     }
     // a soft inner glow along the edge, as if the glass were lit from within
     {
         float inside = -d;                                                                  // px from the edge
-        float glow = (1.0 - smoothstep(0.0, border * 2.2 + 3.0, inside)) * smoothstep(0.0, 2.0, inside);
-        rgb = mix(rgb, vec3(0.85, 0.95, 1.0), glow * 0.34 * (0.45 + 0.55 * focus));
+        float edge_glow = (1.0 - smoothstep(0.0, border * 2.2 + 3.0, inside)) * smoothstep(0.0, 2.0, inside);
+        rgb = mix(rgb, vec3(0.85, 0.95, 1.0), edge_glow * glow * 0.34 * (0.45 + 0.55 * focus));
     }
     // light line just inside the border and a dark hairline at the very edge
     float inner = smoothstep(1.2, 0.0, abs(d + border - 0.5));
     rgb = mix(rgb, vec3(1.0), inner * highlight * 0.55);
-    float rim = smoothstep(1.5, 0.0, abs(d + 0.5));
-    rgb = mix(rgb, vec3(0.0), rim * 0.25);
+    float rim_line = smoothstep(1.5, 0.0, abs(d + 0.5));
+    rgb = mix(rgb, vec3(0.0), rim_line * rim * 0.25);
 
     gl_FragColor = vec4(rgb * cover, cover) * alpha;
 }

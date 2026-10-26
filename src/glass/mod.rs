@@ -31,6 +31,17 @@ pub struct GlassStyle {
     pub orb_close: [f32; 3],
     pub orb_max: [f32; 3],
     pub orb_min: [f32; 3],
+    /// 0..1 strength of the diagonal reflections, the inner glow, the dark rim and the drop shadow
+    pub reflections: f32,
+    pub glow: f32,
+    pub rim: f32,
+    pub shadow: f32,
+    /// 1 = square glyph buttons instead of round orbs
+    pub flat_buttons: f32,
+    /// title text colours (focused, not focused) and how far its glow reaches
+    pub title_ink: [f32; 3],
+    pub title_ink_dim: [f32; 3],
+    pub title_glow: f32,
     /// blur: number of down/up levels (more = blurrier) and the offset multiplier of a pass
     pub blur_levels: usize,
 }
@@ -68,6 +79,14 @@ impl Default for GlassStyle {
             orb_close: [0.90, 0.31, 0.18],
             orb_max: [0.33, 0.73, 0.29],
             orb_min: [0.24, 0.61, 0.88],
+            reflections: 1.0,
+            glow: 1.0,
+            rim: 1.0,
+            shadow: 1.0,
+            flat_buttons: 0.0,
+            title_ink: [0.024, 0.137, 0.239],
+            title_ink_dim: [0.275, 0.345, 0.408],
+            title_glow: 0.95,
             blur_levels: 3,
         }
     }
@@ -103,6 +122,10 @@ impl Glass {
             UniformName::new("gloss", UniformType::_1f),
             UniformName::new("highlight", UniformType::_1f),
             UniformName::new("focus", UniformType::_1f),
+            UniformName::new("reflections", UniformType::_1f),
+            UniformName::new("glow", UniformType::_1f),
+            UniformName::new("rim", UniformType::_1f),
+            UniformName::new("flat_buttons", UniformType::_1f),
             UniformName::new("orb_size", UniformType::_1f),
             UniformName::new("orb_gap", UniformType::_1f),
             UniformName::new("orb_margin", UniformType::_1f),
@@ -168,7 +191,7 @@ impl Glass {
                 Uniform::new("radius", style.radius),
                 Uniform::new("shift_y", 7.0 * scale),
                 Uniform::new("soft", 20.0 * scale),
-                Uniform::new("strength", 0.22 + 0.22 * style.focus),
+                Uniform::new("strength", (0.22 + 0.22 * style.focus) * style.shadow),
             ],
         )
     }
@@ -288,6 +311,10 @@ impl Glass {
                 Uniform::new("gloss", style.gloss),
                 Uniform::new("highlight", style.highlight),
                 Uniform::new("focus", style.focus),
+                Uniform::new("reflections", style.reflections),
+                Uniform::new("glow", style.glow),
+                Uniform::new("rim", style.rim),
+                Uniform::new("flat_buttons", style.flat_buttons),
                 Uniform::new("orb_size", style.orb_size),
                 Uniform::new("orb_gap", style.orb_gap),
                 Uniform::new("orb_margin", style.orb_margin),
@@ -330,6 +357,10 @@ impl Glass {
                 Uniform::new("gloss", style.gloss),
                 Uniform::new("highlight", style.highlight),
                 Uniform::new("focus", style.focus),
+                Uniform::new("reflections", style.reflections),
+                Uniform::new("glow", style.glow),
+                Uniform::new("rim", style.rim),
+                Uniform::new("flat_buttons", style.flat_buttons),
                 Uniform::new("orb_size", style.orb_size),
                 Uniform::new("orb_gap", style.orb_gap),
                 Uniform::new("orb_margin", style.orb_margin),

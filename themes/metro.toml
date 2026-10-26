@@ -1,0 +1,31 @@
+name = "Metro"
+description = "Flat, square and bold: solid colour, no gloss, no shadows, glyph buttons."
+accent = "#0078d7"
+transparency = 1.0
+blur = 1
+gloss = 0.0
+radius = 0
+border = 1
+titlebar = 31
+client_tint = [0.0, 0.0, 0.0, 0.0]
+highlight = 0.0
+reflections = 0.0
+glow = 0.0
+shadow = 0.25
+rim = 0.0
+title_ink = "#ffffff"
+title_ink_dim = "#d6e6f5"
+title_glow = 0.0
+
+[buttons]
+style = "flat"
+size = 16
+gap = 14
+margin = 10
+close = "#ffffff"
+maximize = "#ffffff"
+minimize = "#ffffff"
+
+[wallpaper]
+kind = "solid"
+color = "#008272"

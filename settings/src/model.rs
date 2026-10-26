@@ -24,6 +24,17 @@ pub fn appearance(accent: &str, transparency: f64, blur: u32, gloss: f64, animat
     ]
 }
 
+/// Choose a theme: write its name and drop the colours set by hand, so the theme's own apply.
+pub fn theme_changes(id: &str) -> Vec<(&'static str, Setting)> {
+    vec![
+        ("appearance.theme", Setting::Str(id.to_string())),
+        ("appearance.accent", Setting::Unset),
+        ("appearance.transparency", Setting::Unset),
+        ("appearance.blur", Setting::Unset),
+        ("appearance.gloss", Setting::Unset),
+    ]
+}
+
 pub fn wobbly(on: bool) -> Vec<(&'static str, Setting)> {
     vec![("appearance.wobbly_windows", Setting::Bool(on))]
 }
@@ -65,6 +76,20 @@ pub fn session(idle_lock_minutes: u32) -> Vec<(&'static str, Setting)> {
 mod tests {
     use super::*;
     use fde::config::{set, Config};
+
+    #[test]
+    fn choosing_a_theme_drops_the_colours_set_by_hand_so_the_theme_applies() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("fde.toml");
+        set(&f, &appearance("#ff8000", 0.7, 5, 0.3, true)).unwrap();
+        let c = Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(c.look().0, "#ff8000", "the hand-set accent wins over the theme");
+        set(&f, &theme_changes("metro")).unwrap();
+        let c = Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(c.appearance.theme, "metro");
+        assert_eq!(c.look().0, "#0078d7", "now the theme's own accent");
+        assert!(set(&f, &theme_changes("no-such-theme")).is_err());
+    }
 
     #[test]
     fn every_page_writes_a_file_the_compositor_accepts_and_reads_back() {

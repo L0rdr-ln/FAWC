@@ -13,6 +13,8 @@ use crate::glass::GlassStyle;
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Appearance {
+    /// the look of the whole desktop: a theme name (`aero`, `metro`, `nordic`, `sakura`, `midnight` or a file in `themes/`)
+    pub theme: String,
     /// accent colour of the glass, "#rrggbb"
     pub accent: String,
     /// how strongly the glass is tinted, 0 (clear) .. 1
@@ -32,7 +34,7 @@ pub struct Appearance {
 
 impl Default for Appearance {
     fn default() -> Self {
-        Appearance { accent: "#4aa8ee".into(), transparency: 0.38, blur: 3, gloss: 0.8, animations: true, wobbly_windows: true, cursor_theme: String::new(), cursor_size: 0 }
+        Appearance { theme: "aero".into(), accent: "#4aa8ee".into(), transparency: 0.38, blur: 3, gloss: 0.8, animations: true, wobbly_windows: true, cursor_theme: String::new(), cursor_size: 0 }
     }
 }
 
@@ -154,6 +156,9 @@ pub struct Config {
     pub input: Input,
     pub shell: Shell,
     pub session: Session,
+    /// which of accent, transparency, blur, gloss the user's files set (they win over the theme)
+    #[serde(skip)]
+    pub explicit: Vec<String>,
 }
 
 /// Where the files are: `$FDE_CONFIG` replaces both, else system then user.
@@ -196,12 +201,19 @@ impl Config {
     }
 
     fn from_value(value: toml::Value) -> Result<Config, String> {
-        let c: Config = value.try_into().map_err(|e| format!("{e}"))?;
+        let explicit: Vec<String> = value
+            .get("appearance")
+            .and_then(|a| a.as_table())
+            .map(|t| t.keys().cloned().collect())
+            .unwrap_or_default();
+        let mut c: Config = value.try_into().map_err(|e| format!("{e}"))?;
+        c.explicit = explicit;
         c.validate()?;
         Ok(c)
     }
 
     fn validate(&self) -> Result<(), String> {
+        crate::theme::Theme::find(&self.appearance.theme).map_err(|e| format!("appearance.theme: {e}"))?;
         parse_color(&self.appearance.accent).ok_or_else(|| format!("appearance.accent: \"{}\" is not #rrggbb", self.appearance.accent))?;
         if !(0.0..=1.0).contains(&self.appearance.transparency) {
             return Err("appearance.transparency must be between 0 and 1".into());
@@ -246,16 +258,60 @@ impl Config {
         Config::from_value(merged)
     }
 
-    /// Put the look into a glass style (the rest of the style, sizes and orb colours, stays).
+    /// The theme in use (aero if it cannot be read; `validate` already complained).
+    pub fn theme(&self) -> crate::theme::Theme {
+        crate::theme::Theme::find(&self.appearance.theme).unwrap_or_default()
+    }
+
+    fn set_by_user(&self, key: &str) -> bool {
+        self.explicit.iter().any(|k| k == key)
+    }
+
+    /// The accent, transparency, blur and gloss that are in effect: the user's own values where
+    /// the files set them, else the theme's.
+    pub fn look(&self) -> (String, f32, u32, f32) {
+        let t = self.theme();
+        let a = &self.appearance;
+        (
+            if self.set_by_user("accent") { a.accent.clone() } else { t.accent },
+            if self.set_by_user("transparency") { a.transparency } else { t.transparency },
+            if self.set_by_user("blur") { a.blur } else { t.blur },
+            if self.set_by_user("gloss") { a.gloss } else { t.gloss },
+        )
+    }
+
+    /// Put the theme and the user's look into a glass style.
     pub fn apply_style(&self, style: &mut GlassStyle) {
-        let [r, g, b] = parse_color(&self.appearance.accent).unwrap_or([0.29, 0.66, 0.93]);
-        style.tint_frame = [r, g, b, self.appearance.transparency];
-        style.gloss = self.appearance.gloss;
-        style.blur_levels = self.appearance.blur as usize;
+        let t = self.theme();
+        let (accent, transparency, blur, gloss) = self.look();
+        let [r, g, b] = parse_color(&accent).unwrap_or([0.29, 0.66, 0.93]);
+        let col = |s: &str| parse_color(s).unwrap_or([1.0, 1.0, 1.0]);
+        style.radius = t.radius;
+        style.border = t.border;
+        style.titlebar = t.titlebar;
+        style.tint_frame = [r, g, b, transparency];
+        style.tint_client = t.client_tint;
+        style.gloss = gloss;
+        style.highlight = t.highlight;
+        style.reflections = t.reflections;
+        style.glow = t.glow;
+        style.shadow = t.shadow;
+        style.rim = t.rim;
+        style.flat_buttons = if t.buttons.style == "flat" { 1.0 } else { 0.0 };
+        style.orb_size = t.buttons.size;
+        style.orb_gap = t.buttons.gap;
+        style.orb_margin = t.buttons.margin;
+        style.orb_close = col(&t.buttons.close);
+        style.orb_max = col(&t.buttons.maximize);
+        style.orb_min = col(&t.buttons.minimize);
+        style.title_ink = col(&t.title_ink);
+        style.title_ink_dim = col(&t.title_ink_dim);
+        style.title_glow = t.title_glow;
+        style.blur_levels = blur as usize;
     }
 }
 
-fn parse_color(s: &str) -> Option<[f32; 3]> {
+pub fn parse_color(s: &str) -> Option<[f32; 3]> {
     let h = s.strip_prefix('#')?;
     if h.len() != 6 || !h.is_ascii() {
         return None;
@@ -367,6 +423,8 @@ pub enum Setting {
     Int(i64),
     Float(f64),
     Bool(bool),
+    /// remove the key (the theme's value applies again)
+    Unset,
 }
 
 /// Change keys of the file at `path` and save it, keeping everything else (comments, order,
@@ -379,7 +437,14 @@ pub fn set(path: &std::path::Path, changes: &[(&str, Setting)]) -> Result<(), St
     let mut doc: DocumentMut = text.parse().map_err(|e| format!("{}: {e}", path.display()))?;
     for (key, v) in changes {
         let (section, name) = key.split_once('.').ok_or_else(|| format!("{key}: expected section.key"))?;
+        if let Setting::Unset = v {
+            if let Some(t) = doc.get_mut(section).and_then(|s| s.as_table_mut()) {
+                t.remove(name);
+            }
+            continue;
+        }
         let mut item = match v {
+            Setting::Unset => unreachable!(),
             Setting::Str(s) => value(s.as_str()),
             Setting::Int(i) => value(*i),
             Setting::Float(f) => value(*f),

@@ -114,7 +114,8 @@ pub fn draw(text: &mut TextRenderer, s: i32, notes: &[&Note]) -> Vec<u8> {
     let (w, h) = (lw * s, lh * s);
     let sf = s as f32;
     let mut buf = vec![0u8; (w * h * 4).max(0) as usize];
-    let rad = 12.0f32 * sf;
+    let pal = crate::theme::palette();
+    let rad = (12.0 - 12.0 * pal.solid) * sf;
     let bubble_h = BUBBLE_H * s;
     for (i, note) in notes.iter().take(MAX_SHOWN).enumerate() {
         let y0 = i as i32 * (BUBBLE_H + GAP) * s;
@@ -122,7 +123,7 @@ pub fn draw(text: &mut TextRenderer, s: i32, notes: &[&Note]) -> Vec<u8> {
             for x in 0..w {
                 let dx = (x as f32 + 0.5 - w as f32 / 2.0).abs() - (w as f32 / 2.0 - rad);
                 let dy = (y as f32 + 0.5 - bubble_h as f32 / 2.0).abs() - (bubble_h as f32 / 2.0 - rad);
-                let d = dx.max(0.0).hypot(dy.max(0.0)) - rad;
+                let d = dx.max(0.0).hypot(dy.max(0.0)) + dx.max(dy).min(0.0) - rad;
                 let cover = (0.5 - d).clamp(0.0, 1.0);
                 if cover <= 0.0 {
                     continue;
@@ -130,20 +131,20 @@ pub fn draw(text: &mut TextRenderer, s: i32, notes: &[&Note]) -> Vec<u8> {
                 let t = y as f32 / bubble_h as f32;
                 let idx = (((y0 + y) * w + x) * 4) as usize;
                 let px = &mut buf[idx..idx + 4];
-                let base = if note.critical { [0.85, 0.30, 0.20] } else { [0.22 + 0.10 * (1.0 - t), 0.56 + 0.12 * (1.0 - t), 0.90] };
+                let base = if note.critical { [0.85, 0.30, 0.20] } else { pal.tone(t) };
                 blend(px, base, 0.70 * cover);
                 if t < 0.4 {
-                    blend(px, [1.0, 1.0, 1.0], 0.18 * (1.0 - t / 0.4) * cover);
+                    blend(px, [1.0, 1.0, 1.0], 0.18 * (1.0 - t / 0.4) * cover * pal.shine);
                 }
                 if d > -1.5 * sf {
                     blend(px, [1.0, 1.0, 1.0], 0.5 * cover);
                 }
             }
         }
-        if let Some(img) = text.line(&note.summary, w - 32 * s, 15.0 * sf, [255, 255, 255], Some(([15, 60, 120], 0.9)), 2 * s) {
+        if let Some(img) = text.line(&note.summary, w - 32 * s, 15.0 * sf, [255, 255, 255], pal.glow(0.9), 2 * s) {
             blit(&mut buf, w, h, &img, 16 * s, y0 + 12 * s);
         }
-        if let Some(img) = text.line(&note.body, w - 32 * s, 13.0 * sf, [235, 245, 255], Some(([15, 60, 120], 0.7)), 2 * s) {
+        if let Some(img) = text.line(&note.body, w - 32 * s, 13.0 * sf, [235, 245, 255], pal.glow(0.7), 2 * s) {
             blit(&mut buf, w, h, &img, 16 * s, y0 + 40 * s);
         }
     }

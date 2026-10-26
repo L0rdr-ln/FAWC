@@ -1,0 +1,32 @@
+name = "Sakura"
+description = "Soft pink pastel glass with big round buttons."
+accent = "#f48fb1"
+transparency = 0.40
+blur = 4
+gloss = 0.7
+radius = 16
+border = 5
+titlebar = 32
+client_tint = [1.0, 0.92, 0.96, 0.10]
+highlight = 1.0
+reflections = 1.0
+glow = 1.0
+shadow = 0.8
+rim = 0.6
+title_ink = "#4a1f35"
+title_ink_dim = "#8a6578"
+title_glow = 0.95
+
+[buttons]
+style = "orb"
+size = 18
+gap = 7
+margin = 9
+close = "#e0457b"
+maximize = "#8bc34a"
+minimize = "#ffb74d"
+
+[wallpaper]
+kind = "gradient"
+color = "#ffd6e7"
+color2 = "#c7a4ff"

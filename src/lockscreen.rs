@@ -27,12 +27,13 @@ pub fn draw(text: &mut TextRenderer, background: &[u8], w: i32, h: i32, s: i32, 
     let sf = s as f32;
     let (card_w, card_h) = (CARD_W * s, CARD_H * s);
     let (cx0, cy0) = ((w - card_w) / 2, (h - card_h) / 2);
-    let rad = 16.0f32 * sf;
+    let pal = fde_pal();
+    let rad = (16.0 - 16.0 * pal.solid) * sf;
     for y in 0..card_h {
         for x in 0..card_w {
             let dx = (x as f32 + 0.5 - card_w as f32 / 2.0).abs() - (card_w as f32 / 2.0 - rad);
             let dy = (y as f32 + 0.5 - card_h as f32 / 2.0).abs() - (card_h as f32 / 2.0 - rad);
-            let d = dx.max(0.0).hypot(dy.max(0.0)) - rad;
+            let d = dx.max(0.0).hypot(dy.max(0.0)) + dx.max(dy).min(0.0) - rad;
             let cover = (0.5 - d).clamp(0.0, 1.0);
             if cover <= 0.0 {
                 continue;
@@ -40,9 +41,9 @@ pub fn draw(text: &mut TextRenderer, background: &[u8], w: i32, h: i32, s: i32, 
             let t = y as f32 / card_h as f32;
             let i = (((cy0 + y) * w + cx0 + x) * 4) as usize;
             let px = &mut buf[i..i + 4];
-            blend(px, [0.25 + 0.15 * (1.0 - t), 0.58 + 0.12 * (1.0 - t), 0.92], 0.55 * cover);
+            blend(px, pal.tone(t), (0.55 + 0.4 * pal.solid) * cover);
             if t < 0.3 {
-                blend(px, [1.0, 1.0, 1.0], 0.20 * (1.0 - t / 0.3) * cover);
+                blend(px, [1.0, 1.0, 1.0], 0.20 * (1.0 - t / 0.3) * cover * pal.shine);
             }
             if d > -1.5 * sf {
                 blend(px, [1.0, 1.0, 1.0], 0.5 * cover);
@@ -50,7 +51,7 @@ pub fn draw(text: &mut TextRenderer, background: &[u8], w: i32, h: i32, s: i32, 
         }
     }
     // the user's name
-    if let Some(img) = text.line(user, card_w - 40 * s, 22.0 * sf, [255, 255, 255], Some(([20, 70, 140], 0.9)), 4 * s) {
+    if let Some(img) = text.line(user, card_w - 40 * s, 22.0 * sf, [255, 255, 255], pal.glow(0.9), 4 * s) {
         blit(&mut buf, w, h, &img, cx0 + (card_w - img.width) / 2, cy0 + 28 * s);
     }
     // the password field: a white sunken pill with one dot per character
@@ -84,7 +85,7 @@ pub fn draw(text: &mut TextRenderer, background: &[u8], w: i32, h: i32, s: i32, 
         }
     }
     let line = if message.is_empty() { "Type your password and press Enter" } else { message };
-    if let Some(img) = text.line(line, card_w - 40 * s, 14.0 * sf, [255, 255, 255], Some(([20, 70, 140], 0.9)), 3 * s) {
+    if let Some(img) = text.line(line, card_w - 40 * s, 14.0 * sf, [255, 255, 255], pal.glow(0.9), 3 * s) {
         blit(&mut buf, w, h, &img, cx0 + (card_w - img.width) / 2, cy0 + 145 * s);
     }
     buf
@@ -153,4 +154,8 @@ pub fn check_password(user: &str, password: &str) -> bool {
         let _ = stdin.write_all(&[0]);
     }
     child.wait().map(|s| s.success()).unwrap_or(false)
+}
+
+fn fde_pal() -> crate::theme::Palette {
+    crate::theme::palette()
 }

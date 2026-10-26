@@ -26,6 +26,7 @@ pub mod screencopy;
 pub mod shell;
 pub mod state;
 pub mod text;
+pub mod theme;
 pub mod wallpaper;
 pub mod windows;
 pub mod wobble;

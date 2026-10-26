@@ -82,20 +82,21 @@ pub(crate) fn blit(buf: &mut [u8], width: i32, height: i32, img: &crate::text::T
 pub fn draw(text: &mut TextRenderer, width: i32, height: i32, s: i32, hover: bool, clock: &str, tasks: &[Task]) -> Vec<u8> {
     let mut buf = vec![0u8; (width * height * 4) as usize];
     let sf = s as f32;
+    let pal = crate::theme::palette();
     for y in 0..height {
         let t = y as f32 / (height - 1).max(1) as f32;
-        // an aqua strip, lighter at the top, with a gloss over the upper half
-        let base = [0.18 + 0.10 * (1.0 - t), 0.52 + 0.16 * (1.0 - t), 0.86 + 0.06 * (1.0 - t)];
-        let alpha = 0.55 + 0.15 * t;
+        // a strip in the accent colour, lighter at the top, with a gloss over the upper half
+        let base = pal.tone(t);
+        let alpha = (0.55 + 0.15 * t) + (0.97 - (0.55 + 0.15 * t)) * pal.solid;
         for x in 0..width {
             let i = ((y * width + x) * 4) as usize;
             let px = &mut buf[i..i + 4];
             blend(px, base, alpha);
             if t < 0.5 {
-                blend(px, [1.0, 1.0, 1.0], 0.20 * (1.0 - t * 2.0) + 0.05);
+                blend(px, [1.0, 1.0, 1.0], (0.20 * (1.0 - t * 2.0) + 0.05) * pal.shine);
             }
             if y < s {
-                blend(px, [1.0, 1.0, 1.0], 0.55);
+                blend(px, [1.0, 1.0, 1.0], 0.55 * pal.shine.max(0.35 * pal.solid));
             }
         }
     }
@@ -113,13 +114,17 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, s: i32, hover: boo
             }
             let ny = (dy / r).clamp(-1.0, 1.0);
             let shade = 0.5 - 0.35 * ny + if hover { 0.15 } else { 0.0 };
-            let green = [0.10 + 0.25 * shade, 0.55 + 0.40 * shade, 0.15 + 0.20 * shade];
+            let green = [
+                (pal.orb[0] * (0.55 + 0.7 * shade)).min(1.0),
+                (pal.orb[1] * (0.55 + 0.7 * shade)).min(1.0),
+                (pal.orb[2] * (0.55 + 0.7 * shade)).min(1.0),
+            ];
             let i = ((y * width + x) * 4) as usize;
             blend(&mut buf[i..i + 4], green, cover);
             // the highlight in the upper half
             if dy < 0.0 && d < r - sf {
                 let h = (1.0 - (-dy / r)).clamp(0.0, 1.0) * 0.55 * cover;
-                blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], h * (1.0 - (d / r).powi(2)).max(0.0));
+                blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], h * (1.0 - (d / r).powi(2)).max(0.0) * pal.shine.max(0.3));
             }
             // the rim
             if d > r - 1.5 * sf {
@@ -147,16 +152,16 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, s: i32, hover: boo
                 }
                 let t = (y - y0) as f32 / (y1 - y0) as f32;
                 let (base, a) = if task.active {
-                    ([0.55, 0.80, 1.0], 0.55 - 0.15 * t)
+                    (pal.light(0.5), 0.55 - 0.15 * t)
                 } else if task.minimized {
-                    ([0.20, 0.45, 0.75], 0.18)
+                    (pal.dark(0.2), 0.18)
                 } else {
-                    ([0.35, 0.65, 0.95], 0.32 - 0.10 * t)
+                    (pal.light(0.15), 0.32 - 0.10 * t)
                 };
                 let i = ((y * width + x) * 4) as usize;
                 blend(&mut buf[i..i + 4], base, a * cover);
                 if t < 0.45 {
-                    blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.12 * cover);
+                    blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.12 * cover * pal.shine);
                 }
                 if d > -1.2 * sf {
                     blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.40 * cover);
@@ -164,12 +169,12 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, s: i32, hover: boo
             }
         }
         let color = if task.minimized { [220, 235, 250] } else { [255, 255, 255] };
-        if let Some(img) = text.line(&task.title, x1 - x0 - 14 * s, 13.0 * sf, color, Some(([20, 70, 140], 0.8)), 2 * s) {
+        if let Some(img) = text.line(&task.title, x1 - x0 - 14 * s, 13.0 * sf, color, pal.glow(0.8), 2 * s) {
             blit(&mut buf, width, height, &img, x0 + 8 * s, (height - img.height) / 2);
         }
     }
     // the clock, with a soft glow, at the right
-    if let Some(img) = text.line(clock, 120 * s, 16.0 * sf, [255, 255, 255], Some(([20, 70, 140], 0.9)), 3 * s) {
+    if let Some(img) = text.line(clock, 120 * s, 16.0 * sf, [255, 255, 255], pal.glow(0.9), 3 * s) {
         blit(&mut buf, width, height, &img, width - img.width - 14 * s, (height - img.height) / 2);
     }
     buf
@@ -199,12 +204,13 @@ pub fn draw_menu(text: &mut TextRenderer, s: i32, query: &str, names: &[String],
     let (w, h) = (lw * s, lh * s);
     let sf = s as f32;
     let mut buf = vec![0u8; (w * h * 4) as usize];
-    let rad = 12.0f32 * sf;
+    let pal = crate::theme::palette();
+    let rad = (12.0 - 12.0 * pal.solid) * sf;
     for y in 0..h {
         for x in 0..w {
             let dx = (x as f32 + 0.5 - w as f32 / 2.0).abs() - (w as f32 / 2.0 - rad);
             let dy = (y as f32 + 0.5 - h as f32 / 2.0).abs() - (h as f32 / 2.0 - rad);
-            let d = dx.max(0.0).hypot(dy.max(0.0)) - rad;
+            let d = dx.max(0.0).hypot(dy.max(0.0)) + dx.max(dy).min(0.0) - rad;
             let cover = (0.5 - d).clamp(0.0, 1.0);
             if cover <= 0.0 {
                 continue;
@@ -212,9 +218,9 @@ pub fn draw_menu(text: &mut TextRenderer, s: i32, query: &str, names: &[String],
             let t = y as f32 / h as f32;
             let i = ((y * w + x) * 4) as usize;
             let px = &mut buf[i..i + 4];
-            blend(px, [0.20 + 0.10 * (1.0 - t), 0.55 + 0.12 * (1.0 - t), 0.90], 0.62 * cover);
+            blend(px, pal.tone(t), (0.62 + 0.35 * pal.solid) * cover);
             if t < 0.25 {
-                blend(px, [1.0, 1.0, 1.0], 0.16 * (1.0 - t * 4.0) * cover);
+                blend(px, [1.0, 1.0, 1.0], 0.16 * (1.0 - t * 4.0) * cover * pal.shine);
             }
             if d > -1.5 * sf {
                 blend(px, [1.0, 1.0, 1.0], 0.45 * cover);
@@ -249,12 +255,12 @@ pub fn draw_menu(text: &mut TextRenderer, s: i32, query: &str, names: &[String],
                 for x in MENU_PAD * s..w - MENU_PAD * s {
                     let t = (y - y0) as f32 / (MENU_ROW * s) as f32;
                     let idx = ((y * w + x) * 4) as usize;
-                    blend(&mut buf[idx..idx + 4], [0.75, 0.92, 1.0], 0.55 - 0.2 * t);
+                    blend(&mut buf[idx..idx + 4], pal.light(0.75), 0.55 - 0.2 * t);
                 }
             }
         }
         let color = if hover == Some(i) { [10, 50, 100] } else { [255, 255, 255] };
-        let glow = if hover == Some(i) { None } else { Some(([20, 70, 140], 0.8)) };
+        let glow = if hover == Some(i) { None } else { pal.glow(0.8) };
         if let Some(img) = text.line(name, w - 2 * MENU_PAD * s - 16 * s, 14.0 * sf, color, glow, 2 * s) {
             blit(&mut buf, w, h, &img, (MENU_PAD + 10) * s, y0 + (MENU_ROW * s - img.height) / 2);
         }

@@ -197,6 +197,42 @@ pub fn configured(path: &str) -> Option<Image> {
     bundled()
 }
 
+/// The picture for this configuration: the user's file; else the theme's own background (a
+/// solid colour or a gradient), or the bundled photograph for themes that use it.
+pub fn for_config(config: &crate::config::Config) -> Option<Image> {
+    let path = &config.wallpaper.path;
+    if !path.is_empty() {
+        if let Some(i) = configured(path).filter(|_| std::path::Path::new(path).exists()) {
+            return Some(i);
+        }
+    }
+    let t = config.theme();
+    let c = |s: &str| crate::config::parse_color(s).unwrap_or([0.0, 0.0, 0.0]);
+    let (w, h) = (256i32, 144i32);
+    let (a, b) = (c(&t.wallpaper.color), c(&t.wallpaper.color2));
+    match t.wallpaper.kind.as_str() {
+        "solid" => {
+            let px: Vec<u8> = (0..w * h).flat_map(|_| [(a[0] * 255.0) as u8, (a[1] * 255.0) as u8, (a[2] * 255.0) as u8, 255]).collect();
+            Some(Image { width: w, height: h, rgba: px })
+        }
+        "gradient" => {
+            let mut px = Vec::with_capacity((w * h * 4) as usize);
+            for y in 0..h {
+                for x in 0..w {
+                    // top to bottom with a slight lean to the right
+                    let t = ((y as f32 / (h - 1) as f32) * 0.85 + (x as f32 / (w - 1) as f32) * 0.15).clamp(0.0, 1.0);
+                    for k in 0..3 {
+                        px.push(((a[k] + (b[k] - a[k]) * t) * 255.0).round() as u8);
+                    }
+                    px.push(255);
+                }
+            }
+            Some(Image { width: w, height: h, rgba: px })
+        }
+        _ => configured(""),
+    }
+}
+
 /// Read a JPEG (colour or grey) as RGBA.
 pub fn load_jpeg(path: &std::path::Path) -> Result<Image, String> {
     let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;

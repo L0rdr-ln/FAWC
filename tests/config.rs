@@ -117,3 +117,79 @@ fn the_wallpaper_file_is_loaded_and_follows_edits() {
     state.check_config(true);
     assert!(state.wallpaper_image.as_ref().map(|i| i.width >= 1900).unwrap_or(false));
 }
+
+#[test]
+fn a_theme_sets_the_look_unless_the_user_set_it_by_hand() {
+    use fde::config::Config;
+    use fde::glass::GlassStyle;
+    let metro = Config::parse("[appearance]\ntheme = \"metro\"\n").unwrap();
+    let mut s = GlassStyle::default();
+    metro.apply_style(&mut s);
+    assert_eq!((s.radius, s.border, s.flat_buttons), (0.0, 1.0, 1.0));
+    assert_eq!(s.tint_frame[3], 1.0, "metro's title bar is solid");
+    // a hand-set accent still wins
+    let own = Config::parse("[appearance]\ntheme = \"metro\"\naccent = \"#ff0000\"\n").unwrap();
+    own.apply_style(&mut s);
+    assert_eq!(&s.tint_frame[..3], &[1.0, 0.0, 0.0]);
+    assert_eq!(s.tint_frame[3], 1.0, "the transparency still comes from the theme");
+    assert!(Config::parse("[appearance]\ntheme = \"nope\"\n").unwrap_err().contains("theme"));
+}
+
+#[test]
+fn a_theme_file_in_the_themes_folder_can_be_used() {
+    use fde::config::Config;
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("mine.toml"), "name = \"Mine\"\naccent = \"#112233\"\nradius = 3\n").unwrap();
+    std::env::set_var("FDE_THEMES", dir.path());
+    let c = Config::parse("[appearance]\ntheme = \"mine\"\n").unwrap();
+    assert_eq!(c.look().0, "#112233");
+    assert_eq!(c.theme().radius, 3.0);
+    assert!(fde::theme::Theme::list().iter().any(|(id, n)| id == "mine" && n == "Mine"));
+    std::env::remove_var("FDE_THEMES");
+}
+
+/// Not a test: `FDE_PREVIEW_OUT=file.png FDE_CONFIG=... cargo test --test config shell_preview -- --ignored`
+/// draws the task bar and start menu with the configured theme (for looking at).
+#[test]
+#[ignore]
+fn shell_preview() {
+    let Some(out) = std::env::var_os("FDE_PREVIEW_OUT") else { return };
+    let mut text = fde::text::TextRenderer::default();
+    let tasks = vec![
+        fde::panel::Task { title: "Terminal".into(), active: true, minimized: false },
+        fde::panel::Task { title: "Files".into(), active: false, minimized: false },
+        fde::panel::Task { title: "Music".into(), active: false, minimized: true },
+    ];
+    let (bw, bh) = (600, 40);
+    let bar = fde::panel::draw(&mut text, bw, bh, 1, false, "12:34", &tasks);
+    let names: Vec<String> = ["Terminal", "Files", "Settings", "Music"].iter().map(|s| s.to_string()).collect();
+    let menu = fde::panel::draw_menu(&mut text, 1, "", &names, Some(1));
+    let (mw, mh) = fde::panel::menu_size();
+    let (w, h) = (600usize, 40 + 10 + mh as usize);
+    let mut img = vec![0u8; w * h * 4];
+    for px in img.chunks_exact_mut(4) {
+        px.copy_from_slice(&[235, 240, 245, 255]);
+    }
+    let put = |img: &mut Vec<u8>, src: &[u8], sw: usize, sh: usize, ox: usize, oy: usize| {
+        for y in 0..sh {
+            for x in 0..sw {
+                let s = (y * sw + x) * 4;
+                let d = ((oy + y) * w + ox + x) * 4;
+                let a = src[s + 3] as u32;
+                for c in 0..3 {
+                    img[d + c] = ((src[s + c] as u32) + img[d + c] as u32 * (255 - a) / 255).min(255) as u8;
+                }
+            }
+        }
+    };
+    // the panel's pictures are ARGB with the red and blue swapped (shm); swap back for the PNG
+    let swap = |b: Vec<u8>| -> Vec<u8> { b };
+    put(&mut img, &swap(bar), bw as usize, bh as usize, 0, 0);
+    put(&mut img, &swap(menu), mw as usize, mh as usize, 0, 50);
+    let file = std::fs::File::create(out).unwrap();
+    let mut enc = png::Encoder::new(file, w as u32, h as u32);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    enc.write_header().unwrap().write_image_data(&img).unwrap();
+}

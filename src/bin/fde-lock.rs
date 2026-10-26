@@ -183,7 +183,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // the same wallpaper as the desktop
     let config = fde::config::Config::load().unwrap_or_default();
-    let (picture, mode) = (fde::wallpaper::configured(&config.wallpaper.path), config.wallpaper.mode.clone());
+    let (picture, mode) = (fde::wallpaper::for_config(&config), config.wallpaper.mode.clone());
     let mut text = TextRenderer::default();
     while !app.finished {
         if app.unlock {
