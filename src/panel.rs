@@ -48,13 +48,31 @@ fn orb_center(height: i32) -> (f64, f64) {
     ((ORB_MARGIN + ORB_SIZE / 2) as f64, height as f64 / 2.0)
 }
 
-fn blend(px: &mut [u8], rgb: [f32; 3], a: f32) {
+pub(crate) fn blend(px: &mut [u8], rgb: [f32; 3], a: f32) {
     // source-over of a premultiplied colour (rgb * a, a)
     let inv = 1.0 - a;
     for c in 0..3 {
         px[c] = (rgb[c] * 255.0 * a + px[c] as f32 * inv).round().clamp(0.0, 255.0) as u8;
     }
     px[3] = (255.0 * a + px[3] as f32 * inv).round().clamp(0.0, 255.0) as u8;
+}
+
+/// Composite a rendered line of text (premultiplied) onto `buf` at (x0, y0).
+pub(crate) fn blit(buf: &mut [u8], width: i32, height: i32, img: &crate::text::TextImage, x0: i32, y0: i32) {
+    for yy in 0..img.height {
+        for xx in 0..img.width {
+            let (px_, py_) = (x0 + xx, y0 + yy);
+            if px_ < 0 || py_ < 0 || px_ >= width || py_ >= height {
+                continue;
+            }
+            let s = ((yy * img.width + xx) * 4) as usize;
+            let d = ((py_ * width + px_) * 4) as usize;
+            let inv = 255 - img.rgba[s + 3] as u32;
+            for c in 0..4 {
+                buf[d + c] = (img.rgba[s + c] as u32 + buf[d + c] as u32 * inv / 255).min(255) as u8;
+            }
+        }
+    }
 }
 
 /// `width` x `height` RGBA, premultiplied. `hover` brightens the orb, `clock` is e.g. "14:05".

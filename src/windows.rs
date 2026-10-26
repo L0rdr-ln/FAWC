@@ -37,6 +37,9 @@ impl Fawc {
 
     /// Give the keyboard to `window` and bring it to the front.
     pub fn focus_window(&mut self, window: &Window) {
+        if self.locked {
+            return;
+        }
         self.space.raise_element(window, true);
         if let Some(top) = window.toplevel() {
             let serial = SERIAL_COUNTER.next_serial();

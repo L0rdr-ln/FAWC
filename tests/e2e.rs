@@ -491,3 +491,85 @@ fn the_real_task_bar_shows_a_button_for_an_open_window() {
     let _ = panel.kill();
     assert!(appeared, "the task bar never showed a button for the window");
 }
+
+#[test]
+fn the_lock_screen_locks_the_session_and_unlocks_with_the_right_password() {
+    use smithay::backend::input::KeyState;
+    use smithay::input::keyboard::{FilterResult, Keycode};
+    use smithay::utils::SERIAL_COUNTER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): lock test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let state = Fawc::new(&display.handle(), (w, h).into());
+    let socket = ListeningSocket::bind("fawc-e2e-lock").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+
+    let mut lock = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-lock"))
+        .env("WAYLAND_DISPLAY", "fawc-e2e-lock")
+        .env("USER", "tester")
+        .env("FAWC_LOCK_CHECK", "[ \"$(tr -d '\\000')\" = secret ]")
+        .env_remove("DISPLAY")
+        .spawn()
+        .unwrap();
+
+    let step = |hn: &mut Harness, renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture| {
+        hn.pump();
+        hn.state.render_scene(renderer, &glass, scene).unwrap();
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    let wait = |hn: &mut Harness, renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture, what: &str, cond: &dyn Fn(&Harness) -> bool| {
+        let t0 = Instant::now();
+        while !cond(hn) {
+            assert!(t0.elapsed() < Duration::from_secs(10), "timeout: {what}");
+            step(hn, renderer, scene);
+        }
+    };
+    wait(&mut hn, &mut renderer, &mut scene, "the session locks", &|hn| hn.state.locked && hn.state.lock_surface.is_some() && hn.state.lock_confirmation.is_none());
+    // let the card be drawn and shown
+    for _ in 0..60 {
+        step(&mut hn, &mut renderer, &mut scene);
+    }
+    let bytes = {
+        let size = scene.size();
+        let target = renderer.bind(&mut scene).unwrap();
+        let m = renderer.copy_framebuffer(&target, Rectangle::from_size(size), Fourcc::Abgr8888).unwrap();
+        renderer.map_texture(&m).unwrap().to_vec()
+    };
+    // the login card is a lighter, bluer sheet in the middle than the wallpaper around it
+    let middle = pixel(&bytes, w, 400, 300 - 90);
+    let around = pixel(&bytes, w, 40, 300 - 90);
+    assert!(middle != around, "the card is on screen: {middle:?} {around:?}");
+
+    let mut type_keys = |hn: &mut Harness, codes: &[u32]| {
+        for &c in codes {
+            let kb = hn.state.seat.get_keyboard().unwrap();
+            for st in [KeyState::Pressed, KeyState::Released] {
+                kb.input::<(), _>(&mut hn.state, Keycode::new(c + 8), st, SERIAL_COUNTER.next_serial(), 0, |_, _, _| FilterResult::Forward);
+            }
+            hn.pump();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+    // evdev: x = 45, Enter = 28
+    type_keys(&mut hn, &[45, 28]);
+    for _ in 0..60 {
+        step(&mut hn, &mut renderer, &mut scene);
+    }
+    assert!(hn.state.locked, "a wrong password does not unlock");
+    // s e c r e t Enter
+    type_keys(&mut hn, &[31, 18, 46, 19, 18, 20, 28]);
+    wait(&mut hn, &mut renderer, &mut scene, "the right password unlocks", &|hn| !hn.state.locked);
+    let _ = lock.wait();
+}

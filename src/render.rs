@@ -168,6 +168,31 @@ impl Fawc {
         Ok(())
     }
 
+    /// The session is locked: only the lock screen's surface over the wallpaper. Once a frame
+    /// without anything else is done, the lock is confirmed to the client.
+    fn draw_lock(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        scene: &mut GlesTexture,
+        size: Size<i32, Physical>,
+    ) -> Result<(), GlesError> {
+        use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
+        use smithay::backend::renderer::element::Kind;
+        let full = Rectangle::<i32, Physical>::from_size(size);
+        if let Some(ls) = &self.lock_surface {
+            let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                render_elements_from_surface_tree(renderer, ls.wl_surface(), (0, 0), 1.0, 1.0, Kind::Unspecified);
+            let mut target = renderer.bind(scene)?;
+            let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+            draw_render_elements(&mut frame, 1.0, &elements, &[full])?;
+            let _ = frame.finish()?;
+        }
+        if let Some(confirmation) = self.lock_confirmation.take() {
+            confirmation.lock();
+        }
+        Ok(())
+    }
+
     /// Draw everything into `scene` (the output's size). `glass` is the shader set.
     pub fn render_scene(
         &mut self,
@@ -216,6 +241,9 @@ impl Fawc {
             let _ = frame.finish()?;
         }
 
+        if self.locked {
+            self.draw_lock(renderer, scene, size)?;
+        } else {
         // wallpaper and bottom layers
         self.draw_layers(renderer, glass, scene, size, &[Layer::Background, Layer::Bottom])?;
 
@@ -297,6 +325,7 @@ impl Fawc {
 
         // panels, launchers, notifications above the windows
         self.draw_layers(renderer, glass, scene, size, &[Layer::Top, Layer::Overlay])?;
+        }
 
         if self.draw_cursor {
             if self.cursor_texture.is_none() {

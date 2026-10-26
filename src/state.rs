@@ -56,6 +56,11 @@ pub struct Fawc {
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
     pub layer_shell_state: WlrLayerShellState,
+    pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
+    /// the session is locked: only `lock_surface` is shown and gets input
+    pub locked: bool,
+    pub lock_surface: Option<smithay::wayland::session_lock::LockSurface>,
+    pub lock_confirmation: Option<smithay::wayland::session_lock::SessionLocker>,
     pub foreign_toplevels: crate::foreign_toplevel::ForeignToplevelState,
     pub background_effect_state: crate::background_effect::BackgroundEffectState,
     pub shm_state: ShmState,
@@ -114,6 +119,7 @@ impl Fawc {
         let xdg_shell_state = XdgShellState::new::<Fawc>(dh);
         let xdg_decoration_state = XdgDecorationState::new::<Fawc>(dh);
         let layer_shell_state = WlrLayerShellState::new::<Fawc>(dh);
+        let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Fawc, _>(dh, |_| true);
         let foreign_toplevels = crate::foreign_toplevel::ForeignToplevelState::new::<Fawc>(dh);
         let background_effect_state = crate::background_effect::BackgroundEffectState::new::<Fawc>(dh);
         let shm_state = ShmState::new::<Fawc>(dh, vec![]);
@@ -152,6 +158,10 @@ impl Fawc {
             xdg_shell_state,
             xdg_decoration_state,
             layer_shell_state,
+            session_lock_state,
+            locked: false,
+            lock_surface: None,
+            lock_confirmation: None,
             foreign_toplevels,
             background_effect_state,
             shm_state,

@@ -55,6 +55,6 @@ Done. Start it with:  ~/start-fawc
  - in a desktop session it opens as a window (nested)
  - on a console (Ctrl+Alt+F3, log in) it takes over the screen; if it says it cannot open the
    seat, log out and in once (the seatd group was just added) or run it with sudo
-Keys: Alt+Return terminal, Alt+drag move, Alt+Esc quit, Alt+Tab cycle, Alt+f maximize,
+Keys: Alt+Return terminal, Alt+drag move, Alt+Esc quit, Alt+Tab cycle, Alt+f maximize, Alt+l lock,
 Ctrl+Alt+F1..F12 switch console.
 DONE

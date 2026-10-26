@@ -25,3 +25,16 @@ pub fn start_session_clients() {
         }
     }
 }
+
+/// Start a program that lives next to the compositor (`fawc-lock`).
+pub fn start_sibling(name: &str) {
+    let path = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|d| d.join(name)));
+    match path {
+        Some(p) if p.exists() => {
+            if let Err(e) = Command::new(&p).spawn() {
+                tracing::warn!("cannot start {}: {e}", p.display());
+            }
+        }
+        _ => tracing::warn!("{name} is not installed next to the compositor"),
+    }
+}

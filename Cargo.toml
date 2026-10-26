@@ -27,6 +27,7 @@ wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "server", "staging"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client", "server"] }
 libc = "0.2"
+xkbcommon = "0.8"
 
 [profile.release]
 lto = "thin"

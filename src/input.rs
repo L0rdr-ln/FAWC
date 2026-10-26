@@ -23,6 +23,7 @@ enum Action {
     Maximize,
     Cycle,
     Restore,
+    Lock,
     SwitchVt(i32),
 }
 
@@ -39,12 +40,16 @@ impl Fawc {
                     event.state(),
                     serial,
                     time,
-                    |_state, mods, handle| {
+                    |state, mods, handle| {
                         let sym = handle.modified_sym().raw();
                         if event.state() == KeyState::Pressed
                             && (keysyms::KEY_XF86Switch_VT_1..=keysyms::KEY_XF86Switch_VT_12).contains(&sym)
                         {
                             return FilterResult::Intercept(Action::SwitchVt((sym - keysyms::KEY_XF86Switch_VT_1 + 1) as i32));
+                        }
+                        // a locked session has no shortcuts besides the console switch
+                        if state.locked {
+                            return FilterResult::Forward;
                         }
                         if event.state() == KeyState::Pressed && mods.alt {
                             let action = match handle.modified_sym().raw() {
@@ -54,6 +59,7 @@ impl Fawc {
                                 keysyms::KEY_f | keysyms::KEY_F => Some(Action::Maximize),
                                 keysyms::KEY_Tab | keysyms::KEY_ISO_Left_Tab => Some(Action::Cycle),
                                 keysyms::KEY_m | keysyms::KEY_M => Some(Action::Restore),
+                                keysyms::KEY_l | keysyms::KEY_L => Some(Action::Lock),
                                 _ => None,
                             };
                             if let Some(a) = action {
@@ -128,6 +134,7 @@ impl Fawc {
             }
             Action::Cycle => self.cycle_windows(),
             Action::Restore => self.restore_window(),
+            Action::Lock => crate::shell::start_sibling("fawc-lock"),
             Action::SwitchVt(vt) => {
                 if let Some(session) = self.session.as_mut() {
                     use smithay::backend::session::Session;
@@ -147,6 +154,16 @@ impl Fawc {
         let size = self.output_size();
         let pos = (pos.x.clamp(0.0, size.w as f64 - 1.0), pos.y.clamp(0.0, size.h as f64 - 1.0)).into();
         self.pointer_location = pos;
+
+        // the lock screen has the pointer to itself
+        if self.locked {
+            let serial = SERIAL_COUNTER.next_serial();
+            let Some(ptr) = self.seat.get_pointer() else { return };
+            let focus = self.lock_surface.as_ref().map(|l| (l.wl_surface().clone(), (0.0, 0.0).into()));
+            ptr.motion(self, focus, &MotionEvent { location: pos, serial, time });
+            ptr.frame(self);
+            return;
+        }
 
         // an ongoing drag takes the pointer
         if let Some(drag) = self.drag.clone() {
@@ -193,7 +210,9 @@ impl Fawc {
         let serial = SERIAL_COUNTER.next_serial();
         let pos = self.pointer_location;
 
-        if !pressed {
+        if self.locked {
+            // straight to the lock screen
+        } else if !pressed {
             if self.drag.take().is_some() {
                 return;
             }

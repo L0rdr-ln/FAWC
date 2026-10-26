@@ -239,6 +239,42 @@ impl WlrLayerShellHandler for Fawc {
 
 delegate_compositor!(Fawc);
 delegate_layer_shell!(Fawc);
+smithay::delegate_session_lock!(Fawc);
+
+impl smithay::wayland::session_lock::SessionLockHandler for Fawc {
+    fn lock_state(&mut self) -> &mut smithay::wayland::session_lock::SessionLockManagerState {
+        &mut self.session_lock_state
+    }
+
+    fn lock(&mut self, confirmation: smithay::wayland::session_lock::SessionLocker) {
+        // nothing but the lock screen from now on; confirmed once a frame without anything else is drawn
+        self.locked = true;
+        self.drag = None;
+        self.lock_confirmation = Some(confirmation);
+        if let Some(kb) = self.seat.get_keyboard() {
+            kb.set_focus(self, None, smithay::utils::SERIAL_COUNTER.next_serial());
+        }
+        tracing::info!("session locked");
+    }
+
+    fn unlock(&mut self) {
+        self.locked = false;
+        self.lock_surface = None;
+        self.lock_confirmation = None;
+        self.focus_top_window();
+        tracing::info!("session unlocked");
+    }
+
+    fn new_surface(&mut self, surface: smithay::wayland::session_lock::LockSurface, _output: smithay::reexports::wayland_server::protocol::wl_output::WlOutput) {
+        let size = self.output_size();
+        surface.with_pending_state(|s| s.size = Some((size.w as u32, size.h as u32).into()));
+        surface.send_configure();
+        if let Some(kb) = self.seat.get_keyboard() {
+            kb.set_focus(self, Some(surface.wl_surface().clone()), smithay::utils::SERIAL_COUNTER.next_serial());
+        }
+        self.lock_surface = Some(surface);
+    }
+}
 crate::delegate_background_effect!(Fawc);
 delegate_shm!(Fawc);
 delegate_output!(Fawc);
