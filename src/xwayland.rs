@@ -11,6 +11,13 @@ use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Rectangle};
+use smithay::wayland::selection::data_device::{
+    clear_data_device_selection, current_data_device_selection_userdata, request_data_device_client_selection, set_data_device_selection,
+};
+use smithay::wayland::selection::primary_selection::{
+    clear_primary_selection, current_primary_selection_userdata, request_primary_client_selection, set_primary_selection,
+};
+use smithay::wayland::selection::SelectionTarget;
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
 use smithay::xwayland::xwm::{Reorder, ResizeEdge, XwmId};
 use smithay::xwayland::{X11Surface, X11Wm, XWayland, XWaylandEvent, XwmHandler};
@@ -36,6 +43,7 @@ pub fn start(handle: LoopHandle<'static, Fde>, dh: &DisplayHandle) {
             Ok(wm) => {
                 tracing::info!("XWayland ready on DISPLAY=:{display_number}");
                 state.xwm = Some(wm);
+                state.loop_handle = Some(h2.clone());
                 state.x11_display = Some(display_number);
                 std::env::set_var("DISPLAY", format!(":{display_number}"));
             }
@@ -189,6 +197,48 @@ impl XwmHandler for Fde {
     fn unminimize_request(&mut self, _: XwmId, surface: X11Surface) {
         if let Some(w) = self.x11_window(&surface) {
             self.restore_specific(&w);
+        }
+    }
+
+    // clipboard and primary selection between X11 and Wayland programs
+    fn allow_selection_access(&mut self, _: XwmId, _: SelectionTarget) -> bool {
+        true
+    }
+
+    /// An X program wants what a Wayland program has copied.
+    fn send_selection(&mut self, _: XwmId, selection: SelectionTarget, mime_type: String, fd: std::os::fd::OwnedFd) {
+        let seat = self.seat.clone();
+        let sent = match selection {
+            SelectionTarget::Clipboard => request_data_device_client_selection(&seat, mime_type, fd).map_err(|e| format!("{e:?}")),
+            SelectionTarget::Primary => request_primary_client_selection(&seat, mime_type, fd).map_err(|e| format!("{e:?}")),
+        };
+        if let Err(e) = sent {
+            tracing::warn!("X11 paste: {e}");
+        }
+    }
+
+    /// An X program copied something: Wayland programs see it as a selection of the compositor.
+    fn new_selection(&mut self, _: XwmId, selection: SelectionTarget, mime_types: Vec<String>) {
+        let (dh, seat) = (self.display_handle.clone(), self.seat.clone());
+        match selection {
+            SelectionTarget::Clipboard => set_data_device_selection(&dh, &seat, mime_types, ()),
+            SelectionTarget::Primary => set_primary_selection(&dh, &seat, mime_types, ()),
+        }
+    }
+
+    fn cleared_selection(&mut self, _: XwmId, selection: SelectionTarget) {
+        let (dh, seat) = (self.display_handle.clone(), self.seat.clone());
+        match selection {
+            SelectionTarget::Clipboard => {
+                if current_data_device_selection_userdata(&seat).is_some() {
+                    clear_data_device_selection(&dh, &seat);
+                }
+            }
+            SelectionTarget::Primary => {
+                if current_primary_selection_userdata(&seat).is_some() {
+                    clear_primary_selection(&dh, &seat);
+                }
+            }
         }
     }
 

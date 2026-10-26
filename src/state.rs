@@ -88,6 +88,8 @@ pub struct Fde {
     /// windows that are bending on their springs
     /// the X11 window manager, once XWayland is up
     pub xwm: Option<smithay::xwayland::X11Wm>,
+    /// the event loop, for transfers between X11 and Wayland clipboards
+    pub loop_handle: Option<smithay::reexports::calloop::LoopHandle<'static, Fde>>,
     pub x11_display: Option<u32>,
     pub xwayland_shell_state: smithay::wayland::xwayland_shell::XWaylandShellState,
     pub screencopy: crate::screencopy::Screencopy,
@@ -267,6 +269,7 @@ impl Fde {
             data_device_state,
             primary_selection_state,
             xwm: None,
+            loop_handle: None,
             x11_display: None,
             xwayland_shell_state,
             screencopy: Default::default(),

@@ -2098,3 +2098,294 @@ fn selected_text_is_offered_for_middle_click_paste() {
     assert!(got, "the selection reaches the program that has the keyboard focus");
     assert_eq!(mimes, vec!["text/plain".to_string()]);
 }
+
+// ------------------------------------------------------------------ the clipboard
+
+use wayland_client::protocol::{wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source};
+
+#[derive(Default)]
+struct ClipApp {
+    configured: bool,
+    text: Option<String>,
+    offer: Option<(wl_data_offer::WlDataOffer, Vec<String>)>,
+    offering: Vec<String>,
+    pending: Vec<wl_data_offer::WlDataOffer>,
+}
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for ClipApp {
+    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+}
+delegate_noop!(ClipApp: ignore wl_compositor::WlCompositor);
+delegate_noop!(ClipApp: ignore wl_surface::WlSurface);
+delegate_noop!(ClipApp: ignore wl_shm::WlShm);
+delegate_noop!(ClipApp: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(ClipApp: ignore wl_buffer::WlBuffer);
+delegate_noop!(ClipApp: ignore seat_proto::WlSeat);
+delegate_noop!(ClipApp: ignore xdg_toplevel::XdgToplevel);
+delegate_noop!(ClipApp: ignore wl_data_device_manager::WlDataDeviceManager);
+impl Dispatch<xdg_wm_base::XdgWmBase, ()> for ClipApp {
+    fn event(_: &mut Self, _: &xdg_wm_base::XdgWmBase, _: xdg_wm_base::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+impl Dispatch<xdg_surface::XdgSurface, ()> for ClipApp {
+    fn event(app: &mut Self, s: &xdg_surface::XdgSurface, event: xdg_surface::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let xdg_surface::Event::Configure { serial } = event {
+            s.ack_configure(serial);
+            app.configured = true;
+        }
+    }
+}
+impl Dispatch<wl_data_source::WlDataSource, ()> for ClipApp {
+    fn event(app: &mut Self, _: &wl_data_source::WlDataSource, event: wl_data_source::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let wl_data_source::Event::Send { fd, .. } = event {
+            if let Some(t) = &app.text {
+                let mut f = std::fs::File::from(fd);
+                let _ = f.write_all(t.as_bytes());
+            }
+        }
+    }
+}
+impl Dispatch<wl_data_offer::WlDataOffer, ()> for ClipApp {
+    fn event(app: &mut Self, offer: &wl_data_offer::WlDataOffer, event: wl_data_offer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let wl_data_offer::Event::Offer { mime_type } = event {
+            if let Some(p) = app.pending.iter().position(|o| o == offer) {
+                let _ = p;
+            }
+            app.offering.push(mime_type);
+        }
+    }
+}
+impl Dispatch<wl_data_device::WlDataDevice, ()> for ClipApp {
+    fn event(app: &mut Self, _: &wl_data_device::WlDataDevice, event: wl_data_device::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        match event {
+            wl_data_device::Event::DataOffer { id } => {
+                app.offering.clear();
+                app.pending.push(id);
+            }
+            wl_data_device::Event::Selection { id } => {
+                app.offer = id.map(|o| (o, std::mem::take(&mut app.offering)));
+            }
+            _ => {}
+        }
+    }
+    wayland_client::event_created_child!(ClipApp, wl_data_device::WlDataDevice, [
+        wl_data_device::EVT_DATA_OFFER_OPCODE => (wl_data_offer::WlDataOffer, ()),
+    ]);
+}
+
+/// A window with a data device. With `copy` it puts that text on the clipboard; without, it waits
+/// for a selection, pastes it and reports the text through `tx`.
+fn clip_client(path: std::path::PathBuf, copy: Option<String>, tx: mpsc::Sender<String>, stop: Arc<std::sync::atomic::AtomicBool>) {
+    let conn = Connection::from_socket(UnixStream::connect(path).unwrap()).unwrap();
+    let (globals, mut queue) = registry_queue_init::<ClipApp>(&conn).unwrap();
+    let qh = queue.handle();
+    let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 4..=4, ()).unwrap();
+    let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).unwrap();
+    let wm: xdg_wm_base::XdgWmBase = globals.bind(&qh, 1..=1, ()).unwrap();
+    let seat: seat_proto::WlSeat = globals.bind(&qh, 1..=1, ()).unwrap();
+    let mgr: wl_data_device_manager::WlDataDeviceManager = globals.bind(&qh, 3..=3, ()).unwrap();
+    let mut app = ClipApp::default();
+    // like real programs, the data device exists before the window does
+    let device = mgr.get_data_device(&seat, &qh, ());
+    let surface = compositor.create_surface(&qh, ());
+    let xs = wm.get_xdg_surface(&surface, &qh, ());
+    let _top = xs.get_toplevel(&qh, ());
+    surface.commit();
+    while !app.configured {
+        queue.blocking_dispatch(&mut app).unwrap();
+    }
+    let mut file = tempfile::tempfile_in(std::env::var("XDG_RUNTIME_DIR").unwrap()).unwrap();
+    file.write_all(&vec![0x80u8; 100 * 60 * 4]).unwrap();
+    use std::os::fd::AsFd;
+    let pool = shm.create_pool(file.as_fd(), 100 * 60 * 4, &qh, ());
+    let buf = pool.create_buffer(0, 100, 60, 400, wl_shm::Format::Argb8888, &qh, ());
+    surface.attach(Some(&buf), 0, 0);
+    surface.commit();
+    queue.roundtrip(&mut app).unwrap();
+    std::thread::sleep(Duration::from_millis(300)); // the keyboard focus arrives
+    queue.roundtrip(&mut app).unwrap();
+    let mut _source = None;
+    if let Some(text) = &copy {
+        app.text = Some(text.clone());
+        let s = mgr.create_data_source(&qh, ());
+        s.offer("text/plain;charset=utf-8".into());
+        device.set_selection(Some(&s), 1);
+        _source = Some(s);
+    }
+    let t0 = Instant::now();
+    let mut pasted = false;
+    while !stop.load(std::sync::atomic::Ordering::SeqCst) && t0.elapsed() < Duration::from_secs(20) {
+        queue.roundtrip(&mut app).unwrap();
+        if copy.is_none() && !pasted {
+            if let Some((offer, mimes)) = &app.offer {
+                let mime = mimes
+                    .iter()
+                    .find(|m| *m == "text/plain;charset=utf-8")
+                    .or_else(|| mimes.iter().find(|m| m.starts_with("text/plain")))
+                    .or_else(|| mimes.first());
+                if let Some(mime) = mime {
+                    let (rd, wr) = UnixStream::pair().unwrap();
+                    offer.receive(mime.clone(), wr.as_fd());
+                    drop(wr);
+                    conn.flush().unwrap();
+                    use std::io::Read;
+                    let mut got = String::new();
+                    rd.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                    let mut rd = rd;
+                    let _ = rd.read_to_string(&mut got);
+                    tx.send(got).unwrap();
+                    pasted = true;
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn pump_until(hn: &mut Harness, secs: u64, mut done: impl FnMut(&Harness) -> bool) {
+    let t0 = Instant::now();
+    while !done(hn) {
+        hn.pump();
+        assert!(t0.elapsed() < Duration::from_secs(secs), "timed out");
+        std::thread::sleep(Duration::from_millis(3));
+    }
+}
+
+#[test]
+fn text_copied_in_one_window_can_be_pasted_in_another() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    state.config.appearance.animations = false;
+    let socket = ListeningSocket::bind("fde-e2e-clip").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let path = dir.path().join("fde-e2e-clip");
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (tx1, _rx1) = mpsc::channel();
+    let (p1, s1) = (path.clone(), stop.clone());
+    let owner = std::thread::spawn(move || clip_client(p1, Some("hello from window one".into()), tx1, s1));
+    pump_until(&mut hn, 10, |h| h.state.space.elements().count() == 1);
+    hn.pump_for(700); // it has the keyboard and has copied
+    let (tx2, rx2) = mpsc::channel();
+    let (p2, s2) = (path, stop.clone());
+    let reader = std::thread::spawn(move || clip_client(p2, None, tx2, s2));
+    let mut got = None;
+    pump_until(&mut hn, 15, |_| {
+        got = rx2.try_recv().ok();
+        got.is_some()
+    });
+    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    hn.pump_for(100);
+    let _ = (owner.join(), reader.join());
+    assert_eq!(got.unwrap(), "hello from window one", "the second window pastes what the first copied");
+}
+
+fn x11_clipboard_session() -> Option<(Display<Fde>, Fde, smithay::reexports::calloop::EventLoop<'static, Fde>, std::path::PathBuf)> {
+    use smithay::reexports::calloop::EventLoop;
+    if std::process::Command::new("Xwayland").arg("-version").output().is_err() || std::process::Command::new("xclip").arg("-version").output().is_err() {
+        eprintln!("no Xwayland or xclip here: clipboard bridge test skipped");
+        return None;
+    }
+    let dir = tempfile::tempdir().unwrap().keep();
+    std::env::set_var("XDG_RUNTIME_DIR", &dir);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    state.config.appearance.animations = false;
+    let ev: EventLoop<'static, Fde> = EventLoop::try_new().unwrap();
+    fde::xwayland::start(ev.handle(), &display.handle());
+    Some((display, state, ev, dir))
+}
+
+#[test]
+fn the_clipboard_is_shared_between_x11_and_wayland_programs() {
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let Some((mut display, mut state, mut ev, dir)) = x11_clipboard_session() else { return };
+    let socket = ListeningSocket::bind("fde-e2e-xclip").unwrap();
+    let mut step = |state: &mut Fde, display: &mut Display<Fde>, ev: &mut smithay::reexports::calloop::EventLoop<'static, Fde>, socket: &ListeningSocket| {
+        while let Some(stream) = socket.accept().unwrap() {
+            display.handle().insert_client(stream, Arc::new(ClientState::default())).unwrap();
+        }
+        ev.dispatch(Duration::from_millis(3), state).unwrap();
+        display.dispatch_clients(state).unwrap();
+        display.flush_clients().unwrap();
+    };
+    let t0 = Instant::now();
+    while state.xwm.is_none() {
+        step(&mut state, &mut display, &mut ev, &socket);
+        assert!(t0.elapsed() < Duration::from_secs(20), "XWayland never became ready");
+    }
+    let xdisplay = format!(":{}", state.x11_display.unwrap());
+
+    // a Wayland window that has the keyboard and pastes
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (tx, rx) = mpsc::channel();
+    let (path, s2) = (dir.join("fde-e2e-xclip"), stop.clone());
+    let reader = std::thread::spawn(move || clip_client(path, None, tx, s2));
+    let t0 = Instant::now();
+    while state.space.elements().count() == 0 {
+        step(&mut state, &mut display, &mut ev, &socket);
+        assert!(t0.elapsed() < Duration::from_secs(10), "no window");
+    }
+    for _ in 0..60 {
+        step(&mut state, &mut display, &mut ev, &socket);
+    }
+    // an X program copies: xclip keeps serving the text until it is asked once
+    let mut xclip = std::process::Command::new("xclip")
+        .args(["-selection", "clipboard", "-i", "-quiet", "-loops", "1", "-t", "UTF8_STRING"])
+        .env("DISPLAY", &xdisplay)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    xclip.stdin.take().unwrap().write_all(b"hello from X11").unwrap();
+    let mut pasted = None;
+    let t0 = Instant::now();
+    while pasted.is_none() {
+        step(&mut state, &mut display, &mut ev, &socket);
+        pasted = rx.try_recv().ok();
+        assert!(t0.elapsed() < Duration::from_secs(20), "the Wayland window never got the X11 text");
+    }
+    assert_eq!(pasted.unwrap(), "hello from X11", "a Wayland program pastes what an X11 program copied");
+    let _ = xclip.kill();
+    let _ = xclip.wait();
+    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _ = reader.join();
+
+    // and the other way round: a Wayland window copies, an X11 program pastes
+    let stop2 = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (tx2, _rx2) = mpsc::channel();
+    let (path2, s3) = (dir.join("fde-e2e-xclip"), stop2.clone());
+    let owner = std::thread::spawn(move || clip_client(path2, Some("hello from Wayland".into()), tx2, s3));
+    let before = state.space.elements().count();
+    let t0 = Instant::now();
+    while state.space.elements().count() <= before - 1 && t0.elapsed() < Duration::from_secs(10) {
+        step(&mut state, &mut display, &mut ev, &socket);
+    }
+    for _ in 0..200 {
+        step(&mut state, &mut display, &mut ev, &socket);
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    let mut paste = std::process::Command::new("xclip")
+        .args(["-selection", "clipboard", "-o"])
+        .env("DISPLAY", &xdisplay)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .spawn()
+        .unwrap();
+    let t0 = Instant::now();
+    let out = loop {
+        step(&mut state, &mut display, &mut ev, &socket);
+        if let Some(status) = paste.try_wait().unwrap() {
+            use std::io::Read;
+            let mut text = String::new();
+            paste.stdout.take().unwrap().read_to_string(&mut text).unwrap();
+            assert!(status.success(), "xclip failed");
+            break text;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(20), "the X11 program never got the Wayland text");
+    };
+    assert_eq!(out, "hello from Wayland", "an X11 program pastes what a Wayland program copied");
+    stop2.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _ = owner.join();
+}

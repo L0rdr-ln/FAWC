@@ -119,6 +119,23 @@ impl SeatHandler for Fde {
 
 impl SelectionHandler for Fde {
     type SelectionUserData = ();
+
+    /// A Wayland program copied something: tell the X server, whose programs paste from it.
+    fn new_selection(&mut self, ty: smithay::wayland::selection::SelectionTarget, source: Option<smithay::wayland::selection::SelectionSource>, _: Seat<Self>) {
+        if let Some(xwm) = &mut self.xwm {
+            if let Err(e) = xwm.new_selection(ty, source.map(|s| s.mime_types())) {
+                tracing::warn!("clipboard for X11 programs: {e:?}");
+            }
+        }
+    }
+
+    /// A Wayland program pastes what an X program copied.
+    fn send_selection(&mut self, ty: smithay::wayland::selection::SelectionTarget, mime_type: String, fd: OwnedFd, _: Seat<Self>, _: &()) {
+        let (Some(xwm), Some(handle)) = (self.xwm.as_mut(), self.loop_handle.clone()) else { return };
+        if let Err(e) = xwm.send_selection(ty, mime_type, fd, handle) {
+            tracing::warn!("paste from an X11 program: {e:?}");
+        }
+    }
 }
 
 impl DataDeviceHandler for Fde {
