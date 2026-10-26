@@ -15,7 +15,8 @@ possible; hardware and VM runs are noted as such.
 - [ ] M5 animations: open/close fade + zoom, minimize, workspace slide, Flip-3D style switcher
 
 ## Shell
-- [ ] S1 panel with start orb, task bar, clock; wallpaper; launcher / start menu (layer-shell)
+- [x] S1a `fawc-panel`: glass task bar with start orb and clock (layer-shell client, started by the compositor)
+- [ ] S1b task list (foreign-toplevel), start menu / launcher, tray, notifications
 - [ ] S2 tray (StatusNotifierItem), volume, network, battery, notifications, OSD
 - [ ] S3 lock screen, power menu, greeter (greetd), session entry, autostart, polkit agent
 

@@ -464,6 +464,7 @@ name = "fawc"
 version = "0.1.0"
 dependencies = [
  "cosmic-text",
+ "libc",
  "png",
  "smithay",
  "tempfile",
