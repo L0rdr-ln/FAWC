@@ -2652,3 +2652,57 @@ fn windows_live_on_workspaces_and_only_the_shown_ones_are_on_the_screen() {
     hn.state.switch_workspace(7);
     assert_eq!(hn.state.workspace, 0);
 }
+
+#[test]
+fn a_closed_window_fades_out_instead_of_vanishing() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): close animation test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.wobbly_windows = false;
+    state.config.appearance.animations = true;
+    let socket = ListeningSocket::bind("fde-e2e-fade").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    open_window(&mut hn, dir.path(), "fde-e2e-fade", 260, 160);
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    std::thread::sleep(Duration::from_millis(300)); // the opening animation is over
+    let g = hn.state.space.element_geometry(&win).unwrap();
+    let (cx, cy) = (g.loc.x + g.size.w / 2, g.loc.y + g.size.h / 2);
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let open_px = pixel(&grab_scene(&mut renderer, &mut scene), w, cx, cy);
+    assert!(open_px[2] > 150 && open_px[0] < 100, "the window is blue: {open_px:?}");
+
+    // closing it: a snapshot is kept while the program is still answering
+    hn.state.close_window(&win);
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    assert_eq!(hn.state.snapshots.len(), 1);
+    // the program goes away
+    let t0 = Instant::now();
+    while hn.state.space.elements().count() > 0 {
+        hn.pump();
+        assert!(t0.elapsed() < Duration::from_secs(10), "the window never went away");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(hn.state.ghosts.len(), 1, "its last picture is fading");
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let fading_px = pixel(&grab_scene(&mut renderer, &mut scene), w, cx, cy);
+    std::thread::sleep(Duration::from_millis(300));
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    assert!(hn.state.ghosts.is_empty(), "the fade is over");
+    let gone = pixel(&grab_scene(&mut renderer, &mut scene), w, cx, cy);
+    assert_ne!(gone, open_px, "the window's place shows the desktop again: {gone:?}");
+    let dist = |a: [i32; 3], b: [i32; 3]| (0..3).map(|c| (a[c] - b[c]).abs()).sum::<i32>();
+    assert!(dist(fading_px, open_px) < dist(gone, open_px), "while fading it is still closer to the window than to the desktop: {fading_px:?}");
+}

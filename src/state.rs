@@ -19,6 +19,21 @@ use smithay::wayland::shm::ShmState;
 
 use crate::glass::GlassStyle;
 
+/// A window's last picture: the texture holds the window and its shadow room.
+#[derive(Clone)]
+pub struct Snapshot {
+    pub texture: smithay::backend::renderer::gles::GlesTexture,
+    /// where it is, logical, the shadow room included
+    pub rect: Rectangle<i32, Logical>,
+    pub scale: f64,
+}
+
+/// A window that has gone and is fading out.
+pub struct Ghost {
+    pub snapshot: Snapshot,
+    pub since: Instant,
+}
+
 /// Per-window state kept in the window's user data.
 #[derive(Debug, Default, Clone)]
 pub struct WinInfo {
@@ -29,6 +44,8 @@ pub struct WinInfo {
     /// where the window was before it went fullscreen (set while it is fullscreen)
     pub fullscreen: Option<Rectangle<i32, Logical>>,
     pub minimized: bool,
+    /// the window was asked to close (a snapshot of it is kept for the closing animation)
+    pub close_requested: bool,
     /// the workspace the window lives on (0 = the first)
     pub workspace: usize,
     /// when the window appeared, for the opening animation
@@ -100,6 +117,10 @@ pub struct Fde {
     pub xwayland_shell_state: smithay::wayland::xwayland_shell::XWaylandShellState,
     pub screencopy: crate::screencopy::Screencopy,
     pub wobbles: Vec<(Window, crate::wobble::Wobble)>,
+    /// the last picture of windows that were asked to close, by their surface
+    pub snapshots: std::collections::HashMap<smithay::reexports::wayland_server::backend::ObjectId, Snapshot>,
+    /// windows that are gone and fade out
+    pub ghosts: Vec<Ghost>,
     /// the workspace being shown, and windows on the others (taken off the screen)
     pub workspace: usize,
     pub parked: Vec<Window>,
@@ -286,6 +307,8 @@ impl Fde {
             xwayland_shell_state,
             screencopy: Default::default(),
             wobbles: Vec::new(),
+            snapshots: Default::default(),
+            ghosts: Vec::new(),
             workspace: 0,
             parked: Vec::new(),
             hud: None,

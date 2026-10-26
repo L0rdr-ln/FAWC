@@ -89,6 +89,9 @@ impl Fde {
 
     fn forget_x11_window(&mut self, surface: &X11Surface) {
         if let Some(w) = self.x11_window(surface) {
+            if let Some(ws) = w.wl_surface().map(|s| s.into_owned()) {
+                self.start_ghost(&ws);
+            }
             self.space.unmap_elem(&w);
             self.minimized.retain(|m| m != &w);
             self.parked.retain(|m| m != &w);

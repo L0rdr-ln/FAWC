@@ -210,6 +210,7 @@ impl XdgShellHandler for Fde {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        self.start_ghost(surface.wl_surface());
         let sid = smithay::reexports::wayland_server::Resource::id(surface.wl_surface());
         self.titles.retain(|(id, _), _| *id != sid);
         if let Some(w) = self.window_for_surface(surface.wl_surface()) {

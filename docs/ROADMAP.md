@@ -19,7 +19,7 @@ possible; hardware and VM runs are noted as such.
 - [~] M3 DRM/KMS + libinput backend (written, never run on hardware), VT switching; multiple monitors and per-monitor scale (compositor side tested with virtual outputs; DRM side compiled only); shell programs draw at the monitor's scale; a task bar per monitor; hot-plug (compositor side tested, udev trigger compiled only)
 - [ ] M4 (layer-shell and ext-background-effect-v1 done and tested) and ext-session-lock-v1 with `fde-lock` done and tested — idle lock, screen capture, `ext-background-effect` (blur on
       request), fractional scale, output management
-- [~] M5 animations: opening fade + zoom and minimizing into the task bar button done (`appearance.animations`); closing, workspace slide, Flip-3D style switcher to come
+- [~] M5 animations: opening fade + zoom and minimizing into the task bar button done (`appearance.animations`); closing fade done (windows closed through FDE: the close button and Alt+Q); workspace slide, Flip-3D style switcher to come
 
 ## Shell
 - [x] S1a `fde-panel`: glass task bar with start orb and clock (layer-shell client, started by the compositor)

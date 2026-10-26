@@ -15,6 +15,8 @@ use crate::state::{Fde, WinInfo};
 pub const OPEN_SECONDS: f32 = 0.18;
 /// Shrinking into the task bar.
 pub const MINIMIZE_SECONDS: f32 = 0.22;
+/// Fading out after the window closed.
+pub const CLOSE_SECONDS: f32 = 0.18;
 
 /// How a window looks `p` (0 .. 1) of the way into the task bar: how see-through, how big
 /// (relative) and where its middle is, on the way from `center` to `target`.
@@ -423,6 +425,7 @@ impl Fde {
     }
 
     pub fn tick_animations(&mut self) {
+        self.ghosts.retain(|g| g.since.elapsed().as_secs_f32() < CLOSE_SECONDS);
         self.step_wobbles();
         self.update_fractional_scales();
         let done: Vec<Window> = self
@@ -473,7 +476,21 @@ impl Fde {
         }
     }
 
+    /// Has this window been asked to close by us (so a snapshot is taken for the animation)?
+    pub fn close_requested(&self, window: &Window) -> bool {
+        self.config.appearance.animations && info(window).lock().unwrap().close_requested
+    }
+
+    /// The window is gone: if it was asked to close, its last picture fades out.
+    pub fn start_ghost(&mut self, surface: &WlSurface) {
+        let id = smithay::reexports::wayland_server::Resource::id(surface);
+        if let Some(snapshot) = self.snapshots.remove(&id) {
+            self.ghosts.push(crate::state::Ghost { snapshot, since: std::time::Instant::now() });
+        }
+    }
+
     pub fn close_window(&mut self, window: &Window) {
+        info(window).lock().unwrap().close_requested = true;
         if let Some(top) = window.toplevel() {
             top.send_close();
         }

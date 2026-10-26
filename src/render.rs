@@ -389,13 +389,17 @@ impl Fde {
                     .find(|(w, _)| w == window)
                     .filter(|(_, b)| b.displacement() > 0.4)
                     .map(|(_, b)| b.clone());
+                // a window that was asked to close is also drawn through a texture, so that its last
+                // picture can fade out when it is gone
+                let snap = self.close_requested(window);
                 let wm = sc(24, view.scale);
-                let mut tmp: Option<GlesTexture> = match &wob {
-                    Some(_) => Some(create_scene(renderer, (outer_p.size.w + 2 * wm, outer_p.size.h + 2 * wm).into())?),
-                    None => None,
+                let mut tmp: Option<GlesTexture> = if wob.is_some() || snap {
+                    Some(create_scene(renderer, (outer_p.size.w + 2 * wm, outer_p.size.h + 2 * wm).into())?)
+                } else {
+                    None
                 };
                 let shift: smithay::utils::Point<i32, Physical> =
-                    if wob.is_some() { (wm - outer_p.loc.x, wm - outer_p.loc.y).into() } else { (0, 0).into() };
+                    if tmp.is_some() { (wm - outer_p.loc.x, wm - outer_p.loc.y).into() } else { (0, 0).into() };
                 let outer_d = Rectangle::<i32, Physical>::new(outer_p.loc + shift, outer_p.size);
                 let tsize: Size<i32, Physical> = match &tmp {
                     Some(t) => (t.size().w, t.size().h).into(),
@@ -461,13 +465,14 @@ impl Fde {
                 // the title (re-rendered only when it, its room or the focus change)
                 let title_draw = self.title_texture(renderer, window, &style, outer_d, focused, view.scale)?;
 
+                let to_texture = tmp.is_some();
                 let target_tex: &mut GlesTexture = match tmp.as_mut() {
                     Some(t) => t,
                     None => &mut *scene,
                 };
                 let mut target = renderer.bind(target_tex)?;
                 let mut frame = renderer.render(&mut target, tsize, Transform::Normal)?;
-                if wob.is_some() {
+                if to_texture {
                     frame.clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[clip])?;
                 }
                 glass.draw_shadow(&mut frame, &blurred, outer_d, &style, view.scale as f32, alpha)?;
@@ -479,6 +484,28 @@ impl Fde {
                 draw_render_elements(&mut frame, k, &elements, &[clip])?;
                 let _ = frame.finish()?;
                 drop(target);
+
+                // closing: draw the window from its texture and keep the texture
+                if let (Some(tex), None) = (&tmp, &wob) {
+                    let dest = Rectangle::<i32, Physical>::new((outer_p.loc.x - wm, outer_p.loc.y - wm).into(), (tex.size().w, tex.size().h).into());
+                    let src = Rectangle::<f64, BufferCoord>::from_size((tex.size().w as f64, tex.size().h as f64).into());
+                    let mut target = renderer.bind(scene)?;
+                    let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                    frame.render_texture_from_to(tex, src, dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, 1.0, None, &[])?;
+                    let _ = frame.finish()?;
+                    drop(target);
+                    if let Some(ws) = window.wl_surface() {
+                        let margin = 24;
+                        self.snapshots.insert(
+                            ws.id(),
+                            crate::state::Snapshot {
+                                texture: tex.clone(),
+                                rect: Rectangle::new((outer_full.loc.x - margin, outer_full.loc.y - margin).into(), (outer_full.size.w + 2 * margin, outer_full.size.h + 2 * margin).into()),
+                                scale: view.scale,
+                            },
+                        );
+                    }
+                }
 
                 // the bent window: the texture drawn as a grid of small pieces
                 if let (Some(tex), Some(b)) = (&tmp, &wob) {
@@ -496,6 +523,28 @@ impl Fde {
                 }
             }
             let _ = WindowSurfaceType::ALL;
+
+            // windows that have just closed fade out
+            let ghosts: Vec<(crate::state::Snapshot, f32)> =
+                self.ghosts.iter().map(|g| (g.snapshot.clone(), g.since.elapsed().as_secs_f32() / crate::windows::CLOSE_SECONDS)).collect();
+            for (g, t) in ghosts {
+                if t >= 1.0 || (g.scale - view.scale).abs() > 1e-6 || g.rect.intersection(out_rect).is_none() {
+                    continue;
+                }
+                let e = crate::windows::ease_out(t);
+                let (alpha, zoom) = (1.0 - e, 1.0 - 0.06 * e as f64);
+                let full_rect = view.rect(g.rect);
+                let (w, h) = ((full_rect.size.w as f64 * zoom).round() as i32, (full_rect.size.h as f64 * zoom).round() as i32);
+                let dest = Rectangle::<i32, Physical>::new(
+                    (full_rect.loc.x + (full_rect.size.w - w) / 2, full_rect.loc.y + (full_rect.size.h - h) / 2).into(),
+                    (w, h).into(),
+                );
+                let src = Rectangle::<f64, BufferCoord>::from_size((g.texture.size().w as f64, g.texture.size().h as f64).into());
+                let mut target = renderer.bind(scene)?;
+                let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+                frame.render_texture_from_to(&g.texture, src, dest, &[Rectangle::from_size(dest.size)], &[], Transform::Normal, alpha, None, &[])?;
+                let _ = frame.finish()?;
+            }
 
             // panels, launchers, notifications above the windows
             if self.fullscreen_on(output) {
