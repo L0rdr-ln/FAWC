@@ -62,6 +62,8 @@ pub struct Fde {
     /// the first monitor (the nested window has only this one); panels and notifications go here
     pub output: Output,
     /// every other monitor, in the order they appeared
+    /// the modes each monitor offers (from the graphics driver), for the settings app
+    pub available_modes: std::collections::HashMap<String, Vec<(i32, i32, i32)>>,
     pub extra_outputs: Vec<Output>,
     /// the Wayland globals of the extra outputs (to remove them when a monitor goes)
     pub output_globals: Vec<(Output, smithay::reexports::wayland_server::backend::GlobalId)>,
@@ -249,6 +251,7 @@ impl Fde {
             space,
             popups: PopupManager::default(),
             output,
+            available_modes: Default::default(),
             extra_outputs: Vec::new(),
             output_globals: Vec::new(),
             session_started: false,
@@ -355,7 +358,12 @@ impl Fde {
             self.cursor_theme = crate::cursortheme::CursorTheme::load(&new.appearance.cursor_theme, new.appearance.cursor_size);
             self.cursor_textures.clear();
         }
+        let outputs_changed = new.outputs != self.config.outputs;
         self.config = new;
+        if outputs_changed {
+            let cfg = self.config.clone();
+            self.apply_output_config(&cfg);
+        }
     }
 
     /// Something happened on the keyboard or pointer: the user is there.

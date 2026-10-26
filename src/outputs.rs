@@ -7,6 +7,48 @@ use smithay::utils::{Logical, Point, Rectangle, Size, Transform};
 
 use crate::state::Fde;
 
+/// One monitor as the settings app sees it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OutputInfo {
+    pub name: String,
+    pub width: i32,
+    pub height: i32,
+    /// the mode in use, "WIDTHxHEIGHT@HZ"
+    pub mode: String,
+    /// every mode the monitor has (the nested window and tests may know only the current one)
+    pub modes: Vec<String>,
+    pub scale: f64,
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct OutputsFile {
+    #[serde(default)]
+    output: Vec<OutputInfo>,
+}
+
+/// "1920x1080@60" from a size and a refresh in millihertz.
+pub fn format_mode(w: i32, h: i32, mhz: i32) -> String {
+    let hz = mhz as f64 / 1000.0;
+    if (hz - hz.round()).abs() < 0.05 {
+        format!("{w}x{h}@{}", hz.round() as i32)
+    } else {
+        format!("{w}x{h}@{hz:.2}")
+    }
+}
+
+/// Where the compositor lists its monitors for the settings app.
+pub fn outputs_state_path() -> Option<std::path::PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR").map(|d| std::path::PathBuf::from(d).join("fde/outputs.toml"))
+}
+
+/// The monitors the running compositor reports (empty when none is running).
+pub fn read_outputs_state() -> Vec<OutputInfo> {
+    let Some(path) = outputs_state_path() else { return Vec::new() };
+    std::fs::read_to_string(path).ok().and_then(|t| toml::from_str::<OutputsFile>(&t).ok()).map(|f| f.output).unwrap_or_default()
+}
+
 impl Fde {
     /// Every monitor, the first one first.
     pub fn all_outputs(&self) -> Vec<Output> {
@@ -61,7 +103,82 @@ impl Fde {
             crate::shell::start_panel(&self.config, name);
         }
         tracing::info!("output {name}: {}x{} at scale {} placed at {},{}", mode_px.0, mode_px.1, oc.scale, loc.x, loc.y);
+        self.write_outputs_state();
         output
+    }
+
+    /// Apply the `[outputs.*]` of a new configuration to the monitors that are plugged in now:
+    /// scale and position take effect at once (resolution and on/off need a restart).
+    pub fn apply_output_config(&mut self, config: &crate::config::Config) {
+        for o in self.all_outputs() {
+            let oc = config.outputs.get(&o.name()).cloned().unwrap_or_default();
+            let mut changed = false;
+            if (oc.scale - self.output_scale(&o)).abs() > 1e-6 {
+                o.change_current_state(None, None, Some(Scale::Fractional(oc.scale)), None);
+                changed = true;
+            }
+            if let (Some(x), Some(y)) = (oc.x, oc.y) {
+                let now = self.space.output_geometry(&o).map(|g| g.loc).unwrap_or_default();
+                if now != (x, y).into() {
+                    o.change_current_state(None, None, None, Some((x, y).into()));
+                    self.space.map_output(&o, (x, y));
+                    changed = true;
+                }
+            }
+            if changed {
+                smithay::desktop::layer_map_for_output(&o).arrange();
+                tracing::info!("monitor {}: scale {}, now {:?}", o.name(), oc.scale, self.output_rect(&o));
+            }
+        }
+        self.pointer_location = self.clamp_to_outputs(self.pointer_location);
+        self.write_outputs_state();
+    }
+
+    /// Tell the settings app which monitors there are: `$XDG_RUNTIME_DIR/fde/outputs.toml`.
+    pub fn write_outputs_state(&self) {
+        let outputs: Vec<OutputInfo> = self
+            .all_outputs()
+            .iter()
+            .map(|o| {
+                let r = self.output_rect(o);
+                let mode = o.current_mode();
+                let name = o.name();
+                let mut modes: Vec<String> = self
+                    .available_modes
+                    .get(&name)
+                    .map(|v| v.iter().map(|&(w, h, mhz)| format_mode(w, h, mhz)).collect())
+                    .unwrap_or_default();
+                if let Some(m) = mode {
+                    let cur = format_mode(m.size.w, m.size.h, m.refresh);
+                    if !modes.contains(&cur) {
+                        modes.insert(0, cur);
+                    }
+                }
+                OutputInfo {
+                    name,
+                    width: mode.map(|m| m.size.w).unwrap_or(0),
+                    height: mode.map(|m| m.size.h).unwrap_or(0),
+                    mode: mode.map(|m| format_mode(m.size.w, m.size.h, m.refresh)).unwrap_or_default(),
+                    modes,
+                    scale: self.output_scale(o),
+                    x: r.loc.x,
+                    y: r.loc.y,
+                }
+            })
+            .collect();
+        let Some(path) = outputs_state_path() else { return };
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        match toml::to_string(&OutputsFile { output: outputs }) {
+            Ok(text) => {
+                let tmp = path.with_extension("toml.tmp");
+                if std::fs::write(&tmp, text).and_then(|_| std::fs::rename(&tmp, &path)).is_err() {
+                    tracing::debug!("cannot write {}", path.display());
+                }
+            }
+            Err(e) => tracing::debug!("outputs state: {e}"),
+        }
     }
 
     /// The session starts: a task bar on every monitor, then the other programs.
@@ -71,6 +188,7 @@ impl Fde {
             crate::shell::start_panel(&self.config, &o.name());
         }
         crate::shell::start_other_clients(&self.config);
+        self.write_outputs_state();
     }
 
     /// A monitor was unplugged: windows on it move to the first monitor, layer surfaces on it
@@ -106,6 +224,7 @@ impl Fde {
         self.extra_outputs.retain(|o| o != output);
         self.pointer_location = self.clamp_to_outputs(self.pointer_location);
         tracing::info!("output {} removed", output.name());
+        self.write_outputs_state();
     }
 
     /// The monitor under `p`, if any.

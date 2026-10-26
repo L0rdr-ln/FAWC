@@ -258,3 +258,42 @@ fn a_theme_uses_its_picture_when_the_file_exists_and_its_colours_when_not() {
     std::env::remove_var("FDE_THEMES");
     std::env::remove_var("FDE_WALLPAPERS");
 }
+
+#[test]
+fn nested_keys_can_be_written_and_monitor_settings_apply_to_a_running_compositor() {
+    use fde::config::{set, Config, Setting};
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("fde.toml");
+    std::fs::write(&file, "# my settings\n[appearance]\naccent = \"#112233\" # blue-ish\n").unwrap();
+    set(
+        &file,
+        &[
+            ("outputs.fde-0.scale", Setting::Float(1.5)),
+            ("outputs.fde-0.x", Setting::Int(0)),
+            ("outputs.fde-0.y", Setting::Int(0)),
+            ("outputs.DP-1.mode", Setting::Str("1920x1080@60".into())),
+        ],
+    )
+    .unwrap();
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("# my settings") && text.contains("# blue-ish"), "comments stay: {text}");
+    let c = Config::parse(&text).unwrap();
+    assert_eq!(c.outputs["fde-0"].scale, 1.5);
+    assert_eq!(c.outputs["DP-1"].mode, "1920x1080@60");
+    // a bad value for a monitor is refused
+    assert!(set(&file, &[("outputs.fde-0.scale", Setting::Float(9.0))]).is_err());
+
+    // the running compositor follows: scale, and the list of monitors for the settings app
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let display = smithay::reexports::wayland_server::Display::<Fde>::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (1920, 1080).into());
+    state.write_outputs_state();
+    let before = fde::outputs::read_outputs_state();
+    assert_eq!(before.len(), 1);
+    assert_eq!((before[0].name.as_str(), before[0].scale, before[0].width), ("fde-0", 1.0, 1920));
+    state.apply_output_config(&c);
+    let after = fde::outputs::read_outputs_state();
+    assert_eq!(after[0].scale, 1.5, "the new scale is in effect and reported");
+    assert_eq!(state.output_logical_size(&state.output.clone()), (1280, 720).into());
+}

@@ -60,7 +60,7 @@ idle_blank_seconds = 0
 
 | page | v1 | later |
 |---|---|---|
-| Appearance | theme list with preview, accent colour, glass strength, blur on/off, animations | custom theme editor, window button layout |
+| Displays | scale, resolution and position of each monitor (scale and position apply at once; resolution at the next start) | | Appearance | theme list with preview, accent colour, glass strength, blur on/off, animations | custom theme editor, window button layout |
 | Wallpaper | choose an image or the built-in sky, fit mode | slideshow, per-output wallpaper |
 | Displays | list outputs, resolution + refresh, scale, position (drag), primary | night light, colour profiles |
 | Keyboard & mouse | layout, repeat, tap-to-click, natural scroll, speed | shortcuts editor, per-device settings |
@@ -96,3 +96,7 @@ fixed layout, they start instantly and they have no toolkit dependency.
 
 Accounts and users, printers, Bluetooth pairing UI, region / language, a GUI for editing
 shortcuts. Each has a sensible command-line or file fallback until its page exists.
+
+## Displays
+
+The compositor writes the monitors it knows (name, current mode, every mode, scale, position) to `$XDG_RUNTIME_DIR/fde/outputs.toml`; the Displays page reads that file and writes `[outputs.NAME]` in `fde.toml` (`scale`, `mode`, `x`, `y`). The running compositor applies scale and position at once; a new resolution is used at the next session start.

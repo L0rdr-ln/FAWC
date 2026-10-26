@@ -59,6 +59,24 @@ pub fn wallpaper(path: &str, mode: &str) -> Vec<(&'static str, Setting)> {
     vec![("wallpaper.path", Setting::Str(path.trim().to_string())), ("wallpaper.mode", Setting::Str(mode.to_string()))]
 }
 
+/// The scale steps the Displays page offers.
+pub const SCALES: [f64; 7] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+
+/// A monitor's settings: its connector name decides the key (`outputs.DP-1.scale`).
+pub fn output(name: &str, scale: f64, mode: &str, x: i32, y: i32) -> Vec<(String, Setting)> {
+    vec![
+        (format!("outputs.{name}.scale"), Setting::Float(round2(scale))),
+        (format!("outputs.{name}.mode"), Setting::Str(mode.to_string())),
+        (format!("outputs.{name}.x"), Setting::Int(x as i64)),
+        (format!("outputs.{name}.y"), Setting::Int(y as i64)),
+    ]
+}
+
+/// The same as borrowed pairs, which is what `config::set` takes.
+pub fn as_refs(v: &[(String, Setting)]) -> Vec<(&str, Setting)> {
+    v.iter().map(|(k, s)| (k.as_str(), s.clone())).collect()
+}
+
 pub fn music(enabled: bool, path: &str, volume: f64, shuffle: bool) -> Vec<(&'static str, Setting)> {
     vec![
         ("music.enabled", Setting::Bool(enabled)),
@@ -76,6 +94,18 @@ pub fn session(idle_lock_minutes: u32) -> Vec<(&'static str, Setting)> {
 mod tests {
     use super::*;
     use fde::config::{set, Config};
+
+    #[test]
+    fn a_monitor_page_writes_the_monitors_own_section() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("fde.toml");
+        let v = output("DP-1", 1.5, "2560x1440@144", 1920, 0);
+        set(&f, &as_refs(&v)).unwrap();
+        let c = Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        let o = &c.outputs["DP-1"];
+        assert_eq!((o.scale, o.mode.as_str(), o.x, o.y), (1.5, "2560x1440@144", Some(1920), Some(0)));
+        assert!(set(&f, &as_refs(&output("DP-1", 1.5, "huge", 0, 0))).is_err(), "a mode that is not WxH is refused");
+    }
 
     #[test]
     fn choosing_a_theme_drops_the_colours_set_by_hand_so_the_theme_applies() {

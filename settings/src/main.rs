@@ -196,6 +196,72 @@ fn appearance_page(cfg: &Config, status: &Status) -> GBox {
     outer
 }
 
+fn displays_page(cfg: &Config, status: &Status) -> GBox {
+    let (outer, body) = page(
+        "Displays",
+        "Scale and position apply at once. A different resolution is used the next time the session starts. The list is what the running desktop reports.",
+    );
+    let monitors = fde::outputs::read_outputs_state();
+    if monitors.is_empty() {
+        let l = Label::new(Some("No monitor information: the desktop is not running (or is too old to report it)."));
+        l.set_halign(Align::Start);
+        l.add_css_class("hint");
+        body.append(&l);
+        return outer;
+    }
+    for m in monitors {
+        let box_ = GBox::new(Orientation::Vertical, 8);
+        let title = Label::new(Some(&format!("{} ({})", m.name, m.mode)));
+        title.set_halign(Align::Start);
+        title.add_css_class("page-title");
+        box_.append(&title);
+
+        let configured = cfg.outputs.get(&m.name).cloned().unwrap_or_default();
+        let scale_names: Vec<String> = model::SCALES.iter().map(|s| format!("{}%", (s * 100.0).round() as i32)).collect();
+        let scale_refs: Vec<&str> = scale_names.iter().map(|s| s.as_str()).collect();
+        let scale = gtk4::DropDown::from_strings(&scale_refs);
+        let current = model::SCALES.iter().position(|s| (s - m.scale).abs() < 0.01).unwrap_or(0);
+        scale.set_selected(current as u32);
+        scale.set_halign(Align::Start);
+
+        let mode_refs: Vec<&str> = m.modes.iter().map(|s| s.as_str()).collect();
+        let modes = gtk4::DropDown::from_strings(&mode_refs);
+        modes.set_selected(m.modes.iter().position(|x| *x == m.mode).unwrap_or(0) as u32);
+        modes.set_halign(Align::Start);
+
+        let x = gtk4::SpinButton::with_range(-16384.0, 16384.0, 10.0);
+        let y = gtk4::SpinButton::with_range(-16384.0, 16384.0, 10.0);
+        x.set_value(configured.x.unwrap_or(m.x) as f64);
+        y.set_value(configured.y.unwrap_or(m.y) as f64);
+        x.set_halign(Align::Start);
+        y.set_halign(Align::Start);
+
+        let (name, sc, mo, xs, ys, st) = (m.name.clone(), scale.clone(), modes.clone(), x.clone(), y.clone(), status.clone());
+        let mode_list = m.modes.clone();
+        let save = debounced(move || {
+            let scale = model::SCALES.get(sc.selected() as usize).copied().unwrap_or(1.0);
+            let mode = mode_list.get(mo.selected() as usize).cloned().unwrap_or_default();
+            let v = model::output(&name, scale, &mode, xs.value() as i32, ys.value() as i32);
+            st.report(config::set(&path_of_config(), &model::as_refs(&v)));
+        });
+        let s = save.clone();
+        scale.connect_selected_notify(move |_| s());
+        let s = save.clone();
+        modes.connect_selected_notify(move |_| s());
+        let s = save.clone();
+        x.connect_value_changed(move |_| s());
+        let s = save.clone();
+        y.connect_value_changed(move |_| s());
+
+        box_.append(&row("Scale", &scale));
+        box_.append(&row("Resolution", &modes));
+        box_.append(&row("Position X", &x));
+        box_.append(&row("Position Y", &y));
+        body.append(&box_);
+    }
+    outer
+}
+
 fn wallpaper_page(cfg: &Config, status: &Status) -> GBox {
     let (outer, body) = page("Wallpaper", "A PNG, JPEG or WebP picture for the desktop background. Leave it empty for the built-in sky.");
     let path = gtk4::Entry::new();
@@ -394,6 +460,7 @@ fn build(app: &gtk4::Application, quit_after: Option<u64>) {
     let stack = gtk4::Stack::new();
     stack.set_transition_type(gtk4::StackTransitionType::Crossfade);
     stack.add_titled(&appearance_page(&cfg, &status), Some("appearance"), "Appearance");
+    stack.add_titled(&displays_page(&cfg, &status), Some("displays"), "Displays");
     stack.add_titled(&wallpaper_page(&cfg, &status), Some("wallpaper"), "Wallpaper");
     stack.add_titled(&music_page(&cfg, &status), Some("music"), "Music");
     stack.add_titled(&keyboard_page(&cfg, &status), Some("keyboard"), "Keyboard");
@@ -407,7 +474,7 @@ fn build(app: &gtk4::Application, quit_after: Option<u64>) {
     let sidebar = gtk4::ListBox::new();
     sidebar.set_size_request(190, -1);
     sidebar.set_selection_mode(gtk4::SelectionMode::Single);
-    let pages = [("appearance", "Appearance"), ("wallpaper", "Wallpaper"), ("music", "Music"), ("keyboard", "Keyboard"), ("shell", "Desktop"), ("session", "Session"), ("about", "About")];
+    let pages = [("appearance", "Appearance"), ("displays", "Displays"), ("wallpaper", "Wallpaper"), ("music", "Music"), ("keyboard", "Keyboard"), ("shell", "Desktop"), ("session", "Session"), ("about", "About")];
     for (_, title) in pages {
         let l = Label::new(Some(title));
         l.set_halign(Align::Start);

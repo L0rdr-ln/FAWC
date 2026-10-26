@@ -99,6 +99,8 @@ struct Monitor {
     crtc: crtc::Handle,
     mode: drm_mode::Mode,
     name: String,
+    /// every mode of the monitor (width, height, millihertz), for the settings app
+    all_modes: Vec<(i32, i32, i32)>,
 }
 
 /// A connected, enabled monitor that has not been given a CRTC yet.
@@ -106,6 +108,7 @@ struct Candidate {
     connector: connector::Handle,
     mode: drm_mode::Mode,
     name: String,
+    all_modes: Vec<(i32, i32, i32)>,
     crtcs: Vec<crtc::Handle>,
 }
 
@@ -151,7 +154,9 @@ fn probe(drm: &DrmDevice, config: &crate::config::Config) -> Result<Vec<Candidat
             .filter_map(|&e| drm.get_encoder(e).ok())
             .flat_map(|enc| res.filter_crtcs(enc.possible_crtcs()))
             .collect();
-        found.push(Candidate { connector: handle, mode, name, crtcs });
+        let mut all_modes: Vec<(i32, i32, i32)> = modes.iter().map(|m| (m.size().0 as i32, m.size().1 as i32, m.vrefresh() as i32 * 1000)).collect();
+        all_modes.dedup();
+        found.push(Candidate { connector: handle, mode, name, all_modes, crtcs });
     }
     Ok(found)
 }
@@ -164,7 +169,7 @@ fn assign(candidates: Vec<Candidate>, taken: &mut Vec<crtc::Handle>) -> Vec<Moni
             Some(crtc) => {
                 taken.push(crtc);
                 tracing::info!("monitor {} ({}x{}@{})", c.name, c.mode.size().0, c.mode.size().1, c.mode.vrefresh());
-                monitors.push(Monitor { connector: c.connector, crtc, mode: c.mode, name: c.name });
+                monitors.push(Monitor { connector: c.connector, crtc, mode: c.mode, name: c.name, all_modes: c.all_modes });
             }
             None => tracing::warn!("monitor {}: no free CRTC for it", c.name),
         }
@@ -229,6 +234,7 @@ fn rescan(state: &mut Fde, gpu: &mut Gpu, hw: &Hardware) {
     let mut taken: Vec<crtc::Handle> = gpu.outputs.iter().map(|o| o.crtc).collect();
     let fresh: Vec<Candidate> = candidates.into_iter().filter(|c| !known.contains(&c.name)).collect();
     for monitor in assign(fresh, &mut taken) {
+        state.available_modes.insert(monitor.name.clone(), monitor.all_modes.clone());
         let output = state.add_output(&monitor.name, (monitor.mode.size().0 as i32, monitor.mode.size().1 as i32), monitor.mode.vrefresh() as i32 * 1000);
         match create_output_gpu(hw, &mut gpu.renderer, &monitor, &output) {
             Ok(og) => {
@@ -272,6 +278,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (w, h) = (first.mode.size().0 as i32, first.mode.size().1 as i32);
 
     let mut state = Fde::new_named(&dh, &first.name, (w, h).into());
+    for m in &monitors {
+        state.available_modes.insert(m.name.clone(), m.all_modes.clone());
+    }
     state.draw_cursor = true;
     state.session = Some(session.clone());
     state.enable_dmabuf(smithay::backend::renderer::ImportDma::dmabuf_formats(&renderer));

@@ -444,11 +444,23 @@ pub fn set(path: &std::path::Path, changes: &[(&str, Setting)]) -> Result<(), St
     let text = std::fs::read_to_string(path).unwrap_or_default();
     let mut doc: DocumentMut = text.parse().map_err(|e| format!("{}: {e}", path.display()))?;
     for (key, v) in changes {
-        let (section, name) = key.split_once('.').ok_or_else(|| format!("{key}: expected section.key"))?;
-        if let Setting::Unset = v {
-            if let Some(t) = doc.get_mut(section).and_then(|s| s.as_table_mut()) {
-                t.remove(name);
+        // "appearance.accent", or deeper: "outputs.DP-1.scale"
+        let parts: Vec<&str> = key.split('.').collect();
+        if parts.len() < 2 || parts.iter().any(|p| p.is_empty()) {
+            return Err(format!("{key}: expected section.key"));
+        }
+        let (name, path) = parts.split_last().unwrap();
+        let mut table = doc.as_table_mut();
+        for part in path {
+            if !table.contains_key(part) {
+                let mut t = toml_edit::Table::new();
+                t.set_implicit(true);
+                table.insert(part, toml_edit::Item::Table(t));
             }
+            table = table[part].as_table_mut().ok_or_else(|| format!("{key}: {part} is not a table"))?;
+        }
+        if let Setting::Unset = v {
+            table.remove(name);
             continue;
         }
         let mut item = match v {
@@ -458,14 +470,11 @@ pub fn set(path: &std::path::Path, changes: &[(&str, Setting)]) -> Result<(), St
             Setting::Float(f) => value(*f),
             Setting::Bool(b) => value(*b),
         };
-        if !doc.contains_key(section) {
-            doc[section] = toml_edit::table();
-        }
         // keep the comment that sits after the old value
-        if let (Some(old), Some(new)) = (doc[section].get(name).and_then(|i| i.as_value()), item.as_value_mut()) {
+        if let (Some(old), Some(new)) = (table.get(name).and_then(|i| i.as_value()), item.as_value_mut()) {
             *new.decor_mut() = old.decor().clone();
         }
-        doc[section][name] = item;
+        table.insert(name, item);
     }
     let new_text = doc.to_string();
     // refuse to save something the compositor would reject
