@@ -201,6 +201,40 @@ fn displays_page(cfg: &Config, status: &Status) -> GBox {
         "Displays",
         "Scale and position apply at once. A different resolution is used the next time the session starts. The list is what the running desktop reports.",
     );
+    // night light
+    {
+        let d = &cfg.display;
+        let enabled = gtk4::Switch::new();
+        enabled.set_active(d.night_light);
+        enabled.set_halign(Align::Start);
+        let kelvin = scale(1200.0, 6500.0, 100.0, d.night_light_temperature as f64);
+        let from = gtk4::Entry::new();
+        from.set_text(&d.night_light_from);
+        from.set_placeholder_text(Some("HH:MM, empty = always"));
+        let to = gtk4::Entry::new();
+        to.set_text(&d.night_light_to);
+        to.set_placeholder_text(Some("HH:MM"));
+        let (en, ke, fr, tt, st) = (enabled.clone(), kelvin.clone(), from.clone(), to.clone(), status.clone());
+        let save = debounced(move || {
+            st.report(config::set(&path_of_config(), &model::night_light(en.is_active(), ke.value() as u32, &fr.text(), &tt.text())));
+        });
+        let s = save.clone();
+        enabled.connect_active_notify(move |_| s());
+        let s = save.clone();
+        kelvin.connect_value_changed(move |_| s());
+        let s = save.clone();
+        from.connect_changed(move |_| s());
+        let s = save.clone();
+        to.connect_changed(move |_| s());
+        let heading = Label::new(Some("Night light"));
+        heading.set_halign(Align::Start);
+        heading.add_css_class("page-title");
+        body.append(&heading);
+        body.append(&row("Warm the screen at night", &enabled));
+        body.append(&row("Warmth (Kelvin, lower is warmer)", &kelvin));
+        body.append(&row("From", &from));
+        body.append(&row("To", &to));
+    }
     let monitors = fde::outputs::read_outputs_state();
     if monitors.is_empty() {
         let l = Label::new(Some("No monitor information: the desktop is not running (or is too old to report it)."));

@@ -55,6 +55,31 @@ impl Default for Wallpaper {
 
 pub const WALLPAPER_MODES: [&str; 5] = ["fill", "fit", "stretch", "center", "tile"];
 
+/// Night light: the screen turns warmer in the evening.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct Display {
+    pub night_light: bool,
+    /// colour temperature at night in Kelvin: 6500 is no change, 3500 is warm, 1200 very orange
+    pub night_light_temperature: u32,
+    /// "HH:MM" start and end of the warm hours; both empty = warm whenever it is switched on
+    pub night_light_from: String,
+    pub night_light_to: String,
+}
+
+impl Default for Display {
+    fn default() -> Self {
+        Display { night_light: false, night_light_temperature: 3800, night_light_from: "20:00".into(), night_light_to: "07:00".into() }
+    }
+}
+
+/// "HH:MM" as minutes after midnight.
+pub fn parse_clock(s: &str) -> Option<u32> {
+    let (h, m) = s.split_once(':')?;
+    let (h, m): (u32, u32) = (h.trim().parse().ok()?, m.trim().parse().ok()?);
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Music {
@@ -166,6 +191,7 @@ pub struct Config {
     pub input: Input,
     pub shell: Shell,
     pub session: Session,
+    pub display: Display,
     /// which of accent, transparency, blur, gloss the user's files set (they win over the theme)
     #[serde(skip)]
     pub explicit: Vec<String>,
@@ -223,6 +249,15 @@ impl Config {
     }
 
     fn validate(&self) -> Result<(), String> {
+        let d = &self.display;
+        if !(1200..=6500).contains(&d.night_light_temperature) {
+            return Err("display.night_light_temperature must be between 1200 and 6500".into());
+        }
+        for (key, v) in [("night_light_from", &d.night_light_from), ("night_light_to", &d.night_light_to)] {
+            if !v.is_empty() && parse_clock(v).is_none() {
+                return Err(format!("display.{key}: \"{v}\" is not HH:MM"));
+            }
+        }
         crate::theme::Theme::find(&self.appearance.theme).map_err(|e| format!("appearance.theme: {e}"))?;
         parse_color(&self.appearance.accent).ok_or_else(|| format!("appearance.accent: \"{}\" is not #rrggbb", self.appearance.accent))?;
         if !(0.0..=1.0).contains(&self.appearance.transparency) {

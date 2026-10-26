@@ -59,6 +59,16 @@ pub fn wallpaper(path: &str, mode: &str) -> Vec<(&'static str, Setting)> {
     vec![("wallpaper.path", Setting::Str(path.trim().to_string())), ("wallpaper.mode", Setting::Str(mode.to_string()))]
 }
 
+/// Night light: the screen turns warmer in the evening.
+pub fn night_light(enabled: bool, kelvin: u32, from: &str, to: &str) -> Vec<(&'static str, Setting)> {
+    vec![
+        ("display.night_light", Setting::Bool(enabled)),
+        ("display.night_light_temperature", Setting::Int(kelvin as i64)),
+        ("display.night_light_from", Setting::Str(from.trim().to_string())),
+        ("display.night_light_to", Setting::Str(to.trim().to_string())),
+    ]
+}
+
 /// The scale steps the Displays page offers.
 pub const SCALES: [f64; 7] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 
@@ -94,6 +104,17 @@ pub fn session(idle_lock_minutes: u32) -> Vec<(&'static str, Setting)> {
 mod tests {
     use super::*;
     use fde::config::{set, Config};
+
+    #[test]
+    fn night_light_is_written_and_a_wrong_time_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("fde.toml");
+        set(&f, &night_light(true, 3500, "21:00", "06:30")).unwrap();
+        let c = Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!((c.display.night_light, c.display.night_light_temperature, c.display.night_light_from.as_str()), (true, 3500, "21:00"));
+        assert!(set(&f, &night_light(true, 3500, "evening", "06:30")).is_err());
+        assert!(set(&f, &night_light(true, 100, "21:00", "06:30")).is_err());
+    }
 
     #[test]
     fn a_monitor_page_writes_the_monitors_own_section() {

@@ -306,3 +306,17 @@ fn the_number_of_workspaces_is_checked() {
     assert!(Config::parse("[session]\nworkspaces = 0\n").is_err());
     assert!(Config::parse("[session]\nworkspaces = 12\n").is_err());
 }
+
+#[test]
+fn night_light_settings_are_checked() {
+    use fde::config::{parse_clock, Config};
+    assert_eq!(parse_clock("07:30"), Some(450));
+    assert_eq!(parse_clock("24:00"), None);
+    assert_eq!(parse_clock("noon"), None);
+    let c = Config::parse("[display]\nnight_light = true\nnight_light_temperature = 3000\n").unwrap();
+    assert!(c.display.night_light && c.display.night_light_temperature == 3000);
+    assert!(!Config::parse("").unwrap().display.night_light, "off by default");
+    assert!(Config::parse("[display]\nnight_light_temperature = 900\n").is_err());
+    assert!(Config::parse("[display]\nnight_light_from = \"8pm\"\n").is_err());
+    assert!(Config::parse("[display]\nnight_light_from = \"\"\nnight_light_to = \"\"\n").is_ok(), "empty means always");
+}

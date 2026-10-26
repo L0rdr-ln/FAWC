@@ -52,3 +52,9 @@ enabled = true
 scale = 1.0
 x = 1707               # 2560 / 1.5, right of DP-1
 y = 0
+
+[display]
+night_light = false            # warm the screen in the evening
+night_light_temperature = 3800  # Kelvin: 6500 = no change, lower = warmer (1200 .. 6500)
+night_light_from = "20:00"       # warm hours (empty = whenever it is on)
+night_light_to = "07:00"

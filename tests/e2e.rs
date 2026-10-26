@@ -2769,3 +2769,42 @@ fn the_switcher_walks_through_windows_most_recent_first_and_picks_on_commit() {
     assert_eq!(order(&hn), before);
     let _ = back;
 }
+
+#[test]
+fn night_light_warms_the_picture_in_its_hours_and_leaves_it_alone_outside() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("FDE_BUILTIN_SKY", "1");
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): night light test skipped");
+            return;
+        }
+    };
+    let (w, h) = (400, 300);
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (w, h).into());
+    state.config.appearance.animations = false;
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+    state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let plain = pixel(&grab_scene(&mut renderer, &mut scene), w, 200, 150);
+
+    state.config.display.night_light = true;
+    state.config.display.night_light_temperature = 2500;
+    state.config.display.night_light_from = "20:00".into();
+    state.config.display.night_light_to = "07:00".into();
+    std::env::set_var("FDE_NIGHT_LIGHT_NOW", "23:30");
+    state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let warm = pixel(&grab_scene(&mut renderer, &mut scene), w, 200, 150);
+    assert!(warm[2] * 10 < plain[2] * 7, "less blue at night: {plain:?} -> {warm:?}");
+    assert!(warm[0] * 10 > plain[0] * 8, "red stays: {plain:?} -> {warm:?}");
+
+    std::env::set_var("FDE_NIGHT_LIGHT_NOW", "12:00");
+    state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let noon = pixel(&grab_scene(&mut renderer, &mut scene), w, 200, 150);
+    assert_eq!(noon, plain, "outside the warm hours nothing changes");
+    std::env::remove_var("FDE_NIGHT_LIGHT_NOW");
+}

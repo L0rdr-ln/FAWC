@@ -83,6 +83,30 @@ impl MeshProgram {
         points: &[(f32, f32)],
         n: usize,
     ) -> Result<(), GlesError> {
+        self.draw_with(frame, tex, target, points, n, false)
+    }
+
+    /// The same, but the picture under it is multiplied with the texture (night light).
+    pub fn draw_multiply(
+        &self,
+        frame: &mut GlesFrame<'_, '_>,
+        tex: &GlesTexture,
+        target: (i32, i32),
+        points: &[(f32, f32)],
+        n: usize,
+    ) -> Result<(), GlesError> {
+        self.draw_with(frame, tex, target, points, n, true)
+    }
+
+    fn draw_with(
+        &self,
+        frame: &mut GlesFrame<'_, '_>,
+        tex: &GlesTexture,
+        target: (i32, i32),
+        points: &[(f32, f32)],
+        n: usize,
+        multiply: bool,
+    ) -> Result<(), GlesError> {
         debug_assert_eq!(points.len(), n * n);
         let mut verts: Vec<f32> = Vec::with_capacity(n * n * 4);
         for i in 0..n {
@@ -116,7 +140,11 @@ impl MeshProgram {
             gl.TexParameteri(ffi::TEXTURE_2D, ffi::TEXTURE_WRAP_T, ffi::CLAMP_TO_EDGE as i32);
             gl.Uniform1i(this.uni_tex, 0);
             gl.Enable(ffi::BLEND);
-            gl.BlendFunc(ffi::ONE, ffi::ONE_MINUS_SRC_ALPHA);
+            if multiply {
+                gl.BlendFunc(ffi::DST_COLOR, ffi::ZERO);
+            } else {
+                gl.BlendFunc(ffi::ONE, ffi::ONE_MINUS_SRC_ALPHA);
+            }
             gl.BindBuffer(ffi::ARRAY_BUFFER, 0);
             gl.BindBuffer(ffi::ELEMENT_ARRAY_BUFFER, 0);
             let stride = (4 * std::mem::size_of::<f32>()) as i32;
@@ -131,6 +159,7 @@ impl MeshProgram {
             gl.DisableVertexAttribArray(this.attr_pos as u32);
             gl.DisableVertexAttribArray(this.attr_uv as u32);
             gl.BindTexture(ffi::TEXTURE_2D, 0);
+            gl.BlendFunc(ffi::ONE, ffi::ONE_MINUS_SRC_ALPHA);
             gl.UseProgram(prev_program as u32);
         })
     }

@@ -590,6 +590,17 @@ impl Fde {
             self.draw_cursor_on(renderer, scene, size, view)?;
         }
         self.fulfill_screencopy(renderer, output, scene, true);
+
+        // night light last, so screenshots keep their colours
+        if let Some(t) = self.night_light_tint() {
+            let px = [(t[0] * 255.0).round() as u8, (t[1] * 255.0).round() as u8, (t[2] * 255.0).round() as u8, 255];
+            let tex = renderer.import_memory(&px, Fourcc::Abgr8888, Size::<i32, BufferCoord>::from((1, 1)), false)?;
+            let (w, h) = (size.w as f32, size.h as f32);
+            let mut target = renderer.bind(scene)?;
+            let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+            glass.mesh.draw_multiply(&mut frame, &tex, (size.w, size.h), &[(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)], 2)?;
+            let _ = frame.finish()?;
+        }
         Ok(())
     }
 

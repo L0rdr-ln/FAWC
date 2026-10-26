@@ -15,6 +15,7 @@ pub mod handlers;
 pub mod input;
 pub mod layers;
 pub mod lockscreen;
+pub mod nightlight;
 pub mod notify;
 pub mod outputs;
 pub mod layout;
