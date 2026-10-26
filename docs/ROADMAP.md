@@ -9,7 +9,8 @@ possible; hardware and VM runs are noted as such.
 - [x] M1 a compositor you can start: winit backend (nested), xdg-shell windows drawn with the
       glass renderer, keyboard and pointer, move/resize, close/maximize/minimize, focus
 - [x] M2a title text with glow and orb buttons drawn by the compositor
-- [ ] M2b themes (colours, gloss, orb colours from a theme file), one config file (see SETTINGS.md)
+- [x] M2b one config file, applied live (accent, transparency, blur, gloss, terminal, keyboard, autostart)
+- [ ] M2c theme files (orb colours, fonts, shapes), wallpaper and output settings in the file
 - [ ] M3 (written, never run on hardware) DRM/KMS + libinput backend (real hardware, VMs), VT switching, multi-monitor, HiDPI
 - [ ] M4 (layer-shell and ext-background-effect-v1 done and tested) and ext-session-lock-v1 with `fawc-lock` done and tested — idle lock, screen capture, `ext-background-effect` (blur on
       request), fractional scale, output management

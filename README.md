@@ -69,11 +69,16 @@ On a console FAWC uses the GPU directly (DRM/KMS, libseat, libinput). Please att
 | **Alt+Esc** | quit FAWC |
 | **Ctrl+Alt+F1..F12** | switch console (DRM backend) |
 
-## Settings through the environment (until the settings app exists)
+## Configuration
 
-`FAWC_TERMINAL` terminal command · `FAWC_LAUNCHER` command for the orb when no apps are found ·
-`FAWC_NO_PANEL=1` no task bar · `FAWC_AUTOSTART="cmd"` extra program at start ·
-`FAWC_LOCK_CHECK` command that checks a password on stdin (testing) · `RUST_LOG=info` logs.
+One file, `~/.config/fawc/fawc.toml` (system defaults in `/etc/fawc/fawc.toml`; the user's file
+wins key by key), see [docs/fawc.example.toml](docs/fawc.example.toml). It is applied **while
+FAWC runs**: change the accent colour, glass strength, blur, terminal, keyboard layout or key
+repeat and the desktop follows within half a second; a file with an error is reported in the log
+and ignored. A settings app that edits this file is planned ([docs/SETTINGS.md](docs/SETTINGS.md)).
+
+Environment overrides: `FAWC_TERMINAL`, `FAWC_LAUNCHER`, `FAWC_NO_PANEL=1`, `FAWC_AUTOSTART="cmd"`,
+`FAWC_CONFIG=/path/file.toml` (use only this file), `RUST_LOG=info` (logs).
 
 ## Build
 

@@ -158,7 +158,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let socket_name = socket.socket_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     tracing::info!("listening on WAYLAND_DISPLAY={socket_name}");
     std::env::set_var("WAYLAND_DISPLAY", &socket_name);
-    crate::shell::start_session_clients();
+    crate::shell::start_session_clients(&crate::config::Config::load().unwrap_or_default());
     event_loop.handle().insert_source(Generic::new(socket, Interest::READ, Mode::Level), |_, socket, state| {
         while let Some(stream) = socket.accept()? {
             let _ = state.display_handle.insert_client(stream, Arc::new(ClientState::default()));
@@ -208,10 +208,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         DrmEvent::Error(e) => tracing::error!("drm: {e}"),
     })?;
-
-    if let Ok(cmd) = std::env::var("FAWC_AUTOSTART") {
-        let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
-    }
 
     // the first frame starts the vblank cycle
     render_and_queue(&mut state, &mut gpu.borrow_mut());

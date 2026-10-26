@@ -206,6 +206,7 @@ impl Fawc {
         };
         let full = Rectangle::<i32, Physical>::from_size(size);
         self.sync_foreign_toplevels();
+        self.check_config(false);
 
         // wallpaper
         let stale = match &self.wallpaper {

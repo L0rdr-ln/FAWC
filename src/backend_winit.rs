@@ -33,7 +33,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let socket_name = socket.socket_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     tracing::info!("listening on WAYLAND_DISPLAY={socket_name}");
     std::env::set_var("WAYLAND_DISPLAY", &socket_name);
-    crate::shell::start_session_clients();
+    crate::shell::start_session_clients(&crate::config::Config::load().unwrap_or_default());
     event_loop.handle().insert_source(
         Generic::new(socket, Interest::READ, Mode::Level),
         |_, socket, state| {
@@ -67,10 +67,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // draw at about 60 frames a second
     let timer = Timer::from_duration(Duration::from_millis(16));
     event_loop.handle().insert_source(timer, |_, _, _| TimeoutAction::ToDuration(Duration::from_millis(16)))?;
-
-    if let Ok(cmd) = std::env::var("FAWC_AUTOSTART") {
-        let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
-    }
 
     while state.running {
         event_loop.dispatch(Some(Duration::from_millis(16)), &mut state)?;

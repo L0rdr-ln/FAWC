@@ -224,9 +224,10 @@ fn clock() -> String {
 }
 
 fn launch() {
+    let config = fawc::config::Config::load().unwrap_or_default();
     let cmd = std::env::var("FAWC_LAUNCHER")
         .or_else(|_| std::env::var("FAWC_TERMINAL"))
-        .unwrap_or_else(|_| "foot".into());
+        .unwrap_or_else(|_| if config.shell.launcher.is_empty() { config.shell.terminal.clone() } else { config.shell.launcher.clone() });
     if let Err(e) = Command::new(&cmd).spawn() {
         eprintln!("fawc-panel: cannot start {cmd}: {e}");
     }

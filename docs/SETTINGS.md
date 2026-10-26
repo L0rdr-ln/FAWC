@@ -81,9 +81,10 @@ fixed layout, they start instantly and they have no toolkit dependency.
 
 ## Order of work
 
-1. `fawc-config`: a crate that reads/merges/validates the file and watches it; the compositor
-   and shell switch to it (today the compositor reads only environment variables). Tests: merge
-   rules, bad values keep the old config, live reload applies a change.
+1. **Done:** `src/config.rs` reads, merges and validates the file and the compositor watches it
+   (appearance, input, shell, session sections; see `docs/fawc.example.toml`). Tests: merge
+   rules, bad values, live reload applies a change and a broken edit changes nothing.
+   Still to move over: wallpaper, outputs.
 2. Appearance + Wallpaper + Keyboard & mouse (only need the file; testable end-to-end:
    change the file, the pixels / input change).
 3. Displays (needs `wlr-output-management` in the compositor).

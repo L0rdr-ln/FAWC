@@ -1,0 +1,23 @@
+# Copy to ~/.config/fawc/fawc.toml. Every key is optional; changes apply while FAWC runs
+# (a file that does not parse is reported in the log and ignored).
+
+[appearance]
+accent = "#4aa8ee"     # colour of the glass, #rrggbb
+transparency = 0.38    # tint strength of window frames, 0 (clear) .. 1
+blur = 3               # blur levels 1..6: softer but slower
+gloss = 0.8            # gloss band on the title bar, 0 .. 1
+animations = true      # (not used yet)
+
+[input]
+keyboard_layout = ""   # xkb layout, e.g. "de"; empty = system default
+repeat_rate = 25
+repeat_delay = 600
+
+[shell]
+terminal = "foot"
+launcher = ""          # what the start orb runs when no applications are found
+panel = true           # start the task bar with the session
+autostart = []         # e.g. ["nm-applet", "foot"]
+
+[session]
+idle_lock_seconds = 0  # (not used yet)

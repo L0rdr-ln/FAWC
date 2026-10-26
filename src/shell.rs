@@ -4,8 +4,8 @@ use std::process::Command;
 
 /// Start the task bar (`fawc-panel`, installed next to the compositor). `FAWC_NO_PANEL=1` skips
 /// it; `FAWC_AUTOSTART` may name more programs to start (a shell command line).
-pub fn start_session_clients() {
-    if std::env::var_os("FAWC_NO_PANEL").is_none() {
+pub fn start_session_clients(config: &crate::config::Config) {
+    if std::env::var_os("FAWC_NO_PANEL").is_none() && config.shell.panel {
         let panel = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.parent().map(|d| d.join("fawc-panel")))
@@ -19,9 +19,10 @@ pub fn start_session_clients() {
             None => tracing::info!("no fawc-panel next to the compositor: starting without a task bar"),
         }
     }
-    if let Ok(cmd) = std::env::var("FAWC_AUTOSTART") {
-        if let Err(e) = Command::new("sh").arg("-c").arg(&cmd).spawn() {
-            tracing::warn!("cannot run FAWC_AUTOSTART: {e}");
+    let extra = std::env::var("FAWC_AUTOSTART").ok();
+    for cmd in config.shell.autostart.iter().chain(extra.iter()) {
+        if let Err(e) = Command::new("sh").arg("-c").arg(cmd).spawn() {
+            tracing::warn!("cannot run autostart command {cmd}: {e}");
         }
     }
 }

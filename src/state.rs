@@ -76,6 +76,9 @@ pub struct Fawc {
     pub minimized: Vec<Window>,
     pub cascade: i32,
     pub terminal: String,
+    pub config: crate::config::Config,
+    config_watcher: crate::config::Watcher,
+    config_checked: std::time::Instant,
     /// the wallpaper as a texture of the output size, made when needed
     pub wallpaper: Option<smithay::backend::renderer::gles::GlesTexture>,
     pub text: crate::text::TextRenderer,
@@ -127,7 +130,17 @@ impl Fawc {
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Fawc>(dh);
         let mut seat = seat_state.new_wl_seat(dh, "seat0");
-        seat.add_keyboard(Default::default(), 600, 25).expect("keyboard");
+        let config = match crate::config::Config::load() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("configuration: {e} (using the defaults)");
+                crate::config::Config::default()
+            }
+        };
+        let xkb = smithay::input::keyboard::XkbConfig { layout: &config.input.keyboard_layout, ..Default::default() };
+        seat.add_keyboard(xkb, config.input.repeat_delay, config.input.repeat_rate).expect("keyboard");
+        let mut style = GlassStyle::default();
+        config.apply_style(&mut style);
         seat.add_pointer();
 
         let output = Output::new(
@@ -153,7 +166,7 @@ impl Fawc {
             space,
             popups: PopupManager::default(),
             output,
-            style: GlassStyle::default(),
+            style,
             compositor_state,
             xdg_shell_state,
             xdg_decoration_state,
@@ -174,7 +187,10 @@ impl Fawc {
             drag: None,
             minimized: Vec::new(),
             cascade: 0,
-            terminal: std::env::var("FAWC_TERMINAL").unwrap_or_else(|_| "foot".into()),
+            terminal: std::env::var("FAWC_TERMINAL").unwrap_or_else(|_| config.shell.terminal.clone()),
+            config,
+            config_watcher: crate::config::Watcher::new(),
+            config_checked: std::time::Instant::now(),
             wallpaper: None,
             text: crate::text::TextRenderer::default(),
             draw_cursor: false,
@@ -182,6 +198,43 @@ impl Fawc {
             session: None,
             titles: std::collections::HashMap::new(),
         }
+    }
+
+    /// Reload the configuration if a file changed (looked at twice a second at most): the look,
+    /// the terminal and the keyboard follow at once; a file that does not parse changes nothing.
+    pub fn check_config(&mut self, force: bool) {
+        if !force && self.config_checked.elapsed() < std::time::Duration::from_millis(500) {
+            return;
+        }
+        self.config_checked = std::time::Instant::now();
+        if !self.config_watcher.changed() {
+            return;
+        }
+        let new = match crate::config::Config::load() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("configuration not applied: {e}");
+                return;
+            }
+        };
+        if new == self.config {
+            return;
+        }
+        tracing::info!("configuration reloaded");
+        new.apply_style(&mut self.style);
+        if std::env::var_os("FAWC_TERMINAL").is_none() {
+            self.terminal = new.shell.terminal.clone();
+        }
+        if let Some(kb) = self.seat.get_keyboard() {
+            kb.change_repeat_info(new.input.repeat_rate, new.input.repeat_delay);
+            if new.input.keyboard_layout != self.config.input.keyboard_layout {
+                let xkb = smithay::input::keyboard::XkbConfig { layout: &new.input.keyboard_layout, ..Default::default() };
+                if let Err(e) = kb.set_xkb_config(self, xkb) {
+                    tracing::warn!("cannot set the keyboard layout: {e:?}");
+                }
+            }
+        }
+        self.config = new;
     }
 
     pub fn output_size(&self) -> Size<i32, Logical> {
