@@ -28,3 +28,33 @@ impl XdgActivationHandler for Fde {
     }
 }
 smithay::delegate_xdg_activation!(Fde);
+
+// linux-dmabuf-v1: GPU clients (games, browsers, video players) hand over buffers that live in
+// video memory, without a copy through shared memory.
+impl smithay::wayland::dmabuf::DmabufHandler for Fde {
+    fn dmabuf_state(&mut self) -> &mut smithay::wayland::dmabuf::DmabufState {
+        &mut self.dmabuf_state
+    }
+
+    fn dmabuf_imported(
+        &mut self,
+        _global: &smithay::wayland::dmabuf::DmabufGlobal,
+        _dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
+        notifier: smithay::wayland::dmabuf::ImportNotifier,
+    ) {
+        // the format and modifier were checked against what the renderer can import; the real
+        // import happens when the surface is first drawn
+        let _ = notifier.successful::<Fde>();
+    }
+}
+smithay::delegate_dmabuf!(Fde);
+
+impl Fde {
+    /// Offer GPU buffers to clients: `formats` is what the renderer can import.
+    pub fn enable_dmabuf(&mut self, formats: impl IntoIterator<Item = smithay::backend::allocator::Format>) {
+        if self.dmabuf_global.is_none() {
+            let dh = self.display_handle.clone();
+            self.dmabuf_global = Some(self.dmabuf_state.create_global::<Fde>(&dh, formats));
+        }
+    }
+}

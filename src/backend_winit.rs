@@ -25,6 +25,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let size = backend.window_size();
     let mut state = Fde::new(&dh, (size.w, size.h).into());
 
+    state.enable_dmabuf(smithay::backend::renderer::ImportDma::dmabuf_formats(backend.renderer()));
     let glass = Glass::new(backend.renderer())?;
     let mut scene: GlesTexture = create_scene(backend.renderer(), size)?;
 

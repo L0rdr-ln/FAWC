@@ -274,6 +274,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut state = Fde::new_named(&dh, &first.name, (w, h).into());
     state.draw_cursor = true;
     state.session = Some(session.clone());
+    state.enable_dmabuf(smithay::backend::renderer::ImportDma::dmabuf_formats(&renderer));
     let outputs: Vec<Output> = std::iter::once(state.output.clone())
         .chain(monitors.iter().skip(1).map(|m| state.add_output(&m.name, (m.mode.size().0 as i32, m.mode.size().1 as i32), m.mode.vrefresh() as i32 * 1000)))
         .collect();

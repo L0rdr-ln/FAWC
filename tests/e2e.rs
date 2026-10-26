@@ -1535,3 +1535,37 @@ fn xdg_activation_brings_a_window_to_the_front_and_restores_a_minimized_one() {
     assert!(!hn.state.minimized.contains(&back), "activation restores a minimized window");
     let _ = front;
 }
+
+#[test]
+fn the_dmabuf_global_is_offered_once_the_renderer_is_known() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): dmabuf test skipped");
+            return;
+        }
+    };
+    let display: Display<Fde> = Display::new().unwrap();
+    let mut state = Fde::new(&display.handle(), (800, 600).into());
+    state.enable_dmabuf(smithay::backend::renderer::ImportDma::dmabuf_formats(&renderer));
+    let _ = &mut renderer;
+    assert!(state.dmabuf_global.is_some());
+    let socket = ListeningSocket::bind("fde-e2e-dma").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let path = dir.path().join("fde-e2e-dma");
+    let th = std::thread::spawn(move || {
+        let conn = Connection::from_socket(UnixStream::connect(path).unwrap()).unwrap();
+        let (globals, _q) = registry_queue_init::<App>(&conn).unwrap();
+        globals.contents().with_list(|l| l.iter().any(|g| g.interface == "zwp_linux_dmabuf_v1"))
+    });
+    let t0 = Instant::now();
+    while !th.is_finished() {
+        hn.pump();
+        assert!(t0.elapsed() < Duration::from_secs(10));
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    assert!(th.join().unwrap(), "linux-dmabuf is advertised");
+}
