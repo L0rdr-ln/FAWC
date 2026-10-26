@@ -1,6 +1,6 @@
 <p align="center">
   <img src="assets/logo.svg" alt="FAWC logo" height="128">
-  <img src="assets/mascot.svg" alt="Bubbly, the mascot" height="128">
+  <img src="assets/mascot.svg" alt="Aero-chan, the mascot" height="128">
 </p>
 
 # FAWC
