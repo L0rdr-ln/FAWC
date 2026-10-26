@@ -84,10 +84,10 @@ mod tests {
         set(&f, &appearance("#ff8000", 0.7, 5, 0.3, true)).unwrap();
         let c = Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(c.look().0, "#ff8000", "the hand-set accent wins over the theme");
-        set(&f, &theme_changes("metro")).unwrap();
+        set(&f, &theme_changes("luna")).unwrap();
         let c = Config::parse(&std::fs::read_to_string(&f).unwrap()).unwrap();
-        assert_eq!(c.appearance.theme, "metro");
-        assert_eq!(c.look().0, "#0078d7", "now the theme's own accent");
+        assert_eq!(c.appearance.theme, "luna");
+        assert_eq!(c.look().0, "#0a5bd6", "now the theme's own accent");
         assert!(set(&f, &theme_changes("no-such-theme")).is_err());
     }
 

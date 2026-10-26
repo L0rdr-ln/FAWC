@@ -122,13 +122,13 @@ fn the_wallpaper_file_is_loaded_and_follows_edits() {
 fn a_theme_sets_the_look_unless_the_user_set_it_by_hand() {
     use fde::config::Config;
     use fde::glass::GlassStyle;
-    let metro = Config::parse("[appearance]\ntheme = \"metro\"\n").unwrap();
+    let luna = Config::parse("[appearance]\ntheme = \"luna\"\n").unwrap();
     let mut s = GlassStyle::default();
-    metro.apply_style(&mut s);
-    assert_eq!((s.radius, s.border, s.button_style), (0.0, 1.0, 1.0));
-    assert_eq!(s.tint_frame[3], 1.0, "metro's title bar is solid");
+    luna.apply_style(&mut s);
+    assert_eq!((s.radius, s.radius_bottom, s.border, s.button_style), (8.0, 0.0, 4.0, 3.0));
+    assert_eq!(s.tint_frame[3], 1.0, "luna's title bar is solid");
     // a hand-set accent still wins
-    let own = Config::parse("[appearance]\ntheme = \"metro\"\naccent = \"#ff0000\"\n").unwrap();
+    let own = Config::parse("[appearance]\ntheme = \"luna\"\naccent = \"#ff0000\"\n").unwrap();
     own.apply_style(&mut s);
     assert_eq!(&s.tint_frame[..3], &[1.0, 0.0, 0.0]);
     assert_eq!(s.tint_frame[3], 1.0, "the transparency still comes from the theme");

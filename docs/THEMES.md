@@ -2,18 +2,19 @@
 
 A theme is one small TOML file. FDE comes with ten (`themes/` in the source):
 
-| id | look |
-|---|---|
-| `aero` | Frutiger Aero: glossy blue glass, round orbs, the sky and hill wallpaper (default) |
-| `metro` | flat and solid: square corners, solid colour, glyph buttons, no gloss or glow |
-| `nordic` | dark, matte, cool greys with muted round buttons |
-| `sakura` | pastel pink glass with big round buttons |
-| `midnight` | Frutiger Aero after dark |
-| `vista` | Vista Glass: translucent blue glass with diagonal reflections, black titles with a white glow, a capsule of three buttons hanging from the top edge (red close) |
-| `seven` | Seven Glass: lighter, clearer glass, bright inner glow, capsule buttons |
-| `aqua` | Aqua: light grey title bars, glossy red/yellow/green buttons on the left, centred titles, deep shadows |
-| `luna` | Luna: bold blue title bars with rounded tops and square bottoms, square gel buttons, the sky-and-hill wallpaper |
-| `nature` | Aero Nature: fresh green glass, leaf-coloured orbs, sky fading into grass |
+| id | look | after |
+|---|---|---|
+| `aero` | glossy blue glass, round orbs, the sky and hill wallpaper (default) | the general Frutiger Aero look |
+| `vista` | Vista Glass: translucent blue glass with diagonal reflections, black titles with a white glow, a capsule of three buttons hanging from the top edge | Windows Vista, 2006 |
+| `seven` | Seven Glass: lighter, clearer glass, bright inner glow, capsule buttons | Windows 7, 2009 |
+| `aqua` | light grey title bars, glossy red/yellow/green buttons on the left, centred titles, deep shadows | Mac OS X Aqua / Leopard, 2000-2009 |
+| `luna` | bold blue title bars with rounded tops and square bottoms, square gel buttons, the sky-and-hill wallpaper | Windows XP, 2001 |
+| `nature` | fresh green glass, leaf-coloured orbs, sky fading into grass | the nature wallpaper themes of the era |
+| `dark-aero` | Frutiger Aero after dark | "Dark Aero" in the Frutiger family |
+| `frutiger-metro` | flatter and crisper, saturated blue, a little gloss left | "Frutiger Metro" in the Frutiger family |
+
+These are homages drawn from scratch to match how those looks are remembered; none of them uses
+anything from the original systems.
 
 Choose one in the settings (Appearance > Theme) or in `fde.toml`:
 

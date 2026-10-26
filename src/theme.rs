@@ -106,15 +106,13 @@ impl Default for Theme {
 /// The themes that come with FDE: (id, file text).
 pub const BUILTIN: &[(&str, &str)] = &[
     ("aero", include_str!("../themes/aero.toml")),
-    ("metro", include_str!("../themes/metro.toml")),
-    ("nordic", include_str!("../themes/nordic.toml")),
-    ("sakura", include_str!("../themes/sakura.toml")),
-    ("midnight", include_str!("../themes/midnight.toml")),
     ("vista", include_str!("../themes/vista.toml")),
     ("seven", include_str!("../themes/seven.toml")),
     ("aqua", include_str!("../themes/aqua.toml")),
     ("luna", include_str!("../themes/luna.toml")),
     ("nature", include_str!("../themes/nature.toml")),
+    ("dark-aero", include_str!("../themes/dark-aero.toml")),
+    ("frutiger-metro", include_str!("../themes/frutiger-metro.toml")),
 ];
 
 fn dirs() -> Vec<PathBuf> {
@@ -216,7 +214,7 @@ mod tests {
         let aero = Theme::find("aero").unwrap();
         let d = Theme::default();
         assert_eq!((aero.accent.as_str(), aero.radius, aero.border, aero.titlebar), (d.accent.as_str(), d.radius, d.border, d.titlebar));
-        assert!(Theme::list().len() >= 10);
+        assert!(Theme::list().len() >= 8);
     }
 
     #[test]

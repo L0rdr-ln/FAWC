@@ -1935,7 +1935,7 @@ fn every_theme_changes_how_a_window_is_drawn() {
     hn.state.space.map_element(win.clone(), (120, 80), false);
 
     let mut shots: Vec<(String, Vec<u8>)> = Vec::new();
-    for id in ["aero", "metro", "nordic", "sakura", "midnight", "vista", "seven", "aqua", "luna", "nature"] {
+    for id in ["aero", "vista", "seven", "aqua", "luna", "nature", "dark-aero", "frutiger-metro"] {
         let cfg = fde::config::Config::parse(&format!("[appearance]\ntheme = \"{id}\"\n")).unwrap();
         cfg.apply_style(&mut hn.state.style);
         hn.state.wallpaper_image = fde::state::load_wallpaper(&cfg);
@@ -1964,17 +1964,14 @@ fn every_theme_changes_how_a_window_is_drawn() {
         enc.write_header().unwrap().write_image_data(&all).unwrap();
     }
     let g = hn.state.space.element_geometry(&win).unwrap();
-    // metro: square corners, a solid accent title bar and the solid teal background
-    let metro = &shots[1].1;
-    let outer = hn.state.outer_of(&win);
-    let _ = outer;
-    let bg = pixel(metro, w, 5, 5);
-    assert!(bg[1] > bg[0] + 40 && bg[1] > 90, "metro's solid teal desktop: {bg:?}");
-    let aero_bg = pixel(&shots[0].1, w, 5, 5);
-    assert_ne!(bg, aero_bg);
-    let title = pixel(metro, w, g.loc.x + 20, g.loc.y - 20);
-    assert!(title[2] > 150 && title[0] < 60, "metro's title bar is the solid blue accent: {title:?}");
-    // nordic is dark
-    let nordic = pixel(&shots[2].1, w, g.loc.x + 20, g.loc.y - 20);
-    assert!(nordic.iter().sum::<i32>() < 3 * 130, "nordic's title bar is dark: {nordic:?}");
+    // luna: a solid blue title bar over the photograph; aqua: a light grey one over a blue gradient
+    let luna = pixel(&shots[4].1, w, g.loc.x + 20, g.loc.y - 14);
+    assert!(luna[2] > 150 && luna[0] < 70, "luna's title bar is solid blue: {luna:?}");
+    let aqua = pixel(&shots[3].1, w, g.loc.x + 60, g.loc.y - 12);
+    assert!(aqua.iter().all(|&c| c > 150) && (aqua[0] - aqua[2]).abs() < 40, "aqua's title bar is light grey: {aqua:?}");
+    let aqua_bg = pixel(&shots[3].1, w, 5, 5);
+    assert!(aqua_bg[2] > aqua_bg[1] && aqua_bg[2] > 80, "aqua's blue gradient desktop: {aqua_bg:?}");
+    // dark aero is dark
+    let dark = pixel(&shots[6].1, w, 5, 5);
+    assert!(dark.iter().sum::<i32>() < 3 * 100, "dark aero's desktop is dark: {dark:?}");
 }

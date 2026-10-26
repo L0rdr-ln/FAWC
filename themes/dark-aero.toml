@@ -1,5 +1,5 @@
-name = "Midnight"
-description = "Frutiger Aero after dark: deep blue glass, still glossy."
+name = "Dark Aero"
+description = "Frutiger Aero after dark: deep blue glass, still glossy, glowing edges."
 accent = "#1d3f8f"
 transparency = 0.55
 blur = 3
