@@ -3,6 +3,9 @@
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
+
+/// The tests share XDG_RUNTIME_DIR, so they run one at a time.
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -161,6 +164,7 @@ fn pixel(buf: &[u8], w: i32, x: i32, y: i32) -> [i32; 3] {
 #[test]
 fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var("XDG_RUNTIME_DIR", dir.path());
     let mut renderer = match offscreen_renderer() {
         Ok(r) => r,
@@ -265,4 +269,145 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
         std::thread::sleep(Duration::from_millis(3));
     }
     handle.join().unwrap();
+}
+
+
+// ------------------------------------------------------------------ layer shell
+
+use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
+
+#[derive(Default)]
+struct PanelApp {
+    configured: bool,
+    size: (u32, u32),
+}
+
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for PanelApp {
+    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+}
+delegate_noop!(PanelApp: ignore wl_compositor::WlCompositor);
+delegate_noop!(PanelApp: ignore wl_surface::WlSurface);
+delegate_noop!(PanelApp: ignore wl_shm::WlShm);
+delegate_noop!(PanelApp: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(PanelApp: ignore wl_buffer::WlBuffer);
+delegate_noop!(PanelApp: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
+
+impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for PanelApp {
+    fn event(app: &mut Self, s: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, event: zwlr_layer_surface_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let zwlr_layer_surface_v1::Event::Configure { serial, width, height } = event {
+            s.ack_configure(serial);
+            app.size = (width, height);
+            app.configured = true;
+        }
+    }
+}
+
+/// A 40 px panel at the bottom that reserves its space; reports when it is on screen.
+fn panel_client(path: std::path::PathBuf, tx: mpsc::Sender<(u32, u32)>, argb: u32) {
+    let stream = UnixStream::connect(path).expect("connect");
+    let conn = Connection::from_socket(stream).expect("connection");
+    let (globals, mut queue) = registry_queue_init::<PanelApp>(&conn).expect("registry");
+    let qh = queue.handle();
+    let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 4..=4, ()).unwrap();
+    let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).unwrap();
+    let shell: zwlr_layer_shell_v1::ZwlrLayerShellV1 = globals.bind(&qh, 1..=4, ()).unwrap();
+    let mut app = PanelApp::default();
+    let surface = compositor.create_surface(&qh, ());
+    let ls = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Top, "panel".into(), &qh, ());
+    ls.set_size(0, 40);
+    ls.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom | zwlr_layer_surface_v1::Anchor::Left | zwlr_layer_surface_v1::Anchor::Right);
+    ls.set_exclusive_zone(40);
+    surface.commit();
+    while !app.configured {
+        queue.blocking_dispatch(&mut app).expect("dispatch");
+    }
+    let (w, h) = (app.size.0 as i32, app.size.1 as i32);
+    let mut file = tempfile::tempfile_in(std::env::var("XDG_RUNTIME_DIR").unwrap()).unwrap();
+    let px: Vec<u8> = (0..w * h).flat_map(|_| argb.to_le_bytes()).collect();
+    file.write_all(&px).unwrap();
+    use std::os::fd::AsFd;
+    let pool = shm.create_pool(file.as_fd(), w * h * 4, &qh, ());
+    let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, &qh, ());
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    queue.roundtrip(&mut app).unwrap();
+    tx.send(app.size).unwrap();
+    let t0 = Instant::now();
+    while t0.elapsed() < Duration::from_secs(20) {
+        queue.blocking_dispatch(&mut app).ok();
+    }
+}
+
+#[test]
+fn a_panel_reserves_space_and_maximized_windows_stay_above_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): layer test skipped");
+            return;
+        }
+    };
+    let (w, h) = (800, 600);
+    let display: Display<Fawc> = Display::new().unwrap();
+    let state = Fawc::new(&display.handle(), (w, h).into());
+    let socket = ListeningSocket::bind("fawc-e2e-layer").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (w, h).into()).unwrap();
+
+    let (ptx, prx) = mpsc::channel();
+    let path = dir.path().join("fawc-e2e-layer");
+    let p2 = path.clone();
+    std::thread::spawn(move || panel_client(p2, ptx, 0xff20b040));
+    let t0 = Instant::now();
+    let size = loop {
+        hn.pump();
+        if let Ok(sz) = prx.try_recv() {
+            break sz;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "the panel never appeared");
+        std::thread::sleep(Duration::from_millis(3));
+    };
+    assert_eq!(size, (800, 40), "the panel is as wide as the output and 40 px high");
+    hn.pump_for(100);
+
+    // the panel is drawn at the bottom edge, above the wallpaper
+    hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+    let grab = |renderer: &mut smithay::backend::renderer::gles::GlesRenderer, scene: &mut GlesTexture| -> Vec<u8> {
+        let size = scene.size();
+        let target = renderer.bind(scene).unwrap();
+        let m = renderer.copy_framebuffer(&target, Rectangle::from_size(size), Fourcc::Abgr8888).unwrap();
+        renderer.map_texture(&m).unwrap().to_vec()
+    };
+    let bytes = grab(&mut renderer, &mut scene);
+    let p = pixel(&bytes, w, 400, 590);
+    assert!(p[1] > 150 && p[0] < 80 && p[2] < 100, "the green panel at the bottom: {p:?}");
+    let above = pixel(&bytes, w, 400, 540);
+    assert!(above[1] < 150 || above[2] > 100, "the wallpaper above the panel: {above:?}");
+
+    // the usable area is what the panel leaves
+    let usable = hn.state.usable_area();
+    assert_eq!((usable.loc.y, usable.size.h), (0, 560));
+
+    // a window maximized now stops above the panel
+    let (tx, rx) = mpsc::channel();
+    let handle = std::thread::spawn(move || client(path, tx, 200, 100, 0xff2030e0));
+    let t0 = Instant::now();
+    loop {
+        hn.pump();
+        if let Ok(Msg::Mapped { .. }) = rx.try_recv() {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "no window");
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    let win = hn.state.space.elements().next().cloned().unwrap();
+    hn.state.set_maximized(&win, true);
+    hn.pump_for(100);
+    let outer = hn.state.outer_of(&win).unwrap();
+    assert!(outer.loc.y + outer.size.h <= 560, "maximized window must stay above the panel: {outer:?}");
+    drop(handle);
 }

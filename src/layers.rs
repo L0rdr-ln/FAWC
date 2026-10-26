@@ -1,0 +1,56 @@
+//! Layer-shell surfaces (wallpaper, panel, launcher, notifications): keyboard focus and what
+//! is under the pointer.
+
+use smithay::desktop::{layer_map_for_output, LayerSurface, WindowSurfaceType};
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::{Logical, Point, SERIAL_COUNTER};
+use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
+
+use crate::state::Fawc;
+
+impl Fawc {
+    /// A layer surface that wants the keyboard exclusively takes it when it appears.
+    pub fn focus_layer_if_exclusive(&mut self, layer: &LayerSurface) {
+        let wants = layer.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive
+            && matches!(layer.layer(), Layer::Top | Layer::Overlay);
+        if wants {
+            self.focus_layer(layer);
+        }
+    }
+
+    pub fn focus_layer(&mut self, layer: &LayerSurface) {
+        let serial = SERIAL_COUNTER.next_serial();
+        if let Some(kb) = self.seat.get_keyboard() {
+            kb.set_focus(self, Some(layer.wl_surface().clone()), serial);
+        }
+    }
+
+    /// The layer surface (and the point on its origin) under `p` on the given layers.
+    pub fn layer_surface_under(
+        &self,
+        p: Point<f64, Logical>,
+        layers: &[Layer],
+    ) -> Option<(LayerSurface, WlSurface, Point<i32, Logical>)> {
+        let map = layer_map_for_output(&self.output);
+        for l in layers {
+            if let Some(ls) = map.layer_under(*l, p) {
+                let geo = map.layer_geometry(ls)?;
+                let local = p - geo.loc.to_f64();
+                if let Some((s, loc)) = ls.surface_under(local, WindowSurfaceType::ALL) {
+                    return Some((ls.clone(), s, geo.loc + loc));
+                }
+            }
+        }
+        None
+    }
+
+    /// The area windows may use: the output minus what panels reserve.
+    pub fn usable_area(&self) -> smithay::utils::Rectangle<i32, Logical> {
+        let zone = layer_map_for_output(&self.output).non_exclusive_zone();
+        if zone.size.w > 0 && zone.size.h > 0 {
+            zone
+        } else {
+            smithay::utils::Rectangle::from_size(self.output_size())
+        }
+    }
+}

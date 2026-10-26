@@ -7,7 +7,8 @@ use smithay::backend::renderer::element::{AsRenderElements, Kind};
 use smithay::backend::renderer::gles::{GlesError, GlesRenderer, GlesTexture};
 use smithay::backend::renderer::utils::draw_render_elements;
 use smithay::backend::renderer::{Bind, Color32F, Frame, ImportMem, Offscreen, Renderer, Texture};
-use smithay::desktop::{PopupManager, Window, WindowSurfaceType};
+use smithay::desktop::{layer_map_for_output, PopupManager, Window, WindowSurfaceType};
+use smithay::wayland::shell::wlr_layer::Layer;
 use smithay::reexports::wayland_server::Resource;
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::xdg::XdgToplevelSurfaceData;
@@ -76,6 +77,42 @@ impl Fawc {
         }))
     }
 
+    /// Draw the layer surfaces of the given layers (in that order) into the scene.
+    fn draw_layers(
+        &mut self,
+        renderer: &mut GlesRenderer,
+        scene: &mut GlesTexture,
+        size: Size<i32, Physical>,
+        layers: &[Layer],
+    ) -> Result<(), GlesError> {
+        let full = Rectangle::<i32, Physical>::from_size(size);
+        let map = layer_map_for_output(&self.output);
+        let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
+        for l in layers {
+            for ls in map.layers_on(*l) {
+                let Some(geo) = map.layer_geometry(ls) else { continue };
+                // AsRenderElements gives front-to-back; drawing wants back to front, below
+                let mut e = ls.render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                    renderer,
+                    geo.loc.to_physical(1),
+                    1.0.into(),
+                    1.0,
+                );
+                e.reverse();
+                elements.extend(e);
+            }
+        }
+        drop(map);
+        if elements.is_empty() {
+            return Ok(());
+        }
+        let mut target = renderer.bind(scene)?;
+        let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
+        draw_render_elements(&mut frame, 1.0, &elements, &[full])?;
+        let _ = frame.finish()?;
+        Ok(())
+    }
+
     /// Draw everything into `scene` (the output's size). `glass` is the shader set.
     pub fn render_scene(
         &mut self,
@@ -122,6 +159,9 @@ impl Fawc {
             }
             let _ = frame.finish()?;
         }
+
+        // wallpaper and bottom layers
+        self.draw_layers(renderer, scene, size, &[Layer::Background, Layer::Bottom])?;
 
         // windows, back to front
         let windows: Vec<Window> = self.space.elements().cloned().collect();
@@ -198,6 +238,9 @@ impl Fawc {
             let _ = frame.finish()?;
         }
         let _ = WindowSurfaceType::ALL;
+
+        // panels, launchers, notifications above the windows
+        self.draw_layers(renderer, scene, size, &[Layer::Top, Layer::Overlay])?;
 
         if self.draw_cursor {
             if self.cursor_texture.is_none() {

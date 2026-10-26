@@ -12,6 +12,7 @@ use smithay::utils::{Logical, Point, Rectangle, Size, Transform};
 use smithay::wayland::compositor::{CompositorClientState, CompositorState};
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::selection::data_device::DataDeviceState;
+use smithay::wayland::shell::wlr_layer::WlrLayerShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shm::ShmState;
@@ -54,6 +55,7 @@ pub struct Fawc {
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
+    pub layer_shell_state: WlrLayerShellState,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Fawc>,
@@ -109,6 +111,7 @@ impl Fawc {
         let compositor_state = CompositorState::new::<Fawc>(dh);
         let xdg_shell_state = XdgShellState::new::<Fawc>(dh);
         let xdg_decoration_state = XdgDecorationState::new::<Fawc>(dh);
+        let layer_shell_state = WlrLayerShellState::new::<Fawc>(dh);
         let shm_state = ShmState::new::<Fawc>(dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Fawc>(dh);
         let mut seat_state = SeatState::new();
@@ -144,6 +147,7 @@ impl Fawc {
             compositor_state,
             xdg_shell_state,
             xdg_decoration_state,
+            layer_shell_state,
             shm_state,
             output_manager_state,
             seat_state,

@@ -7,6 +7,7 @@ pub mod demo;
 pub mod glass;
 pub mod handlers;
 pub mod input;
+pub mod layers;
 pub mod layout;
 pub mod render;
 pub mod state;

@@ -8,6 +8,7 @@ use smithay::desktop::WindowSurfaceType;
 use smithay::input::keyboard::{keysyms, FilterResult};
 use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent};
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
+use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
 
 use crate::layout::{Button, Hit};
 use crate::state::{Drag, Edges, Fawc};
@@ -166,15 +167,23 @@ impl Fawc {
 
         let serial = SERIAL_COUNTER.next_serial();
         let Some(ptr) = self.seat.get_pointer() else { return };
-        let under = self.window_under(pos);
-        let focus = match &under {
-            Some((window, client, Hit::Client)) => {
-                let local = pos - client.loc.to_f64();
-                window
-                    .surface_under(local, WindowSurfaceType::ALL)
-                    .map(|(s, loc)| (s, (client.loc + loc).to_f64()))
+        let upper = self.layer_surface_under(pos, &[Layer::Overlay, Layer::Top]);
+        let under = if upper.is_some() { None } else { self.window_under(pos) };
+        let focus = if let Some((_, s, loc)) = &upper {
+            Some((s.clone(), loc.to_f64()))
+        } else {
+            match &under {
+                Some((window, client, Hit::Client)) => {
+                    let local = pos - client.loc.to_f64();
+                    window
+                        .surface_under(local, WindowSurfaceType::ALL)
+                        .map(|(s, loc)| (s, (client.loc + loc).to_f64()))
+                }
+                Some(_) => None,
+                None => self
+                    .layer_surface_under(pos, &[Layer::Bottom, Layer::Background])
+                    .map(|(_, s, loc)| (s, loc.to_f64())),
             }
-            _ => None,
         };
         ptr.motion(self, focus, &MotionEvent { location: pos, serial, time });
         ptr.frame(self);
@@ -187,6 +196,11 @@ impl Fawc {
         if !pressed {
             if self.drag.take().is_some() {
                 return;
+            }
+        } else if let Some((layer, _, _)) = self.layer_surface_under(pos, &[Layer::Overlay, Layer::Top]) {
+            // a click on a panel or launcher: it may take the keyboard, the click goes to it
+            if layer.cached_state().keyboard_interactivity != KeyboardInteractivity::None {
+                self.focus_layer(&layer);
             }
         } else if button == BTN_LEFT {
             let under = self.window_under(pos);

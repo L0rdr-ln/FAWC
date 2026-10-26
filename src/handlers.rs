@@ -3,7 +3,7 @@
 use std::os::unix::io::OwnedFd;
 
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
-use smithay::desktop::{PopupKind, PopupManager, Window};
+use smithay::desktop::{layer_map_for_output, LayerSurface as DesktopLayer, PopupKind, PopupManager, Window, WindowSurfaceType};
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecoMode;
@@ -18,6 +18,8 @@ use smithay::wayland::selection::data_device::{
     ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
 };
 use smithay::wayland::selection::SelectionHandler;
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::shell::wlr_layer::{Layer, LayerSurfaceData, LayerSurface, WlrLayerShellHandler, WlrLayerShellState};
 use smithay::wayland::shell::xdg::decoration::{XdgDecorationHandler, XdgDecorationState};
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
@@ -25,7 +27,7 @@ use smithay::wayland::shell::xdg::{
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
-    delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_layer_shell, delegate_xdg_decoration, delegate_xdg_shell,
 };
 
 use crate::state::{client_state, Fawc};
@@ -52,6 +54,24 @@ impl CompositorHandler for Fawc {
                 if !top.is_initial_configure_sent() {
                     top.send_configure();
                 }
+            }
+        }
+        // a layer surface (panel, wallpaper, launcher): lay the layers out again
+        let layer = layer_map_for_output(&self.output)
+            .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
+            .cloned();
+        if let Some(layer) = layer {
+            layer_map_for_output(&self.output).arrange();
+            // the first configure answers the first commit; arrange never sends it
+            let sent = with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<LayerSurfaceData>()
+                    .map(|d| d.lock().unwrap().initial_configure_sent)
+                    .unwrap_or(false)
+            });
+            if !sent {
+                layer.layer_surface().send_configure();
             }
         }
         // a popup of ours needs its first configure too
@@ -180,7 +200,42 @@ impl XdgDecorationHandler for Fawc {
     }
 }
 
+impl WlrLayerShellHandler for Fawc {
+    fn shell_state(&mut self) -> &mut WlrLayerShellState {
+        &mut self.layer_shell_state
+    }
+
+    fn new_layer_surface(
+        &mut self,
+        surface: LayerSurface,
+        _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
+        layer: Layer,
+        namespace: String,
+    ) {
+        tracing::info!("layer surface {namespace} on {layer:?}");
+        let desktop_layer = DesktopLayer::new(surface, namespace);
+        let mut map = layer_map_for_output(&self.output);
+        let _ = map.map_layer(&desktop_layer);
+        map.arrange();
+        drop(map);
+        // a surface that asks for the keyboard exclusively (a launcher) gets it at once
+        self.focus_layer_if_exclusive(&desktop_layer);
+    }
+
+    fn layer_destroyed(&mut self, surface: LayerSurface) {
+        let mut map = layer_map_for_output(&self.output);
+        let found = map.layers().find(|l| l.layer_surface() == &surface).cloned();
+        if let Some(l) = found {
+            map.unmap_layer(&l);
+        }
+        map.arrange();
+        drop(map);
+        self.focus_top_window();
+    }
+}
+
 delegate_compositor!(Fawc);
+delegate_layer_shell!(Fawc);
 delegate_shm!(Fawc);
 delegate_output!(Fawc);
 delegate_seat!(Fawc);

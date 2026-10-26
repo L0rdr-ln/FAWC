@@ -80,7 +80,7 @@ impl Fawc {
             return;
         }
         if on {
-            let screen = Rectangle::<i32, Logical>::from_size(self.output_size());
+            let screen = self.usable_area();
             let target = client_rect(screen, &self.style);
             info(window).lock().unwrap().restore = Some(geo);
             top.with_pending_state(|s| {

@@ -10,7 +10,7 @@ possible; hardware and VM runs are noted as such.
       glass renderer, keyboard and pointer, move/resize, close/maximize/minimize, focus
 - [ ] M2 title text and orb buttons drawn by the compositor, themes (`[style]` compatible)
 - [ ] M3 DRM/KMS + libinput backend (real hardware, VMs), VT switching, multi-monitor, HiDPI
-- [ ] M4 layer-shell, session lock, idle, screen capture, `ext-background-effect` (blur on
+- [ ] M4 (layer-shell done: panels, exclusive zones, tested) — session lock, idle, screen capture, `ext-background-effect` (blur on
       request), fractional scale, output management
 - [ ] M5 animations: open/close fade + zoom, minimize, workspace slide, Flip-3D style switcher
 
