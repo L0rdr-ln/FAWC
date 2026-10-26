@@ -11,7 +11,7 @@ possible; hardware and VM runs are noted as such.
 - [x] M2a title text with glow and orb buttons drawn by the compositor
 - [x] M2b one config file, applied live (accent, transparency, blur, gloss, terminal, keyboard, autostart)
 - [ ] M2c theme files (orb colours, fonts, shapes), wallpaper and output settings in the file
-- [~] M3 DRM/KMS + libinput backend (written, never run on hardware), VT switching; multiple monitors and per-monitor scale (compositor side tested with virtual outputs; DRM side compiled only); hot-plug and per-monitor panels still to do
+- [~] M3 DRM/KMS + libinput backend (written, never run on hardware), VT switching; multiple monitors and per-monitor scale (compositor side tested with virtual outputs; DRM side compiled only); shell programs draw at the monitor's scale; hot-plug and per-monitor panels still to do
 - [ ] M4 (layer-shell and ext-background-effect-v1 done and tested) and ext-session-lock-v1 with `fawc-lock` done and tested — idle lock, screen capture, `ext-background-effect` (blur on
       request), fractional scale, output management
 - [~] M5 animations: opening fade + zoom done (`appearance.animations`); close, minimize, workspace slide, Flip-3D style switcher to come

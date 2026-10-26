@@ -40,8 +40,9 @@ the client. Clients can ask for the same blur behind their own translucent areas
 any of them, the pointer moves between them, maximize fills the monitor the window is on, the
 lock screen covers every monitor. Tested with virtual outputs (two monitors; a 2x monitor draws
 the frame, title and client at double size). The task bar and notifications are on the first
-monitor only. On a scaled monitor the task bar, lock screen and notifications are still drawn at
-one pixel per logical pixel and stretched (a little soft); windows, frames and titles are sharp.
+monitor only. The task bar, start menu, lock screen and notifications draw themselves at the
+monitor's scale (whole numbers: a 1.5 monitor gets 2x pictures, scaled down by the compositor), so
+everything is sharp.
 
 ![FAWC at scale 2 (nested)](docs/hidpi.png)
 

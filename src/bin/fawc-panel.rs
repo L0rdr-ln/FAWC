@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use fawc::panel;
 use fawc::text::TextRenderer;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
-use wayland_client::{delegate_noop, Connection, Dispatch, QueueHandle, WEnum};
+use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
+use wayland_client::{delegate_noop, Connection, Dispatch, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::background_effect::v1::client::{ext_background_effect_manager_v1, ext_background_effect_surface_v1};
 use xkbcommon::xkb;
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{zwlr_foreign_toplevel_handle_v1 as handle_mod, zwlr_foreign_toplevel_manager_v1 as manager_mod};
@@ -43,6 +43,7 @@ struct App {
     toggle_menu: bool,
     close_menu: bool,
     menu_entries: usize,
+    scale: fawc::clientscale::ScaleTracker,
     // typing in the start menu
     query: String,
     query_changed: bool,
@@ -106,7 +107,23 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
     fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
 }
 delegate_noop!(App: ignore wl_compositor::WlCompositor);
-delegate_noop!(App: ignore wl_surface::WlSurface);
+impl Dispatch<wl_surface::WlSurface, ()> for App {
+    fn event(app: &mut Self, _: &wl_surface::WlSurface, event: wl_surface::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        match event {
+            wl_surface::Event::Enter { output } => app.scale.enter(output.id()),
+            wl_surface::Event::Leave { output } => app.scale.leave(&output.id()),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_output::WlOutput, ()> for App {
+    fn event(app: &mut Self, output: &wl_output::WlOutput, event: wl_output::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let wl_output::Event::Scale { factor } = event {
+            app.scale.set_output_scale(output.id(), factor);
+        }
+    }
+}
 delegate_noop!(App: ignore wl_shm::WlShm);
 delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(App: ignore wl_buffer::WlBuffer);
@@ -311,6 +328,7 @@ fn attach(
     file: &mut Option<std::fs::File>,
     mut px: Vec<u8>,
     (w, h): (i32, i32),
+    scale: i32,
 ) -> std::io::Result<()> {
     // wl_shm ARGB8888 is B, G, R, A in memory
     for p in px.chunks_exact_mut(4) {
@@ -325,6 +343,7 @@ fn attach(
     f.write_all(&px)?;
     let pool = shm.create_pool(f.as_fd(), px.len() as i32, qh, ());
     let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, qh, ());
+    surface.set_buffer_scale(scale);
     surface.attach(Some(&buffer), 0, 0);
     surface.damage_buffer(0, 0, w, h);
     surface.commit();
@@ -371,6 +390,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _manager: Option<manager_mod::ZwlrForeignToplevelManagerV1> = globals.bind(&qh, 1..=3, ()).ok();
 
     let mut app = App { seat: Some(seat), ..App::default() };
+    // the outputs tell us their scale
+    let _outputs: Vec<wl_output::WlOutput> = globals
+        .contents()
+        .clone_list()
+        .iter()
+        .filter(|g| g.interface == "wl_output")
+        .map(|g| globals.registry().bind(g.name, g.version.min(4), &qh, ()))
+        .collect();
+    queue.roundtrip(&mut app)?;
     let surface = compositor.create_surface(&qh, ());
     let ls = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Top, "panel".into(), &qh, 0u8);
     ls.set_size(0, panel::HEIGHT as u32);
@@ -393,6 +421,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut text = TextRenderer::default();
     let mut shown = String::new();
     let mut shown_hover = false;
+    let mut shown_scale = 1;
     let mut last_clock = Instant::now() - Duration::from_secs(60);
     let mut current_clock = String::new();
     let mut size = (0, 0);
@@ -422,14 +451,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        if app.size != size || app.hover != shown_hover || current_clock != shown {
+        if app.size != size || app.hover != shown_hover || current_clock != shown || app.scale.current() != shown_scale {
             dirty = true;
+        }
+        if app.scale.current() != shown_scale {
+            app.menu_dirty = true;
         }
         if dirty {
             size = app.size;
             let tasks: Vec<panel::Task> = app.toplevels.iter().map(|t| t.task.clone()).collect();
-            let rgba = panel::draw(&mut text, size.0, size.1, app.hover, &current_clock, &tasks);
-            attach(&shm, &qh, &surface, &mut file, rgba, size)?;
+            let s = app.scale.current();
+            let rgba = panel::draw(&mut text, size.0 * s, size.1 * s, s, app.hover, &current_clock, &tasks);
+            attach(&shm, &qh, &surface, &mut file, rgba, (size.0 * s, size.1 * s), s)?;
+            shown_scale = s;
             shown = current_clock.clone();
             shown_hover = app.hover;
             dirty = false;
@@ -501,8 +535,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if app.menu_configured && app.menu_dirty {
                 app.menu_dirty = false;
                 let names: Vec<String> = filtered.iter().take(panel::MENU_MAX_ROWS).filter_map(|&i| entries.get(i)).map(|e| e.name.clone()).collect();
-                let px = panel::draw_menu(&mut text, &app.query, &names, app.menu_hover);
-                attach(&shm, &qh, &m.surface, &mut m.file, px, panel::menu_size())?;
+                let s = app.scale.current();
+                let px = panel::draw_menu(&mut text, s, &app.query, &names, app.menu_hover);
+                let (mw, mh) = panel::menu_size();
+                attach(&shm, &qh, &m.surface, &mut m.file, px, (mw * s, mh * s), s)?;
             }
         }
         // wait for events, but wake up for the clock

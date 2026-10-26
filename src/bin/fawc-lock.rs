@@ -16,6 +16,7 @@ struct Output {
     surface: wl_surface::WlSurface,
     lock_surface: ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
     size: (i32, i32),
+    scale: i32,
     file: Option<std::fs::File>,
 }
 
@@ -36,7 +37,17 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
 }
 delegate_noop!(App: ignore wl_compositor::WlCompositor);
 delegate_noop!(App: ignore wl_surface::WlSurface);
-delegate_noop!(App: ignore wl_output::WlOutput);
+/// The user data is the index of the output in `App::outputs`.
+impl Dispatch<wl_output::WlOutput, usize> for App {
+    fn event(app: &mut Self, _: &wl_output::WlOutput, event: wl_output::Event, idx: &usize, _: &Connection, _: &QueueHandle<Self>) {
+        if let wl_output::Event::Scale { factor } = event {
+            if let Some(o) = app.outputs.get_mut(*idx) {
+                o.scale = factor.max(1);
+                app.redraw = true;
+            }
+        }
+    }
+}
 delegate_noop!(App: ignore wl_shm::WlShm);
 delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(App: ignore wl_buffer::WlBuffer);
@@ -155,11 +166,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // one lock surface per output
     for (name, interface, version) in globals.contents().clone_list().iter().map(|g| (g.name, g.interface.clone(), g.version)) {
         if interface == "wl_output" {
-            let output: wl_output::WlOutput = globals.registry().bind(name, version.min(4), &qh, ());
+            let output: wl_output::WlOutput = globals.registry().bind(name, version.min(4), &qh, app.outputs.len());
             let surface = compositor.create_surface(&qh, ());
             let idx = app.outputs.len();
             let lock_surface = lock.get_lock_surface(&surface, &output, &qh, idx);
-            app.outputs.push(Output { surface, lock_surface, size: (0, 0), file: None });
+            app.outputs.push(Output { surface, lock_surface, size: (0, 0), scale: 1, file: None });
         }
     }
     if app.outputs.is_empty() {
@@ -185,11 +196,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if app.redraw {
             app.redraw = false;
             for o in &mut app.outputs {
-                let (w, h) = o.size;
-                if w <= 0 || h <= 0 {
+                let (lw, lh) = o.size;
+                if lw <= 0 || lh <= 0 {
                     continue;
                 }
-                let mut px = lockscreen::draw(&mut text, w, h, &app.user, app.typed.chars().count(), &app.message);
+                let s = o.scale;
+                let (w, h) = (lw * s, lh * s);
+                let mut px = lockscreen::draw(&mut text, w, h, s, &app.user, app.typed.chars().count(), &app.message);
                 for p in px.chunks_exact_mut(4) {
                     p.swap(0, 2);
                 }
@@ -202,6 +215,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 f.write_all(&px)?;
                 let pool = shm.create_pool(f.as_fd(), px.len() as i32, &qh, ());
                 let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, &qh, ());
+                o.surface.set_buffer_scale(s);
                 o.surface.attach(Some(&buffer), 0, 0);
                 o.surface.damage_buffer(0, 0, w, h);
                 o.surface.commit();

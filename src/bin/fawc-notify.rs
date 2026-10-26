@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 use fawc::notify::{self, Store};
 use fawc::text::TextRenderer;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
-use wayland_client::{delegate_noop, Connection, Dispatch, QueueHandle, WEnum};
+use wayland_client::protocol::{wl_buffer, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
+use wayland_client::{delegate_noop, Connection, Dispatch, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::background_effect::v1::client::{ext_background_effect_manager_v1, ext_background_effect_surface_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
@@ -74,13 +74,30 @@ struct App {
     configured: bool,
     pointer_y: f64,
     click: Option<f64>,
+    scale: fawc::clientscale::ScaleTracker,
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
     fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
 }
 delegate_noop!(App: ignore wl_compositor::WlCompositor);
-delegate_noop!(App: ignore wl_surface::WlSurface);
+impl Dispatch<wl_surface::WlSurface, ()> for App {
+    fn event(app: &mut Self, _: &wl_surface::WlSurface, event: wl_surface::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        match event {
+            wl_surface::Event::Enter { output } => app.scale.enter(output.id()),
+            wl_surface::Event::Leave { output } => app.scale.leave(&output.id()),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_output::WlOutput, ()> for App {
+    fn event(app: &mut Self, output: &wl_output::WlOutput, event: wl_output::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let wl_output::Event::Scale { factor } = event {
+            app.scale.set_output_scale(output.id(), factor);
+        }
+    }
+}
 delegate_noop!(App: ignore wl_shm::WlShm);
 delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(App: ignore wl_buffer::WlBuffer);
@@ -131,6 +148,7 @@ struct Popup {
     file: Option<std::fs::File>,
     count: usize,
     drawn: Vec<(u32, String, String)>,
+    drawn_scale: i32,
 }
 
 fn tempfile_in_runtime_dir() -> std::io::Result<std::fs::File> {
@@ -158,6 +176,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let blur: Option<ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
 
     let mut app = App::default();
+    let _outputs: Vec<wl_output::WlOutput> = globals
+        .contents()
+        .clone_list()
+        .iter()
+        .filter(|g| g.interface == "wl_output")
+        .map(|g| globals.registry().bind(g.name, g.version.min(4), &qh, ()))
+        .collect();
+    queue.roundtrip(&mut app)?;
     let mut text = TextRenderer::default();
     let mut popup: Option<Popup> = None;
 
@@ -213,13 +239,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     region.destroy();
                 }
                 surface.commit();
-                popup = Some(Popup { surface, layer, file: None, count: shown.len(), drawn: Vec::new() });
+                popup = Some(Popup { surface, layer, file: None, count: shown.len(), drawn: Vec::new(), drawn_scale: 0 });
             }
             if let Some(p) = &mut popup {
-                if app.configured && p.drawn != key {
+                let s = app.scale.current();
+                if app.configured && (p.drawn != key || p.drawn_scale != s) {
                     let refs: Vec<&notify::Note> = shown.iter().collect();
-                    let mut px = notify::draw(&mut text, &refs);
-                    let (w, h) = notify::size(shown.len());
+                    let mut px = notify::draw(&mut text, s, &refs);
+                    let (lw, lh) = notify::size(shown.len());
+                    let (w, h) = (lw * s, lh * s);
                     for c in px.chunks_exact_mut(4) {
                         c.swap(0, 2); // wl_shm ARGB8888 is B, G, R, A in memory
                     }
@@ -232,12 +260,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     f.write_all(&px)?;
                     let pool = shm.create_pool(f.as_fd(), px.len() as i32, &qh, ());
                     let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, &qh, ());
+                    p.surface.set_buffer_scale(s);
                     p.surface.attach(Some(&buffer), 0, 0);
                     p.surface.damage_buffer(0, 0, w, h);
                     p.surface.commit();
                     pool.destroy();
                     p.file = Some(f);
                     p.drawn = key;
+                    p.drawn_scale = s;
                 }
             }
         }

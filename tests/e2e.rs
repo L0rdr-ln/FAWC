@@ -957,3 +957,56 @@ fn a_hidpi_monitor_draws_everything_at_double_size() {
     let sky = pixel(&px, 1600, x0 + 200, y0 - 120);
     assert!(title != sky, "the frame is drawn 40 px above the client");
 }
+
+#[test]
+fn the_task_bar_draws_at_the_monitors_scale() {
+    use smithay::wayland::compositor::with_states;
+
+    let dir = tempfile::tempdir().unwrap();
+    let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+    let mut renderer = match offscreen_renderer() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("no GL context here ({e}): panel scale test skipped");
+            return;
+        }
+    };
+    let display: Display<Fawc> = Display::new().unwrap();
+    let mut state = Fawc::new(&display.handle(), (1600, 1200).into());
+    state.config.appearance.animations = false;
+    state.output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(2.0)), None);
+    let socket = ListeningSocket::bind("fawc-e2e-pscale").unwrap();
+    let mut hn = Harness { display, state, socket };
+    let glass = Glass::new(&mut renderer).unwrap();
+    let mut scene: GlesTexture = create_scene(&mut renderer, (1600, 1200).into()).unwrap();
+
+    let mut panel = std::process::Command::new(env!("CARGO_BIN_EXE_fawc-panel"))
+        .env("WAYLAND_DISPLAY", "fawc-e2e-pscale")
+        .env_remove("DISPLAY")
+        .spawn()
+        .unwrap();
+    let t0 = Instant::now();
+    let mut result = None;
+    while t0.elapsed() < Duration::from_secs(10) {
+        hn.pump();
+        hn.state.render_scene(&mut renderer, &glass, &mut scene).unwrap();
+        let map = smithay::desktop::layer_map_for_output(&hn.state.output);
+        if let Some(layer) = map.layers().next() {
+            let bs = with_states(layer.wl_surface(), |s| {
+                s.data_map
+                    .get::<smithay::backend::renderer::utils::RendererSurfaceStateUserData>()
+                    .map(|d| d.lock().unwrap().buffer_scale())
+            });
+            if bs == Some(2) {
+                result = bs;
+                break;
+            }
+        }
+        drop(map);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = panel.kill();
+    let _ = panel.wait();
+    assert_eq!(result, Some(2), "the panel's buffer has scale 2 on a scale-2 monitor");
+}

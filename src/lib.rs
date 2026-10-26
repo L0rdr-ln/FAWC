@@ -4,6 +4,7 @@ pub mod apps;
 pub mod background_effect;
 pub mod backend_drm;
 pub mod backend_winit;
+pub mod clientscale;
 pub mod config;
 pub mod cursor;
 pub mod demo;

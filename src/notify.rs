@@ -108,23 +108,26 @@ pub fn row_at(y: f64, n: usize) -> Option<usize> {
     (i >= 0.0 && (i as usize) < n.min(MAX_SHOWN) && within < BUBBLE_H as f64).then_some(i as usize)
 }
 
-/// The bubbles, newest on top, as one premultiplied RGBA picture of `size(n)`.
-pub fn draw(text: &mut TextRenderer, notes: &[&Note]) -> Vec<u8> {
-    let (w, h) = size(notes.len());
+/// The bubbles, newest on top, as one premultiplied RGBA picture of `size(n)` times `s`.
+pub fn draw(text: &mut TextRenderer, s: i32, notes: &[&Note]) -> Vec<u8> {
+    let (lw, lh) = size(notes.len());
+    let (w, h) = (lw * s, lh * s);
+    let sf = s as f32;
     let mut buf = vec![0u8; (w * h * 4).max(0) as usize];
-    let rad = 12.0f32;
+    let rad = 12.0f32 * sf;
+    let bubble_h = BUBBLE_H * s;
     for (i, note) in notes.iter().take(MAX_SHOWN).enumerate() {
-        let y0 = i as i32 * (BUBBLE_H + GAP);
-        for y in 0..BUBBLE_H {
+        let y0 = i as i32 * (BUBBLE_H + GAP) * s;
+        for y in 0..bubble_h {
             for x in 0..w {
                 let dx = (x as f32 + 0.5 - w as f32 / 2.0).abs() - (w as f32 / 2.0 - rad);
-                let dy = (y as f32 + 0.5 - BUBBLE_H as f32 / 2.0).abs() - (BUBBLE_H as f32 / 2.0 - rad);
+                let dy = (y as f32 + 0.5 - bubble_h as f32 / 2.0).abs() - (bubble_h as f32 / 2.0 - rad);
                 let d = dx.max(0.0).hypot(dy.max(0.0)) - rad;
                 let cover = (0.5 - d).clamp(0.0, 1.0);
                 if cover <= 0.0 {
                     continue;
                 }
-                let t = y as f32 / BUBBLE_H as f32;
+                let t = y as f32 / bubble_h as f32;
                 let idx = (((y0 + y) * w + x) * 4) as usize;
                 let px = &mut buf[idx..idx + 4];
                 let base = if note.critical { [0.85, 0.30, 0.20] } else { [0.22 + 0.10 * (1.0 - t), 0.56 + 0.12 * (1.0 - t), 0.90] };
@@ -132,16 +135,16 @@ pub fn draw(text: &mut TextRenderer, notes: &[&Note]) -> Vec<u8> {
                 if t < 0.4 {
                     blend(px, [1.0, 1.0, 1.0], 0.18 * (1.0 - t / 0.4) * cover);
                 }
-                if d > -1.5 {
+                if d > -1.5 * sf {
                     blend(px, [1.0, 1.0, 1.0], 0.5 * cover);
                 }
             }
         }
-        if let Some(img) = text.line(&note.summary, w - 32, 15.0, [255, 255, 255], Some(([15, 60, 120], 0.9)), 2) {
-            blit(&mut buf, w, h, &img, 16, y0 + 12);
+        if let Some(img) = text.line(&note.summary, w - 32 * s, 15.0 * sf, [255, 255, 255], Some(([15, 60, 120], 0.9)), 2 * s) {
+            blit(&mut buf, w, h, &img, 16 * s, y0 + 12 * s);
         }
-        if let Some(img) = text.line(&note.body, w - 32, 13.0, [235, 245, 255], Some(([15, 60, 120], 0.7)), 2) {
-            blit(&mut buf, w, h, &img, 16, y0 + 40);
+        if let Some(img) = text.line(&note.body, w - 32 * s, 13.0 * sf, [235, 245, 255], Some(([15, 60, 120], 0.7)), 2 * s) {
+            blit(&mut buf, w, h, &img, 16 * s, y0 + 40 * s);
         }
     }
     buf
@@ -189,7 +192,7 @@ mod tests {
         s.notify("a", 0, "Two", "second", -1, false, t0);
         let mut text = TextRenderer::default();
         let shown = s.shown();
-        let buf = draw(&mut text, &shown);
+        let buf = draw(&mut text, 1, &shown);
         let (w, h) = size(2);
         assert_eq!(h, 2 * BUBBLE_H + GAP);
         let alpha = |x: i32, y: i32| buf[((y * w + x) * 4 + 3) as usize];

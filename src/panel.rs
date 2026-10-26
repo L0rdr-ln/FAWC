@@ -75,9 +75,13 @@ pub(crate) fn blit(buf: &mut [u8], width: i32, height: i32, img: &crate::text::T
     }
 }
 
-/// `width` x `height` RGBA, premultiplied. `hover` brightens the orb, `clock` is e.g. "14:05".
-pub fn draw(text: &mut TextRenderer, width: i32, height: i32, hover: bool, clock: &str, tasks: &[Task]) -> Vec<u8> {
+/// `width` x `height` RGBA, premultiplied, in pixels: the bar is `width / s` x `height / s`
+/// logical pixels drawn at `s` pixels per logical one. `hover` brightens the orb, `clock` is
+/// e.g. "14:05".
+#[allow(clippy::too_many_arguments)]
+pub fn draw(text: &mut TextRenderer, width: i32, height: i32, s: i32, hover: bool, clock: &str, tasks: &[Task]) -> Vec<u8> {
     let mut buf = vec![0u8; (width * height * 4) as usize];
+    let sf = s as f32;
     for y in 0..height {
         let t = y as f32 / (height - 1).max(1) as f32;
         // an aqua strip, lighter at the top, with a gloss over the upper half
@@ -90,17 +94,18 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, hover: bool, clock
             if t < 0.5 {
                 blend(px, [1.0, 1.0, 1.0], 0.20 * (1.0 - t * 2.0) + 0.05);
             }
-            if y == 0 {
+            if y < s {
                 blend(px, [1.0, 1.0, 1.0], 0.55);
             }
         }
     }
     // the start orb: a green sphere with a bright highlight
-    let (cx, cy) = orb_center(height);
-    let r = ORB_SIZE as f32 / 2.0;
+    let (cx, cy) = orb_center(height / s);
+    let (cx, cy) = (cx as f32 * sf, cy as f32 * sf);
+    let r = ORB_SIZE as f32 / 2.0 * sf;
     for y in 0..height {
-        for x in 0..ORB_SIZE + 2 * ORB_MARGIN {
-            let (dx, dy) = (x as f32 + 0.5 - cx as f32, y as f32 + 0.5 - cy as f32);
+        for x in 0..(ORB_SIZE + 2 * ORB_MARGIN) * s {
+            let (dx, dy) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
             let d = (dx * dx + dy * dy).sqrt();
             let cover = (r + 0.5 - d).clamp(0.0, 1.0); // antialiased edge
             if cover <= 0.0 {
@@ -112,23 +117,24 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, hover: bool, clock
             let i = ((y * width + x) * 4) as usize;
             blend(&mut buf[i..i + 4], green, cover);
             // the highlight in the upper half
-            if dy < 0.0 && d < r - 1.0 {
+            if dy < 0.0 && d < r - sf {
                 let h = (1.0 - (-dy / r)).clamp(0.0, 1.0) * 0.55 * cover;
                 blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], h * (1.0 - (d / r).powi(2)).max(0.0));
             }
             // the rim
-            if d > r - 1.5 {
+            if d > r - 1.5 * sf {
                 blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.35 * cover);
             }
         }
     }
     // the task buttons: a glass pill each, brighter for the active window, dim when minimized
     for (i, task) in tasks.iter().enumerate() {
-        let (x0, x1, y0, y1) = task_rect(i, tasks.len(), width, height);
-        if x1 - x0 < 24 {
+        let (lx0, lx1, ly0, ly1) = task_rect(i, tasks.len(), width / s, height / s);
+        if lx1 - lx0 < 24 {
             continue;
         }
-        let rad = 6.0f32;
+        let (x0, x1, y0, y1) = (lx0 * s, lx1 * s, ly0 * s, ly1 * s);
+        let rad = 6.0f32 * sf;
         for y in y0..y1 {
             for x in x0..x1 {
                 // rounded rectangle coverage
@@ -152,49 +158,19 @@ pub fn draw(text: &mut TextRenderer, width: i32, height: i32, hover: bool, clock
                 if t < 0.45 {
                     blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.12 * cover);
                 }
-                if d > -1.2 {
+                if d > -1.2 * sf {
                     blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.40 * cover);
                 }
             }
         }
         let color = if task.minimized { [220, 235, 250] } else { [255, 255, 255] };
-        if let Some(img) = text.line(&task.title, x1 - x0 - 14, 13.0, color, Some(([20, 70, 140], 0.8)), 2) {
-            let tx = x0 + 8;
-            let ty = (height - img.height) / 2;
-            for yy in 0..img.height {
-                for xx in 0..img.width {
-                    let (px_, py_) = (tx + xx, ty + yy);
-                    if px_ < 0 || py_ < 0 || px_ >= width || py_ >= height {
-                        continue;
-                    }
-                    let sidx = ((yy * img.width + xx) * 4) as usize;
-                    let d = ((py_ * width + px_) * 4) as usize;
-                    let inv = 255 - img.rgba[sidx + 3] as u32;
-                    for c in 0..4 {
-                        buf[d + c] = (img.rgba[sidx + c] as u32 + buf[d + c] as u32 * inv / 255).min(255) as u8;
-                    }
-                }
-            }
+        if let Some(img) = text.line(&task.title, x1 - x0 - 14 * s, 13.0 * sf, color, Some(([20, 70, 140], 0.8)), 2 * s) {
+            blit(&mut buf, width, height, &img, x0 + 8 * s, (height - img.height) / 2);
         }
     }
     // the clock, with a soft glow, at the right
-    if let Some(img) = text.line(clock, 120, 16.0, [255, 255, 255], Some(([20, 70, 140], 0.9)), 3) {
-        let x0 = width - img.width - 14;
-        let y0 = (height - img.height) / 2;
-        for yy in 0..img.height {
-            for xx in 0..img.width {
-                let (px_, py_) = (x0 + xx, y0 + yy);
-                if px_ < 0 || py_ < 0 || px_ >= width || py_ >= height {
-                    continue;
-                }
-                let s = ((yy * img.width + xx) * 4) as usize;
-                let d = ((py_ * width + px_) * 4) as usize;
-                let inv = 255 - img.rgba[s + 3] as u32;
-                for c in 0..4 {
-                    buf[d + c] = (img.rgba[s + c] as u32 + buf[d + c] as u32 * inv / 255).min(255) as u8;
-                }
-            }
-        }
+    if let Some(img) = text.line(clock, 120 * s, 16.0 * sf, [255, 255, 255], Some(([20, 70, 140], 0.9)), 3 * s) {
+        blit(&mut buf, width, height, &img, width - img.width - 14 * s, (height - img.height) / 2);
     }
     buf
 }
@@ -216,11 +192,14 @@ pub fn menu_row_at(y: f64, n: usize) -> Option<usize> {
     (row >= 0.0 && (row as usize) < n.min(MENU_MAX_ROWS)).then_some(row as usize)
 }
 
-/// The start menu: a glass sheet with rounded corners and one row per entry.
-pub fn draw_menu(text: &mut TextRenderer, query: &str, names: &[String], hover: Option<usize>) -> Vec<u8> {
-    let (w, h) = menu_size();
+/// The start menu at `s` pixels per logical pixel: a glass sheet with rounded corners and one
+/// row per entry. The picture is `menu_size()` times `s`.
+pub fn draw_menu(text: &mut TextRenderer, s: i32, query: &str, names: &[String], hover: Option<usize>) -> Vec<u8> {
+    let (lw, lh) = menu_size();
+    let (w, h) = (lw * s, lh * s);
+    let sf = s as f32;
     let mut buf = vec![0u8; (w * h * 4) as usize];
-    let rad = 12.0f32;
+    let rad = 12.0f32 * sf;
     for y in 0..h {
         for x in 0..w {
             let dx = (x as f32 + 0.5 - w as f32 / 2.0).abs() - (w as f32 / 2.0 - rad);
@@ -237,13 +216,13 @@ pub fn draw_menu(text: &mut TextRenderer, query: &str, names: &[String], hover: 
             if t < 0.25 {
                 blend(px, [1.0, 1.0, 1.0], 0.16 * (1.0 - t * 4.0) * cover);
             }
-            if d > -1.5 {
+            if d > -1.5 * sf {
                 blend(px, [1.0, 1.0, 1.0], 0.45 * cover);
             }
         }
     }
     // the search field: a pale pill with what has been typed (or a hint)
-    let (sx0, sy0, sw, sh) = (MENU_PAD, MENU_PAD, w - 2 * MENU_PAD, SEARCH_H - 6);
+    let (sx0, sy0, sw, sh) = (MENU_PAD * s, MENU_PAD * s, w - 2 * MENU_PAD * s, (SEARCH_H - 6) * s);
     for y in 0..sh {
         for x in 0..sw {
             let dx = (x as f32 + 0.5 - sw as f32 / 2.0).abs() - (sw as f32 / 2.0 - sh as f32 / 2.0);
@@ -253,22 +232,22 @@ pub fn draw_menu(text: &mut TextRenderer, query: &str, names: &[String], hover: 
             if cover > 0.0 {
                 let i = (((sy0 + y) * w + sx0 + x) * 4) as usize;
                 blend(&mut buf[i..i + 4], [1.0, 1.0, 1.0], 0.78 * cover);
-                if d > -1.2 {
+                if d > -1.2 * sf {
                     blend(&mut buf[i..i + 4], [0.1, 0.3, 0.6], 0.45 * cover);
                 }
             }
         }
     }
     let (shown_text, color) = if query.is_empty() { ("Search programs", [90, 120, 160]) } else { (query, [10, 40, 90]) };
-    if let Some(img) = text.line(shown_text, sw - 28, 14.0, color, None, 0) {
-        blit(&mut buf, w, h, &img, sx0 + 14, sy0 + (sh - img.height) / 2);
+    if let Some(img) = text.line(shown_text, sw - 28 * s, 14.0 * sf, color, None, 0) {
+        blit(&mut buf, w, h, &img, sx0 + 14 * s, sy0 + (sh - img.height) / 2);
     }
     for (i, name) in names.iter().take(MENU_MAX_ROWS).enumerate() {
-        let y0 = MENU_PAD + SEARCH_H + i as i32 * MENU_ROW;
+        let y0 = (MENU_PAD + SEARCH_H + i as i32 * MENU_ROW) * s;
         if hover == Some(i) {
-            for y in y0..y0 + MENU_ROW {
-                for x in MENU_PAD..w - MENU_PAD {
-                    let t = (y - y0) as f32 / MENU_ROW as f32;
+            for y in y0..y0 + MENU_ROW * s {
+                for x in MENU_PAD * s..w - MENU_PAD * s {
+                    let t = (y - y0) as f32 / (MENU_ROW * s) as f32;
                     let idx = ((y * w + x) * 4) as usize;
                     blend(&mut buf[idx..idx + 4], [0.75, 0.92, 1.0], 0.55 - 0.2 * t);
                 }
@@ -276,22 +255,8 @@ pub fn draw_menu(text: &mut TextRenderer, query: &str, names: &[String], hover: 
         }
         let color = if hover == Some(i) { [10, 50, 100] } else { [255, 255, 255] };
         let glow = if hover == Some(i) { None } else { Some(([20, 70, 140], 0.8)) };
-        if let Some(img) = text.line(name, w - 2 * MENU_PAD - 16, 14.0, color, glow, 2) {
-            let (tx, ty) = (MENU_PAD + 10, y0 + (MENU_ROW - img.height) / 2);
-            for yy in 0..img.height {
-                for xx in 0..img.width {
-                    let (px_, py_) = (tx + xx, ty + yy);
-                    if px_ < 0 || py_ < 0 || px_ >= w || py_ >= h {
-                        continue;
-                    }
-                    let sidx = ((yy * img.width + xx) * 4) as usize;
-                    let d = ((py_ * w + px_) * 4) as usize;
-                    let inv = 255 - img.rgba[sidx + 3] as u32;
-                    for c in 0..4 {
-                        buf[d + c] = (img.rgba[sidx + c] as u32 + buf[d + c] as u32 * inv / 255).min(255) as u8;
-                    }
-                }
-            }
+        if let Some(img) = text.line(name, w - 2 * MENU_PAD * s - 16 * s, 14.0 * sf, color, glow, 2 * s) {
+            blit(&mut buf, w, h, &img, (MENU_PAD + 10) * s, y0 + (MENU_ROW * s - img.height) / 2);
         }
     }
     buf
@@ -305,7 +270,7 @@ mod tests {
     fn the_orb_is_green_and_the_strip_is_blue_with_a_clock() {
         let mut text = TextRenderer::default();
         let (w, h) = (400, HEIGHT);
-        let buf = draw(&mut text, w, h, false, "12:34", &[Task { title: "Files".into(), active: true, minimized: false }, Task { title: "Terminal".into(), ..Default::default() }]);
+        let buf = draw(&mut text, w, h, 1, false, "12:34", &[Task { title: "Files".into(), active: true, minimized: false }, Task { title: "Terminal".into(), ..Default::default() }]);
         let at = |x: i32, y: i32| {
             let i = ((y * w + x) * 4) as usize;
             [buf[i] as i32, buf[i + 1] as i32, buf[i + 2] as i32, buf[i + 3] as i32]
@@ -338,7 +303,7 @@ mod tests {
         let mut text = TextRenderer::default();
         let names: Vec<String> = ["Files", "Terminal", "Settings"].iter().map(|s| s.to_string()).collect();
         let (w, h) = menu_size();
-        let buf = draw_menu(&mut text, "", &names, Some(1));
+        let buf = draw_menu(&mut text, 1, "", &names, Some(1));
         let at = |x: i32, y: i32| {
             let i = ((y * w + x) * 4) as usize;
             [buf[i] as i32, buf[i + 1] as i32, buf[i + 2] as i32, buf[i + 3] as i32]
@@ -350,5 +315,26 @@ mod tests {
         assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + MENU_ROW + 3) as f64, 3), Some(1));
         assert_eq!(menu_row_at(2.0, 3), None, "the search field is not a row");
         assert_eq!(menu_row_at((MENU_PAD + SEARCH_H + 3 * MENU_ROW + 3) as f64, 3), None, "below the last row");
+    }
+
+    #[test]
+    fn at_scale_two_the_bar_and_menu_are_twice_as_many_pixels_and_the_orb_is_twice_as_wide() {
+        let mut text = TextRenderer::default();
+        // an orb's width in pixels along the middle row: count the green pixels
+        let mut orb_width = |s: i32| {
+            let (w, h) = (400 * s, HEIGHT * s);
+            let buf = draw(&mut text, w, h, s, false, "", &[]);
+            let y = h / 2;
+            (0..(ORB_SIZE + 2 * ORB_MARGIN) * s)
+                .filter(|&x| {
+                    let i = ((y * w + x) * 4) as usize;
+                    buf[i + 1] as i32 > buf[i] as i32 + 40 && buf[i + 1] as i32 > buf[i + 2] as i32 + 20
+                })
+                .count() as i32
+        };
+        let (one, two) = (orb_width(1), orb_width(2));
+        assert!((one - ORB_SIZE).abs() <= 4 && (two - 2 * ORB_SIZE).abs() <= 6, "the orb is about 32 px wide at 1x and 64 px at 2x: {one} {two}");
+        let (mw, mh) = menu_size();
+        assert_eq!(draw_menu(&mut text, 2, "", &[], None).len() as i32, mw * 2 * mh * 2 * 4);
     }
 }
