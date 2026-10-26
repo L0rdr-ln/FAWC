@@ -211,7 +211,9 @@ fn a_client_window_gets_a_glass_frame_and_can_be_closed_with_its_orb() {
     let c = pixel(&bytes, w, g.loc.x + 150, g.loc.y + 100);
     assert!(c[0] > 200 && c[1] < 70 && c[2] < 60, "the client's red shows in its area: {c:?}");
     let outside = pixel(&bytes, w, 700, 500);
-    assert!((outside[0] - 31).abs() < 6 && (outside[2] - 179).abs() < 6, "wallpaper outside the window: {outside:?}");
+    let wp = fawc::wallpaper::procedural(w, h, false);
+    let wi = ((500 * w + 700) * 4) as usize;
+    assert!((outside[0] - wp[wi] as i32).abs() < 6 && (outside[2] - wp[wi + 2] as i32).abs() < 6, "wallpaper outside the window: {outside:?}");
     let top = pixel(&bytes, w, g.loc.x + 150, g.loc.y - 30);
     assert!(top[2] > top[0] + 20, "the title bar is blue glass: {top:?}");
     let outer = fawc::layout::outer_rect(g, &hn.state.style);

@@ -67,6 +67,8 @@ pub struct Fawc {
     pub minimized: Vec<Window>,
     pub cascade: i32,
     pub terminal: String,
+    /// the wallpaper as a texture of the output size, made when needed
+    pub wallpaper: Option<smithay::backend::renderer::gles::GlesTexture>,
 }
 
 #[derive(Default)]
@@ -134,6 +136,7 @@ impl Fawc {
             minimized: Vec::new(),
             cascade: 0,
             terminal: std::env::var("FAWC_TERMINAL").unwrap_or_else(|_| "foot".into()),
+            wallpaper: None,
         }
     }
 

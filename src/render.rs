@@ -6,7 +6,7 @@ use smithay::backend::renderer::element::surface::{render_elements_from_surface_
 use smithay::backend::renderer::element::{AsRenderElements, Kind};
 use smithay::backend::renderer::gles::{GlesError, GlesRenderer, GlesTexture};
 use smithay::backend::renderer::utils::draw_render_elements;
-use smithay::backend::renderer::{Bind, Color32F, Frame, Offscreen, Renderer, Texture};
+use smithay::backend::renderer::{Bind, Color32F, Frame, ImportMem, Offscreen, Renderer, Texture};
 use smithay::desktop::{PopupManager, Window, WindowSurfaceType};
 use smithay::utils::{Buffer as BufferCoord, Logical, Physical, Rectangle, Size, Transform};
 
@@ -38,10 +38,36 @@ impl Fawc {
         let full = Rectangle::<i32, Physical>::from_size(size);
 
         // wallpaper
+        let stale = match &self.wallpaper {
+            Some(t) => t.size().w != size.w || t.size().h != size.h,
+            None => true,
+        };
+        if stale {
+            let px = crate::wallpaper::procedural(size.w, size.h, false);
+            self.wallpaper = Some(renderer.import_memory(
+                &px,
+                Fourcc::Abgr8888,
+                Size::<i32, BufferCoord>::from((size.w, size.h)),
+                false,
+            )?);
+        }
         {
             let mut target = renderer.bind(scene)?;
             let mut frame = renderer.render(&mut target, size, Transform::Normal)?;
-            frame.clear(Color32F::new(0.12, 0.42, 0.70, 1.0), &[full])?;
+            frame.clear(Color32F::new(0.0, 0.0, 0.0, 1.0), &[full])?;
+            if let Some(wp) = &self.wallpaper {
+                frame.render_texture_from_to(
+                    wp,
+                    Rectangle::from_size((size.w as f64, size.h as f64).into()),
+                    full,
+                    &[full],
+                    &[],
+                    Transform::Normal,
+                    1.0,
+                    None,
+                    &[],
+                )?;
+            }
             let _ = frame.finish()?;
         }
 

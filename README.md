@@ -16,11 +16,30 @@ light edge) and then the client.
 
 *`fawc glass-demo`: two glass windows over a sky; the stripes behind them are really blurred.*
 
+## Try it
+
+Nested in a window of your current desktop (X11 or Wayland), with the demo client:
+
+```sh
+cargo run &                         # prints WAYLAND_DISPLAY=wayland-N
+WAYLAND_DISPLAY=wayland-N cargo run --example demo-client
+```
+
+Keys: **Alt+Return** terminal (`foot`, or `$FAWC_TERMINAL`), **Alt+drag** or the title bar to move,
+borders to resize, orbs to close / maximize / minimize, **Alt+Tab** cycle, **Alt+m** restore a
+minimized window, **Alt+f** maximize, **Alt+q** close, **Alt+Esc** quit.
+
+![FAWC running nested](docs/nested.png)
+
 ## Status
 
 Early. What exists:
 
 - the glass renderer (`src/glass`): blur, glass panel, rounded clipping, as GLES shaders;
+- a compositor core: xdg-shell windows with server-side glass frames and orb buttons, focus,
+  move / resize / maximize / minimize, popups, keyboard and pointer, a nested (winit) backend;
+- an end-to-end test (`tests/e2e.rs`) in which a real Wayland client opens a window and the
+  test checks the glass pixels and clicks the orb;
 - an offscreen demo (`fawc glass-demo out.png`) and pixel tests that run on a software GL
   (llvmpipe), so the look is developed and checked without a display.
 
